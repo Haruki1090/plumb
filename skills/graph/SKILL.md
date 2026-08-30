@@ -142,10 +142,10 @@ barrier を置かずに並列で走らせると、コンフリクトの解決に
 | ノードの役割 | 委譲先 |
 |---|---|
 | 実装 | **REQUIRED SUB-SKILL: superpowers:writing-plans** → **superpowers:subagent-driven-development**（小さいノードは直接実装してよい） |
-| 独立検証 | **REQUIRED SUB-SKILL: superpowers:requesting-code-review** |
+| 独立検証 | **REQUIRED SUB-SKILL: plumb の `playbooks/being-reviewed.md`**（頼む側の節） |
 | 差し戻しループ | SDD の fix loop（5ラウンド上限・裁定フロー付き） |
 | ノードへのモデル配置 | SDD の Model Selection に従う |
-| ブランチの締め | **superpowers:finishing-a-development-branch** |
+| ブランチの締め | **plumb の `playbooks/closing-a-branch.md`** |
 
 検証について、委譲しても手放してはいけない原則が4つある。グラフ定義書の「検証」欄にこれを書いて渡す。
 
@@ -219,7 +219,7 @@ barrier を置かずに並列で走らせると、コンフリクトの解決に
 
 - **グラフを書かずに並列化した** → 共有ファイルで衝突。barrier 分析（手順3）を飛ばさない
 - **全部のゲートを閉じようとして止まった** → 手順7。最初のバッチを止める未決だけ抜く
-- **実装者に検証させた** → 独立検証を `superpowers:requesting-code-review` に委譲する。同じエージェントに続けさせない
+- **実装者に検証させた** → 独立検証を plumb の `playbooks/being-reviewed.md` に委譲する。同じエージェントに続けさせない
 - **リストをそのままノードにした** → 手順2。同じ正本を参照するものは束ねる
 - **ループで済む仕事をグラフにした** → 冒頭の判定。2シグナル未満なら `superpowers:brainstorming` へ直行
 - **ノードごとに spec を作って正本が二重化した** → 手順9。グラフ定義書が spec

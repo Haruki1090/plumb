@@ -33,14 +33,14 @@ description: 大きな PR・不可逆な変更に対して、承認権を持つ�
 | `plumb:graph` | 発火条件（複数ファイル・並列化・設計書との整合・サブエージェント）に全部該当してしまうが、これは**着手前の設計**スキル。レビューを設計タスクに変換してしまう |
 | `/simplify` | 「整理して」で当たる。quality-only かつ fix を適用する。原則 6 に反する |
 | `superpowers:brainstorming` | 設計対話が始まる。レビューは creative work ではない |
-| `superpowers:requesting-code-review` | **著者側**の型。Critical/Important/Minor という 1 軸 severity を持ち込み、こちらの 2 軸（確度 × ブロッキング性）を潰す |
+| plumb の `playbooks/being-reviewed.md` | **著者側**の型。同じ PR で承認側と著者側を兼ねると、自分の差分を自分で判定した記録になる。返却後に著者が読むもので、こちらが読むものではない |
 | `/code-review --fix` / `--comment` | `--fix` は原則 6 に反する。`--comment` は 5 段の判定を通っていない findings が著者に直接届き、承認判断から切り離された指摘になる（返却は 6 段の 1 箇所に集約する） |
 
 逆に、以下は**取り込む**。
 
-- `superpowers:verification-before-completion` — 5 段の CONFIRMED 判定に直結
-- `superpowers:using-git-worktrees` — 3 段の再現テストの隔離
-- `superpowers:dispatching-parallel-agents` — 3 段の並列実行
+- **principle-gate-claims-on-evidence** — 5 段の CONFIRMED 判定に直結
+- plumb の `playbooks/worktree-setup.md` — 3 段の再現テストの隔離
+- plumb の `playbooks/fan-out.md` — 3 段の並列実行
 
 ## 手順
 
@@ -228,7 +228,7 @@ BLOCK 候補は 7 件中 6 件が降格し、最終的に BLOCK は 1 件だけ�
 | **FIX** | 止めないが、マージ前に直す |
 | **NOTE** | 記録だけ。今回は直さない |
 
-CONFIRMED と書く前に `superpowers:verification-before-completion` の原則を通す
+CONFIRMED と書く前に **principle-gate-claims-on-evidence** の関門を通す
 ——**それを証明するコマンドを、このターンで実行したか。**していないなら PLAUSIBLE。
 
 **ただしコマンド実行だけでは足りない。** 実際に BLOCK 候補 4 件中 3 件が、
@@ -299,7 +299,7 @@ FIX に落とさない。「当初〜と判断したが誤りだった」と書�
 視覚化する場合は `artifact-design` スキルを読んでから HTML で作る。
 出すべき盤面は差分の要約ではなく、**命題 × 判定 × 残存リスク**と、**cutover の時系列と破断点**。
 
-返却後、著者には `superpowers:receiving-code-review` の作法（検証してから実装する・
+返却後、著者には plumb の `playbooks/being-reviewed.md` の作法（検証してから実装する・
 技術的根拠で押し返してよい）が適用されることを案内してよい。
 
 ## やらないこと

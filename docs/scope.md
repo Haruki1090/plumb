@@ -1,7 +1,8 @@
 # plumb が持たないもの
 
 plumb は pstack（`github.com/cursor/plugins` の `pstack/`、MIT）の型を出発点にしている。
-plumb には 13 本ある。
+**pstack 由来は 13 本**で、その内訳が下の表。**残りは pstack から来ていない**
+（下の「pstack の外から書いたもの」）。
 
 **原本の本数は「どう数えるか」で変わる。**原本の README は本文で「22 個のプレイブック」と
 書き、その数の表を掲げているが、実体の `skills/poteto-mode/playbooks/` には 23 個の
@@ -70,6 +71,29 @@ Cursor cloud agent、Graphite、レビュー bot、`cursor-team-kit` の操作�
 **`autonomous-run` はこの節から出た。**2026-08-29 に撤回して移植済み
 （`playbooks/autonomous-run.md`、ルータの「続ける」節に掲載）。
 **これを二重の正本とみなして消さないこと。**`/loop` は機構で、規律を持っていなかった。
+
+## pstack の外から書いたもの（4 本 + 原則 1 本）
+
+**pstack には無く、既存資産が別の形で持っていた問題**を、plumb の語彙で書き下ろした分。
+移植ではないので、上の内訳の外に置く。
+
+| plumb | 何を引き受けたか | plumb で足したもの |
+|---|---|---|
+| `playbooks/closing-a-branch.md` | 作り終えた作業の行き先（merge / PR / 残す）を持ち主に決めてもらう | 隔離を畳む規律は `worktree-cleanup.md` が正本のままで、**ここには書き写さない**。三択に「捨てる」を混ぜない |
+| `playbooks/worktree-setup.md` | 隔離した作業場を作る | 置き場は `docs/path-map.md` が正本（**根が複数系統ある**）。**ignore されたものが複製されない**ことを、cleanup 側の関門の裏返しとして明示 |
+| `playbooks/fan-out.md` | 独立した仕事を並列の役に配る | 役割は `docs/role-map.md` の `role.bulk`（未設定なら可視スキップ）。独立の判定を **principle-separate-before-serializing-shared-state** に接続 |
+| `playbooks/being-reviewed.md` | 著者としてレビューを頼み、指摘に応じる | **頼む側と受ける側を 1 本にまとめた。**返す形を `plumb:pr-review` と同じ**二軸**（確度 × ブロッキング性）で頼み、1 軸 severity を持ち込まない |
+| `principles/gate-claims-on-evidence.md` | 完了を主張する前に関門を通す | **方法は `prove-it-works` が持っている。**この原則が持つのは**発火点**だけで、二重の正本にしない |
+
+**書き下ろした原則は frontmatter に `origin: plumb` を持つ。**`NOTICE` は
+「principles/ の何本が pstack の逐語複製か」を主張しており、その本数は
+`scripts/check-harness.sh` のルール 13 が実体と突き合わせる。**印を付け忘れても、
+NOTICE を直し忘れても、どちらでも赤くなる**（**principle-encode-lessons-in-structure**）。
+
+**落としたもの**は、それぞれの型が既に別の形で持っているか、この環境に無い機械に乗っていた
+手順（menu の定型文、開始時の口上、severity の三段階、承認の合言葉、`.worktrees/` 決め打ち、
+言語ランタイム別の自動セットアップ）。**要らないと判断して落とした**のであって、
+未着手ではない。
 
 ## bun は入れない（2026-08-29 に決定を撤回）
 

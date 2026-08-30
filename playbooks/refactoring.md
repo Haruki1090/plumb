@@ -37,7 +37,7 @@
    2人目の消費者がいない間接が減ったか。**どこも下がっていないなら取り消す。**
 8. 物語になる小さな順序付きコミットに rebase する。引き算、作り直し、後片付けの順。
    1回の revert が1スライスを戻せる形にする（**principle-sequence-verifiable-units**）。
-   `superpowers:finishing-a-development-branch` で締める。**PR を出すと決まったら**
+   `playbooks/closing-a-branch.md` で締める。**PR を出すと決まったら**
    `playbooks/opening-a-pr.md` へ。
 
 **返すもの:** 変わった構造、固定した契約、等価性の証明、読み手負荷の差、

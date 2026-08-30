@@ -216,5 +216,37 @@ while IFS= read -r f; do
 done < <(agents_md)
 check "model を固定する agent frontmatter" "$pinned" 0
 
+# 13. NOTICE が主張する原則の本数が、実体と一致している
+#     2026-08-30: 原則を 1 本書き下ろしたのに NOTICE の「21 本すべてが逐語複製」が
+#     残り、「principles/ の中身は全部 pstack の複製」と読める嘘になった。人が足すたびに
+#     NOTICE を直す運用は必ず破れる（**principle-encode-lessons-in-structure**）。
+#     逐語一致そのものは上流を取りに行かないと判定できず、ネットワークに出る検査は
+#     オフラインで落ちて使われなくなる。そこで**由来を各ファイルの frontmatter に持たせ**、
+#     NOTICE はその集計だけを主張する形にした。書き下ろした原則は `origin: plumb` を持つ。
+#     本数の食い違いは、どちら側を足し忘れても発火する:
+#       - 印を付けずに追加 → 逐語の実測が増えて NOTICE と食い違う
+#       - 印を付けて追加   → 総数が増えて NOTICE と食い違う
+NOTICE_F="$root/NOTICE"
+if [ ! -f "$NOTICE_F" ]; then
+  note "NG" "NOTICE が無い"; fail=1
+else
+  authored=0
+  while IFS= read -r f; do
+    head -20 "$f" | grep -qE '^origin: *plumb *$' && authored=$((authored+1))
+  done < <(principles)
+  verbatim_actual=$((prs - authored))
+  n_total=$(grep -oE 'principles/ holds [0-9]+ files' "$NOTICE_F" | grep -oE '[0-9]+' | head -1)
+  n_verb=$(grep -oE '[0-9]+ are reproduced verbatim' "$NOTICE_F" | grep -oE '[0-9]+' | head -1)
+  if [ -z "$n_total" ] || [ -z "$n_verb" ]; then
+    note "NG" "NOTICE から原則の本数を読めない（'principles/ holds N files' と 'N are reproduced verbatim' が要る）"
+    fail=1
+  elif [ "$n_total" -ne "$prs" ] || [ "$n_verb" -ne "$verbatim_actual" ]; then
+    note "NG" "NOTICE の本数が実体と違う（NOTICE: 総数 ${n_total} / 逐語 ${n_verb}、実体: 総数 ${prs} / 逐語 ${verbatim_actual}・書き下ろし ${authored}）"
+    fail=1
+  else
+    note "ok" "NOTICE の原則の本数（総数 ${prs} / 逐語 ${n_verb} / 書き下ろし ${authored}）"
+  fi
+fi
+
 if [ $fail -eq 0 ]; then echo "  → 通過（SKILL.md ${scanned} 件 / プレイブック ${pbs} 件 / 原則 ${prs} 件 / agent ${ags} 件）"; else echo "  → 失敗"; fi
 exit $fail

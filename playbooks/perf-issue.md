@@ -23,7 +23,7 @@
    実装は実装役に投げ、差分は本線がレビューする。修正後の trace を捕る。
    各試行を検証してから次へ（**principle-sequence-verifiable-units**）。
 4. 成果物を突き合わせる。**「判定不能」や違う面での計測は合格ではない。**そう明記する。
-5. `superpowers:finishing-a-development-branch` で締める。**PR を出すと決まったら**
+5. `playbooks/closing-a-branch.md` で締める。**PR を出すと決まったら**
    `playbooks/opening-a-pr.md` へ。計測値を本文に載せる。
 
 一発の修正ではなく、一つの指標を継続的に押し下げるなら `playbooks/hillclimb.md`。

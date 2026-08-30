@@ -43,7 +43,7 @@
 
    **拒否されたら、それは安全弁が働いた合図。**`--force` で押し切らない。
    手順 4 の 2 コマンドの出力を見せて、**持ち主の判断を仰ぐ。**
-   これは `superpowers:finishing-a-development-branch` と同じ規則で、
+   これは `playbooks/closing-a-branch.md` と同じ規則で、
    **同じ操作に 2 つの正本を作らないため**にここも合わせてある。
    承認が出たら `--force`、ディレクトリが残るなら `rm -rf`、最後に `git worktree prune`。
    **ブランチの ref は残るのでコミットは失われない。**`df -h /` と再一覧で確認する。

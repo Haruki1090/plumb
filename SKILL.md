@@ -56,11 +56,13 @@ description: plumb の入口。原則を名前で呼べる索引を持ち、非�
 | 一つの指標を継続的に押し下げる | `playbooks/hillclimb.md` |
 | 振る舞いを変えずに構造を変える | `playbooks/refactoring.md` |
 | 設計判断を、捨てる実装で買う | `playbooks/prototype.md` |
+| 独立した仕事を、並列の役に配る | `playbooks/fan-out.md` |
 
 ### 出す
 
 | 仕事 | 型 |
 |---|---|
+| **ブランチを締める**（merge / PR / 残す のどれにするか決める） | `playbooks/closing-a-branch.md` |
 | PR を出す | `playbooks/opening-a-pr.md` |
 | 緑にして落とす | `playbooks/landing-a-stack.md` |
 
@@ -71,6 +73,7 @@ description: plumb の入口。原則を名前で呼べる索引を持ち、非�
 | 寝ている間も走らせ続ける・終わるまで回す | `playbooks/autonomous-run.md` |
 | 安全に中断する・圧縮が近い | `playbooks/pause-safely.md` |
 | 他のセッションの続きを引き継ぐ | `playbooks/session-pickup.md` |
+| 隔離した作業場を作る | `playbooks/worktree-setup.md` |
 | worktree とディスクを掃除する | `playbooks/worktree-cleanup.md` |
 
 ### 見る・保つ
@@ -78,6 +81,7 @@ description: plumb の入口。原則を名前で呼べる索引を持ち、非�
 | 仕事 | 型 |
 |---|---|
 | PR をレビューする（承認する側として） | `plumb:pr-review` |
+| **レビューを頼み、返ってきた指摘に応じる**（著者として） | `playbooks/being-reviewed.md` |
 | そのレビューに別ファミリーの軸を足す | `plumb:interrogate` |
 | plumb が主張する環境がまだ実在するか見る | `plumb:doctor` |
 
@@ -98,7 +102,6 @@ description: plumb の入口。原則を名前で呼べる索引を持ち、非�
 | 機能を作る・計画を書く | `superpowers`（brainstorming → writing-plans → subagent-driven-development） |
 | **バグを直す** | `superpowers:systematic-debugging` → TDD のループ。**設計から始めない** |
 | **スキルを書く・直す** | Claude Code の skill 作成の作法 → `claude plugin validate` → `plumb:doctor` |
-| ブランチを締める | `superpowers:finishing-a-development-branch`。**型の終わりは必ずここを通る** |
 | 誰に投げるか | `docs/role-map.md` |
 | ペイン・他エージェントの制御 | `pane.driver` が指すもの（未設定なら前面で実行する） |
 | 起こし方の機構（いつ起きるか） | `/loop` と `ScheduleWakeup`。**規律は `playbooks/autonomous-run.md`** |
@@ -195,6 +198,7 @@ plumb-path spec --mkdir   # 無ければ作る
 - **principle-prove-it-works** — 実物で検証する。代理指標や「ビルドが通った」で済ませない
 - **principle-fix-root-causes** — 症状を根本原因まで辿る。先に再現させる
 - **principle-sequence-verifiable-units** — 各単位を検証してから次へ進む。順序自体がレビュアーへの証明になる
+- **principle-gate-claims-on-evidence** — 「終わった」と書く直前に関門を置く。走らせていないなら主張しない
 
 ### 委譲
 

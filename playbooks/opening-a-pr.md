@@ -2,7 +2,7 @@
 
 **この型は入口ではない。**
 
-型の終わりで最初に通るのは `superpowers:finishing-a-development-branch`。
+型の終わりで最初に通るのは `playbooks/closing-a-branch.md`。
 テストを通したうえで、**ローカルに merge するか / push して PR にするか / ブランチを残すかを
 持ち主に選んでもらう**のはそちらの仕事で、**同じ判断をここで先取りしない**。
 
