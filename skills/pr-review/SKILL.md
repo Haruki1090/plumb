@@ -32,7 +32,7 @@ description: 大きな PR・不可逆な変更に対して、承認権を持つ�
 |---|---|
 | `plumb:graph` | 発火条件（複数ファイル・並列化・設計書との整合・サブエージェント）に全部該当してしまうが、これは**着手前の設計**スキル。レビューを設計タスクに変換してしまう |
 | `/simplify` | 「整理して」で当たる。quality-only かつ fix を適用する。原則 6 に反する |
-| `superpowers:brainstorming` | 設計対話が始まる。レビューは creative work ではない |
+| plumb の `playbooks/shaping-the-work.md` | 設計対話が始まる。レビューは creative work ではない |
 | plumb の `playbooks/being-reviewed.md` | **著者側**の型。同じ PR で承認側と著者側を兼ねると、自分の差分を自分で判定した記録になる。返却後に著者が読むもので、こちらが読むものではない |
 | `/code-review --fix` / `--comment` | `--fix` は原則 6 に反する。`--comment` は 5 段の判定を通っていない findings が著者に直接届き、承認判断から切り離された指摘になる（返却は 6 段の 1 箇所に集約する） |
 

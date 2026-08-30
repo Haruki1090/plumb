@@ -53,11 +53,11 @@ Cursor cloud agent、Graphite、レビュー bot、`cursor-team-kit` の操作�
 
 **この 2 行を消してはいけない。**消すと、欠落が「転送済み」に見える。
 
-### 既存資産と二重になる（当初 4 本 → 現在 3 本）
+### 既存資産と二重になる（当初 4 本 → 現在 1 本）
 
 | 原本 | 既にあるもの |
 |---|---|
-| `feature` | `superpowers`（brainstorming → writing-plans → subagent-driven-development） |
+| ~~`feature`~~ | **2026-08-30 に撤回して書き下ろした。**`playbooks/shaping-the-work.md` → `playbooks/writing-a-plan.md` |
 | `bug-fix` | `superpowers:systematic-debugging` と TDD のループ |
 | `authoring-a-skill` | Claude Code の skill 作成の作法と `claude plugin validate` |
 | ~~`autonomous-run`~~ | **2026-08-29 に撤回して移植した。**`/loop` と `ScheduleWakeup` は**機構**（いつ起きるか）で、終了述語・最小変更・取り消し・途中発見の扱い・停滞≠停止という**規律を持っていない**。`hillclimb` は単一指標の場合しか覆わない |
@@ -65,14 +65,17 @@ Cursor cloud agent、Graphite、レビュー bot、`cursor-team-kit` の操作�
 **移すと正本が二重になる。**バッチ1で `docs/plan.md` が古い第二の正本になり、
 後から来たエージェントが修正を全部巻き戻しかけた。同じ失敗を作らないための判断。
 
-ルータの「plumb が型を持たないもの」の表が、**残り 3 本**の行き先を明示している。
+ルータの「plumb が型を持たないもの」の表が、**残り 2 本**の行き先を明示している。
 **穴ではなく、意図した転送。**
+
+**`feature` もこの節から出た。**2026-08-30 に「作る前に形を決める型」と「形を手順にする型」を
+plumb の語彙で書き下ろした（下の表）。**移植ではないので、上の内訳の本数には数えない。**
 
 **`autonomous-run` はこの節から出た。**2026-08-29 に撤回して移植済み
 （`playbooks/autonomous-run.md`、ルータの「続ける」節に掲載）。
 **これを二重の正本とみなして消さないこと。**`/loop` は機構で、規律を持っていなかった。
 
-## pstack の外から書いたもの（4 本 + 原則 1 本）
+## pstack の外から書いたもの（6 本 + 原則 1 本）
 
 **pstack には無く、既存資産が別の形で持っていた問題**を、plumb の語彙で書き下ろした分。
 移植ではないので、上の内訳の外に置く。
@@ -82,6 +85,8 @@ Cursor cloud agent、Graphite、レビュー bot、`cursor-team-kit` の操作�
 | `playbooks/closing-a-branch.md` | 作り終えた作業の行き先（merge / PR / 残す）を持ち主に決めてもらう | 隔離を畳む規律は `worktree-cleanup.md` が正本のままで、**ここには書き写さない**。三択に「捨てる」を混ぜない |
 | `playbooks/worktree-setup.md` | 隔離した作業場を作る | 置き場は `docs/path-map.md` が正本（**根が複数系統ある**）。**ignore されたものが複製されない**ことを、cleanup 側の関門の裏返しとして明示 |
 | `playbooks/fan-out.md` | 独立した仕事を並列の役に配る | 役割は `docs/role-map.md` の `role.bulk`（未設定なら可視スキップ）。独立の判定を **principle-separate-before-serializing-shared-state** に接続 |
+| `playbooks/shaping-the-work.md` | 作る前に形を決め、持ち主に渡して承認を取る | **止まる線を `principle-never-block-on-the-human` の中に引いた**——形（何を作るか）は止め、手（どう作るか）は止めない。**門は節ごとではなく1回**に畳み、待っている間も分岐に依存しない作業は進める。訊く前に `playbooks/prototype.md` で買える分岐は買う |
+| `playbooks/writing-a-plan.md` | 承認された形を、他人が実行できる手順にする | 置き場は `plumb-path plan` が正本。**spec と plan の格の違いと凍結の規律は SKILL.md が持つので、ここには書き写さない。**全体制約を spec から逐語で写す例外に、**実装役が spec を開かないから**という理由を付けた |
 | `playbooks/being-reviewed.md` | 著者としてレビューを頼み、指摘に応じる | **頼む側と受ける側を 1 本にまとめた。**返す形を `plumb:pr-review` と同じ**二軸**（確度 × ブロッキング性）で頼み、1 軸 severity を持ち込まない |
 | `principles/gate-claims-on-evidence.md` | 完了を主張する前に関門を通す | **方法は `prove-it-works` が持っている。**この原則が持つのは**発火点**だけで、二重の正本にしない |
 
@@ -94,6 +99,12 @@ NOTICE を直し忘れても、どちらでも赤くなる**（**principle-encod
 手順（menu の定型文、開始時の口上、severity の三段階、承認の合言葉、`.worktrees/` 決め打ち、
 言語ランタイム別の自動セットアップ）。**要らないと判断して落とした**のであって、
 未着手ではない。
+
+`shaping-the-work` で落としたもの: **ブラウザ上の視覚コンパニオン**（別プロセスのサーバと
+雛形一式）——plumb は `plumb:decision-brief`（HTML 1 枚 + 同じラベルの設問）と
+`playbooks/prototype.md` を既に持っており、二つ目の見せ方の機構は要らない。
+**spec / plan を別の役に読ませる雛形**——依頼の作法は `playbooks/being-reviewed.md`、
+誰に頼むかは `docs/role-map.md` が正本。**工程図**と**開始時の口上**も落とした。
 
 ## bun は入れない（2026-08-29 に決定を撤回）
 

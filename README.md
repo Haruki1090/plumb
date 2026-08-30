@@ -8,8 +8,9 @@ step leaves a `skip: <reason>` line you cannot delete.
 ## What it adds
 
 plumb sits next to [superpowers](https://github.com/obra/superpowers), not on top
-of it. superpowers owns the loop inside one unit of work (brainstorm → plan →
-implement → review). plumb owns what surrounds it:
+of it. superpowers owns the innermost loop of a single unit of work — debugging,
+TDD, task-by-task execution. plumb owns what surrounds it, and since 2026-08-30
+the shaping and planning steps too, written in plumb's own vocabulary:
 
 - **Visible skip.** A non-trivial task must open a todo line for the judgment
   pass. That line closes one of two ways: it runs, or it carries an explicit
@@ -62,8 +63,9 @@ From a shell instead:
     claude plugin install plumb@plumb
 
 plumb also requires the [superpowers](https://github.com/obra/superpowers)
-plugin. plumb's router forwards "build / fix / plan" work to superpowers rather
-than reimplementing it; without it, `scripts/doctor.sh` reports `NG`.
+plugin. plumb's router forwards bug-fixing and task-by-task plan execution to
+superpowers rather than reimplementing them; without it, `scripts/doctor.sh`
+reports `NG`.
 
 ## Configuration
 

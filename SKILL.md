@@ -55,6 +55,8 @@ description: plumb の入口。原則を名前で呼べる索引を持ち、非�
 | 遅いのを一発直す | `playbooks/perf-issue.md` |
 | 一つの指標を継続的に押し下げる | `playbooks/hillclimb.md` |
 | 振る舞いを変えずに構造を変える | `playbooks/refactoring.md` |
+| **これから作るものの形を決める**（何を作るかがまだ決まっていない） | `playbooks/shaping-the-work.md` |
+| **承認された形を、他人が実行できる手順にする** | `playbooks/writing-a-plan.md` |
 | 設計判断を、捨てる実装で買う | `playbooks/prototype.md` |
 | 独立した仕事を、並列の役に配る | `playbooks/fan-out.md` |
 
@@ -94,12 +96,13 @@ description: plumb の入口。原則を名前で呼べる索引を持ち、非�
 
 ### plumb が型を持たないもの
 
-**機能を作る・バグを直す・計画を書く**は既存の資産が持っている。
+**バグを直す**は既存の資産が持っている。
 ここに同じものを置くと正本が二重になるので、**置いていない**。
+**機能を作る・計画を書く**は plumb 自身の型になった（`playbooks/shaping-the-work.md` →
+`playbooks/writing-a-plan.md`）。上の「変える」節から入る。
 
 | 仕事 | どこへ |
 |---|---|
-| 機能を作る・計画を書く | `superpowers`（brainstorming → writing-plans → subagent-driven-development） |
 | **バグを直す** | `superpowers:systematic-debugging` → TDD のループ。**設計から始めない** |
 | **スキルを書く・直す** | Claude Code の skill 作成の作法 → `claude plugin validate` → `plumb:doctor` |
 | 誰に投げるか | `docs/role-map.md` |

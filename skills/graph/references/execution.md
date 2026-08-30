@@ -6,7 +6,7 @@
 
 | 設計要素 | 実行手段 |
 |---|---|
-| ノード | サブエージェント1体、またはコードのステップ。中身の実装と検証は superpowers に委譲する（SKILL.md「ノード層は superpowers に委譲する」） |
+| ノード | サブエージェント1体、またはコードのステップ。中身の実装と検証は委譲する（SKILL.md「ノード層は委譲する」） |
 | 並列レーン | `Workflow` の `parallel()` / `pipeline()`、または同一メッセージ内の複数 Agent 呼び出し |
 | Barrier | `parallel()`（全部待つ）、または単純にフェーズを分けて直列に書く |
 | Pipeline（barrier なし） | `Workflow` の `pipeline()` |
