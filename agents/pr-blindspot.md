@@ -1,6 +1,6 @@
 ---
 name: pr-blindspot
-description: PR 本文が一度も触れていない影響範囲だけを問う。他の軸が全て見落とした領域を出させるための最終確認役。pr-review スキルの 4 段から呼ばれる。
+description: PR 本文が一度も触れていない影響範囲だけを問う。他の軸が全て見落とした領域を出させるための最終確認役。plumb:pr-review スキルの 4 段から呼ばれる。
 model: opus
 color: cyan
 ---

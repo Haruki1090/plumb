@@ -60,13 +60,12 @@ else
   command -v "$st" >/dev/null 2>&1 && note "ok" "stack.tool = $st" || bad "stack.tool = $st が PATH に無い"
 fi
 
-# 3. plumb が名指す外部スキルが実在するか
-#    索引に書いたのに存在しないと、行き先の無い転送になる
-echo "— 外部スキル"
-for s in agent-routing graph-engineering herdr pr-review; do
-  if [ -f "$CLAUDE/skills/$s/SKILL.md" ]; then note "ok" "$s"
-  else note "--" "$s: 未導入（plumb の索引が任意の転送先として名指している）"; fi
-done
+# 3. plumb が委譲先として名指す外部プラグインが実在するか
+#    agent-routing・graph-engineering・pr-review・herdr はもう plumb のルータが名指していない
+#    （graph・pr-review・interrogate・doctor は同梱して plumb:* になった。agent-routing は
+#    docs/role-map.md への転送に替わった。herdr は pane.driver 経由になり、実行先を直接
+#    名指さない規則＝ルール10の対象）。ここに残す価値があるのは本物の依存 superpowers だけ。
+echo "— 依存プラグイン"
 #    superpowers は marketplace 名の下に入る。README が案内する github.com/obra/superpowers
 #    は公式（claude-plugins-official）とは別名で入るため、決め打ちの1パスだけを見ると
 #    別名から入れた人を NG にする。marketplace 名に依存せず探す。
@@ -75,6 +74,14 @@ for d in "$CLAUDE"/plugins/cache/*/superpowers "$CLAUDE/skills/superpowers"; do
   [ -d "$d" ] && { note "ok" "superpowers プラグイン（${d/#$HOME/~}）"; sp_found=1; break; }
 done
 [ "$sp_found" -eq 1 ] || bad "superpowers が見つからない（plumb の索引が委譲先にしている）"
+
+# 3b. 同梱した agent 6 体が実在するか
+#     pr-review スキルが名指す agent が消えると、反証段の呼び出し先を失ったまま気付けない。
+echo "— 同梱 agent"
+while IFS= read -r name; do
+  if [ -f "$root/agents/$name.md" ]; then note "ok" "agents/$name.md"
+  else bad "agents/$name.md が無い（skills/pr-review/SKILL.md が名指している）"; fi
+done < <(grep -oE '`pr-[a-z-]+`' "$root/skills/pr-review/SKILL.md" | tr -d '`' | sort -u)
 
 # 4. agent が名指す呼び出し元が実在するか
 #    ここで見る ~/.claude/agents/*.md は plumb が同梱するものではなく、あなた自身が

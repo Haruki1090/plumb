@@ -30,7 +30,7 @@ description: 大きな PR・不可逆な変更に対して、承認権を持つ�
 
 | 呼ばない | 理由 |
 |---|---|
-| `graph-engineering` | 発火条件（複数ファイル・並列化・設計書との整合・サブエージェント）に全部該当してしまうが、これは**着手前の設計**スキル。レビューを設計タスクに変換してしまう |
+| `plumb:graph` | 発火条件（複数ファイル・並列化・設計書との整合・サブエージェント）に全部該当してしまうが、これは**着手前の設計**スキル。レビューを設計タスクに変換してしまう |
 | `/simplify` | 「整理して」で当たる。quality-only かつ fix を適用する。原則 6 に反する |
 | `superpowers:brainstorming` | 設計対話が始まる。レビューは creative work ではない |
 | `superpowers:requesting-code-review` | **著者側**の型。Critical/Important/Minor という 1 軸 severity を持ち込み、こちらの 2 軸（確度 × ブロッキング性）を潰す |

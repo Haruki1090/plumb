@@ -1,8 +1,8 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "plumb",
-  "version": "0.4.0",
-  "description": "Claude Code のハーネス。原則を名前で呼べる索引、判定役を別のモデルファミリーへ出す規律、可視スキップ（省略はできるが黙ってはできない）、自分の主張が実在するか検査するハーネス。",
+  "version": "0.5.0",
+  "description": "Claude Code のハーネス。原則を名前で呼べる索引、判定役を別のモデルファミリーへ出す規律、可視スキップ（省略はできるが黙ってはできない）、自分の主張が実在するか検査するハーネス。PR レビュー（反証役 6 agent 同梱）・実行グラフ設計・分岐のある判断を渡す decision-brief まで同梱する。",
   "author": {
     "name": "Haruki1090"
   },

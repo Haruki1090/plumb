@@ -1,6 +1,6 @@
 ---
 name: pr-repro
-description: 疑いのある finding に対し、隔離された worktree で失敗するテストを書いて実際に落ちるか確認する。PLAUSIBLE を CONFIRMED に昇格させる、あるいは反証して捨てるための agent。pr-review スキルの 3 段から呼ばれる。必ず worktree 隔離で起動すること。
+description: 疑いのある finding に対し、隔離された worktree で失敗するテストを書いて実際に落ちるか確認する。PLAUSIBLE を CONFIRMED に昇格させる、あるいは反証して捨てるための agent。plumb:pr-review スキルの 3 段から呼ばれる。必ず worktree 隔離で起動すること。
 model: opus
 color: orange
 ---

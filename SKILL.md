@@ -77,9 +77,16 @@ description: plumb の入口。原則を名前で呼べる索引を持ち、非�
 
 | 仕事 | 型 |
 |---|---|
-| PR をレビューする（承認する側として） | `pr-review` スキル。**正本はそちら** |
+| PR をレビューする（承認する側として） | `plumb:pr-review` |
 | そのレビューに別ファミリーの軸を足す | `plumb:interrogate` |
 | plumb が主張する環境がまだ実在するか見る | `plumb:doctor` |
+
+### 決める・設計する
+
+| 仕事 | 型 |
+|---|---|
+| 実行グラフを引く（5シグナル中2つ以上） | `plumb:graph` |
+| **分岐のある判断を持ち主に返す**（選択肢が2つ以上あり、選び方で作るものが変わる） | `plumb:decision-brief` |
 
 ### plumb が型を持たないもの
 
@@ -92,9 +99,7 @@ description: plumb の入口。原則を名前で呼べる索引を持ち、非�
 | **バグを直す** | `superpowers:systematic-debugging` → TDD のループ。**設計から始めない** |
 | **スキルを書く・直す** | Claude Code の skill 作成の作法 → `claude plugin validate` → `plumb:doctor` |
 | ブランチを締める | `superpowers:finishing-a-development-branch`。**型の終わりは必ずここを通る** |
-| 実行グラフを引く（5シグナル中2つ以上） | `graph-engineering` |
-| 誰に投げるか | `agent-routing` |
-| **分岐のある判断を持ち主に返す**（選択肢が2つ以上あり、選び方で作るものが変わる） | `decision-brief` |
+| 誰に投げるか | `docs/role-map.md` |
 | ペイン・他エージェントの制御 | `pane.driver` が指すもの（未設定なら前面で実行する） |
 | 起こし方の機構（いつ起きるか） | `/loop` と `ScheduleWakeup`。**規律は `playbooks/autonomous-run.md`** |
 

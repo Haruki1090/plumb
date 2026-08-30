@@ -1,6 +1,6 @@
 ---
 name: pr-refuter
-description: 1 件の finding を渡され、それを反証しようと試みる。支持ではなく反証を任務とし、迷ったら反証側に倒す。指摘者は自分の指摘を愛してしまうため、殺す役を別に置くための agent。pr-review スキルの 3 段から finding ごとに呼ばれる。
+description: 1 件の finding を渡され、それを反証しようと試みる。支持ではなく反証を任務とし、迷ったら反証側に倒す。指摘者は自分の指摘を愛してしまうため、殺す役を別に置くための agent。plumb:pr-review スキルの 3 段から finding ごとに呼ばれる。
 model: opus
 color: yellow
 ---

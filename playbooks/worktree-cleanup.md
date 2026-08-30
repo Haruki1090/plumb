@@ -13,7 +13,7 @@
    ```
 
    容量・最終更新・マージ状態・未コミットの有無・**戻せない ignore 済みファイル**・PR の状態で
-   分類し、最後に「戻せないもの」を worktree ごとに並べる（**plumb:principle-build-the-lever**）。
+   分類し、最後に「戻せないもの」を worktree ごとに並べる（**principle-build-the-lever**）。
    `__pycache__` や `node_modules` のように作り直せるものは除外済み——
    **除外しないと毎回「確認せよ」としか言わなくなり、本物の `.env` が紛れる。**
    走査は数十秒かかるのでペインに出す（`pane.driver`。未設定なら前面で実行する）。

@@ -32,6 +32,25 @@ implement → review). plumb owns what surrounds it:
   docs name still exist on this machine. Both have caught real breakage, including
   a frontmatter flag that had made the entire harness unreachable from the model.
 
+## What's bundled
+
+Beyond the router and the 21 principles, plumb ships these skills (all called under
+the `plumb:` namespace) and their supporting agents:
+
+- **`plumb:pr-review`** — adversarial PR review: cross-checks the PR body against
+  the diff, runs bidirectional inventory, and returns confidence × blocking
+  separately. Backed by six agents: `pr-diff-reader`, `pr-invariant`, `pr-cutover`,
+  `pr-repro`, `pr-refuter`, `pr-blindspot`.
+- **`plumb:interrogate`** — adds one adversarial pass in a different model family
+  to `plumb:pr-review`'s stage 3. Does not stand on its own.
+- **`plumb:graph`** — pre-work execution-graph design for goals that are large,
+  parallelizable, or need to stay aligned with a source-of-truth doc.
+- **`plumb:decision-brief`** — turns a branching decision into a one-page HTML
+  comparison plus an `AskUserQuestion` call with matching labels, instead of a
+  wall of prose.
+- **`plumb:doctor`** — checks whether the environment plumb's docs claim (routed
+  tools, bundled agents, dependency plugins) actually exists on this machine.
+
 ## Install
 
     /plugin marketplace add Haruki1090/plumb
