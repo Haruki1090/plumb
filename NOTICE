@@ -1,0 +1,17 @@
+plumb
+
+Copyright (c) 2026 Haruki1090
+Licensed under the MIT License. See LICENSE.
+
+---
+
+plumb's playbook structure is derived from pstack
+(https://github.com/cursor/plugins/tree/main/pstack), Copyright (c) 2026 Lauren Tan,
+licensed under the MIT License.
+
+The 21 files under principles/ are currently reproduced verbatim from pstack;
+only their frontmatter was translated. Rewriting them in plumb's own words is
+planned but not yet done.
+
+See docs/scope.md for what was carried over, what was folded, and what was
+deliberately left behind.

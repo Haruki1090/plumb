@@ -1,0 +1,12 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "plumb",
+  "version": "0.4.0",
+  "description": "Claude Code のハーネス。原則を名前で呼べる索引、判定役を別のモデルファミリーへ出す規律、可視スキップ（省略はできるが黙ってはできない）、自分の主張が実在するか検査するハーネス。",
+  "author": {
+    "name": "Haruki1090"
+  },
+  "skills": [
+    "./"
+  ]
+}

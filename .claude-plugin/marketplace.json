@@ -1,0 +1,15 @@
+{
+  "name": "plumb",
+  "owner": {
+    "name": "Haruki1090"
+  },
+  "plugins": [
+    {
+      "name": "plumb",
+      "description": "A harness for Claude Code: a principle index you call by name, judgment routed to another model family, and skipping that is allowed but never silent.",
+      "category": "development",
+      "tags": ["workflow", "discipline", "code-review", "planning"],
+      "source": "./"
+    }
+  ]
+}
