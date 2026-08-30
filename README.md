@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/plumb-banner-dark.png">
+  <img alt="plumb — a handwritten wordmark with a plumb bob hanging from the letter l" src="assets/plumb-banner.png">
+</picture>
+
 # plumb
 
 A harness for Claude Code that makes discipline *namable*: every principle has a
