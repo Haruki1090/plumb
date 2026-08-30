@@ -28,6 +28,42 @@ PLUMB_CONFIG=/nonexistent bash "$root/scripts/plumb-config.sh" role.judge >/dev/
 # 鍵に正規表現メタ文字が入っても、別の行に誤マッチしない
 eq "メタ文字の鍵は誤マッチしない" "$(PLUMB_CONFIG="$cfg" bash "$root/scripts/plumb-config.sh" 'role.[judge' DEFAULT)" "DEFAULT"
 
+# isolate-pollution: 「単独では通るのに、まとめると落ちる」の切り分け。
+# 犯人を **見つけること**より、見つけられなかったときと前提が壊れているときに
+# 黙って 0 を返さないことが要（**principle-gate-claims-on-evidence**）。
+ipd="$sandbox_root/ip"; mkdir -p "$ipd"
+mark="$ipd/MARK"
+printf '#!/bin/sh\nexit 0\n' > "$ipd/clean.sh"
+printf '#!/bin/sh\ntouch "%s"\n' "$mark" > "$ipd/dirty.sh"
+printf '#!/bin/sh\ntouch "%s"\n' "$mark" > "$ipd/di rty.sh"   # 空白入りの名前
+ip() { ( cd "$ipd" && bash "$root/scripts/isolate-pollution.sh" "$@" ); }
+
+rm -f "$mark"
+out=$(ip "test -e $mark" sh clean.sh dirty.sh clean.sh); code=$?
+eq "汚染源を特定する" "$code" "1"
+printf '%s' "$out" | grep -q '汚染源: dirty.sh' \
+  && ok "汚染源の名前を出す" || ng "汚染源の名前が出ていない: [$out]"
+
+rm -f "$mark"
+ip "test -e $mark" sh clean.sh clean.sh >/dev/null 2>&1
+eq "犯人が居なければ 0" "$?" "0"
+
+# 走らせる前から残骸が在ると、最初の一件が犯人に見える。ここを 1 で返すと
+# **無実の一件が犯人として報告される。**前提の破損は別の終了コードで落とす。
+touch "$mark"
+ip "test -e $mark" sh clean.sh >/dev/null 2>&1
+eq "事前汚染は 2 で落ちる" "$?" "2"
+rm -f "$mark"
+
+ip foo >/dev/null 2>&1
+eq "引数不足は 2 で落ちる" "$?" "2"
+
+# 対象名の空白で分割されると、無関係な名前を走らせて誤った犯人を指す
+rm -f "$mark"
+out=$(ip "test -e $mark" sh clean.sh 'di rty.sh')
+printf '%s' "$out" | grep -q '汚染源: di rty.sh' \
+  && ok "空白入りの名前を割らない" || ng "空白入りの名前で壊れる: [$out]"
+
 # 「持っていない人の手元」を模して doctor を走らせる。
 # git と gh だけを通し、任意ツール（codex / cursor-agent / herdr）は PATH から外す。
 # ここを素の PATH でやると、これらが実在する環境では恒真になって分岐を検証できない。
@@ -44,14 +80,13 @@ for c in git gh; do
   fi
 done
 
-# PATH だけ剥いで HOME はそのままだと、持ち主自身の ~/.claude（superpowers 導入済み・
-# 私物 agent あり）が常に真になり、「持っていない人」の分岐を検証できない。
-# 偽 HOME を作り、「README のとおり superpowers を入れ、任意のツールは何も
-# 持っていない人」を模す。marketplace 名は plumb が決め打ちしていないことを
-# 確かめるため、公式（claude-plugins-official）とは違う名前を使う。
+# PATH だけ剥いで HOME はそのままだと、持ち主自身の ~/.claude（私物 agent あり）が
+# 常に真になり、「持っていない人」の分岐を検証できない。偽 HOME を作り、
+# **plumb を入れただけで、任意のツールは何も持っていない人**を模す。
+# 2026-08-30 まではここに superpowers のディレクトリを作っていた。plumb がそれを
+# 依存として検査していたから。**依存が 0 になったので、模す前提からも外す。**
 fake_home="$sandbox_root/home"
 mkdir -p "$fake_home/.claude/projects" \
-         "$fake_home/.claude/plugins/cache/obra/superpowers" \
          "$fake_home/.claude/agents"
 
 out=$(HOME="$fake_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_IN_SELFTEST=1 PLUMB_CONFIG=/nonexistent \

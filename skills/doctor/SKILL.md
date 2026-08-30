@@ -45,7 +45,6 @@ pr-review スキル        agent 6 体が「pr-review スキルの N 段から�
 | 内側（横断ルール） | plumb 自身の編集。`plumb-check` を直接走らせて内容を見る |
 | 内側（スクリプトの振る舞い） | selftest.sh 自体の前提が壊れている可能性がある。`plumb-selftest` を直接走らせて内容を見る |
 | 実行先 | PATH と拡張のインストール。`docs/role-map.md` の前提が崩れている |
-| 依存プラグイン | `superpowers` の退避・削除・リネーム。有効なプラグインとして存在するか確認する |
 | 同梱 agent | `agents/` の 1 体が消えている・リネームされている。`skills/pr-review/SKILL.md` が名指す名前と `agents/` の実体を突き合わせる |
 | agent の呼び出し元（あなたの私物） | 上と同じ原因が、あなた自身の `~/.claude/agents/` 側に出ている。スキルを戻すか、agent の description を直すか |
 | パス | `docs/path-map.md` の主張が古い。**実測してから表を直す。推測で書き換えない** |

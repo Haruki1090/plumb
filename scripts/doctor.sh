@@ -66,20 +66,13 @@ else
   command -v "$st" >/dev/null 2>&1 && note "ok" "stack.tool = $st" || bad "stack.tool = $st が PATH に無い"
 fi
 
-# 3. plumb が委譲先として名指す外部プラグインが実在するか
-#    agent-routing・graph-engineering・pr-review・herdr はもう plumb のルータが名指していない
-#    （graph・pr-review・interrogate・doctor は同梱して plumb:* になった。agent-routing は
-#    docs/role-map.md への転送に替わった。herdr は pane.driver 経由になり、実行先を直接
-#    名指さない規則＝ルール10の対象）。ここに残す価値があるのは本物の依存 superpowers だけ。
-echo "— 依存プラグイン"
-#    superpowers は marketplace 名の下に入る。README が案内する github.com/obra/superpowers
-#    は公式（claude-plugins-official）とは別名で入るため、決め打ちの1パスだけを見ると
-#    別名から入れた人を NG にする。marketplace 名に依存せず探す。
-sp_found=0
-for d in "$CLAUDE"/plugins/cache/*/superpowers "$CLAUDE/skills/superpowers"; do
-  [ -d "$d" ] && { note "ok" "superpowers プラグイン（${d/#$HOME/~}）"; sp_found=1; break; }
-done
-[ "$sp_found" -eq 1 ] || bad "superpowers が見つからない（plumb の索引が委譲先にしている）"
+# 3. 外部プラグインへの依存は無い。
+#    2026-08-30 まで、plumb のルータは「バグを直す」と「計画をタスク単位で回す」を
+#    superpowers に転送しており、doctor はそれが実在するかを見ていた。
+#    その 5 本を plumb の語彙で書き下ろした時点で**依存は 0 になった**ので、検査ごと消す。
+#    「入っていれば ok、無ければ `--`」を残す手もあったが、**それは依存が在るかのように読める。**
+#    無い依存を検査しないのが、この道具の正しい状態（**principle-subtract-before-you-add**）。
+#    他の候補（agent-routing・graph-engineering・pr-review）は既に同梱か転送に替わっている。
 
 # 3b. 同梱した agent 6 体が実在するか（本文 → 実体）
 #     pr-review スキルが名指す agent が消えると、反証段の呼び出し先を失ったまま気付けない。

@@ -55,18 +55,21 @@ Cursor cloud agent、Graphite、レビュー bot、`cursor-team-kit` の操作�
 
 ### 既存資産と二重になる（当初 4 本 → 現在 1 本）
 
+**この節は 2026-08-30 にほぼ空になった。**残っているのは `authoring-a-skill` だけで、
+他の 3 本は「既存資産が持っている」という前提そのものを取り下げて書き下ろした。
+
 | 原本 | 既にあるもの |
 |---|---|
 | ~~`feature`~~ | **2026-08-30 に撤回して書き下ろした。**`playbooks/shaping-the-work.md` → `playbooks/writing-a-plan.md` |
-| `bug-fix` | `superpowers:systematic-debugging` と TDD のループ |
+| ~~`bug-fix`~~ | **2026-08-30 に撤回して書き下ろした。**`playbooks/fixing-a-bug.md` ＋ `playbooks/writing-tests.md` |
 | `authoring-a-skill` | Claude Code の skill 作成の作法と `claude plugin validate` |
 | ~~`autonomous-run`~~ | **2026-08-29 に撤回して移植した。**`/loop` と `ScheduleWakeup` は**機構**（いつ起きるか）で、終了述語・最小変更・取り消し・途中発見の扱い・停滞≠停止という**規律を持っていない**。`hillclimb` は単一指標の場合しか覆わない |
 
 **移すと正本が二重になる。**バッチ1で `docs/plan.md` が古い第二の正本になり、
 後から来たエージェントが修正を全部巻き戻しかけた。同じ失敗を作らないための判断。
 
-ルータの「plumb が型を持たないもの」の表が、**残り 2 本**の行き先を明示している。
-**穴ではなく、意図した転送。**
+ルータの「plumb が型を持たないもの」の表に残っているのは `authoring-a-skill` の 1 行だけ。
+**外部のプラグインへ転送する行は、もう一つも無い。**
 
 **`feature` もこの節から出た。**2026-08-30 に「作る前に形を決める型」と「形を手順にする型」を
 plumb の語彙で書き下ろした（下の表）。**移植ではないので、上の内訳の本数には数えない。**
@@ -75,7 +78,7 @@ plumb の語彙で書き下ろした（下の表）。**移植ではないので
 （`playbooks/autonomous-run.md`、ルータの「続ける」節に掲載）。
 **これを二重の正本とみなして消さないこと。**`/loop` は機構で、規律を持っていなかった。
 
-## pstack の外から書いたもの（6 本 + 原則 1 本）
+## pstack の外から書いたもの（9 本 + 原則 1 本 + 道具 1 本）
 
 **pstack には無く、既存資産が別の形で持っていた問題**を、plumb の語彙で書き下ろした分。
 移植ではないので、上の内訳の外に置く。
@@ -87,6 +90,9 @@ plumb の語彙で書き下ろした（下の表）。**移植ではないので
 | `playbooks/fan-out.md` | 独立した仕事を並列の役に配る | 役割は `docs/role-map.md` の `role.bulk`（未設定なら可視スキップ）。独立の判定を **principle-separate-before-serializing-shared-state** に接続 |
 | `playbooks/shaping-the-work.md` | 作る前に形を決め、持ち主に渡して承認を取る | **止まる線を `principle-never-block-on-the-human` の中に引いた**——形（何を作るか）は止め、手（どう作るか）は止めない。**門は節ごとではなく1回**に畳み、待っている間も分岐に依存しない作業は進める。訊く前に `playbooks/prototype.md` で買える分岐は買う |
 | `playbooks/writing-a-plan.md` | 承認された形を、他人が実行できる手順にする | 置き場は `plumb-path plan` が正本。**spec と plan の格の違いと凍結の規律は SKILL.md が持つので、ここには書き写さない。**全体制約を spec から逐語で写す例外に、**実装役が spec を開かないから**という理由を付けた |
+| `playbooks/running-a-plan.md` | 計画をタスク単位で着地させる（配る／本線が刻む の両方） | **上限を 5 周から 3 周に縮めた**（1〜2 周は同じ役、3 周目は別の役、打ち止め）。**起点コミットをシェル変数ではなく台帳の列に持たせた**——変数は文脈の圧縮を跨がない。モデル選択の節は落とした（`docs/role-map.md` の領分）。workspace の作成機構も足していない（`plumb-path run` が持っている） |
+| `playbooks/fixing-a-bug.md` | 再現を先に取り、症状から根本原因まで遡って直す | **`defense-in-depth`（全層に検査を撒く）を採らなかった**——**principle-boundary-discipline**（ガードは境界に集める・内側の型は信じる）と正面から衝突する。手順 6 では境界を締める側に倒し、**そう書いた**。時間で待たない検証と汚染源の切り分けは残し、道具は言語非依存に書き直した |
+| `playbooks/writing-tests.md` | テスト自体の中身。赤を見ていないテストは何も守っていない | **守らないテストに 5 つの名前を与えて禁じた**（空振り／鏡／写し／代役への確認／緩めたテスト）。最後に「**製品側を一箇所壊して、どのテストが落ちるかを言う**」を置いた——主張ではなく判定できる形にするため |
 | `playbooks/being-reviewed.md` | 著者としてレビューを頼み、指摘に応じる | **頼む側と受ける側を 1 本にまとめた。**返す形を `plumb:pr-review` と同じ**二軸**（確度 × ブロッキング性）で頼み、1 軸 severity を持ち込まない |
 | `principles/gate-claims-on-evidence.md` | 完了を主張する前に関門を通す | **方法は `prove-it-works` が持っている。**この原則が持つのは**発火点**だけで、二重の正本にしない |
 
@@ -94,6 +100,12 @@ plumb の語彙で書き下ろした（下の表）。**移植ではないので
 「principles/ の何本が pstack の逐語複製か」を主張しており、その本数は
 `scripts/check-harness.sh` のルール 13 が実体と突き合わせる。**印を付け忘れても、
 NOTICE を直し忘れても、どちらでも赤くなる**（**principle-encode-lessons-in-structure**）。
+
+道具も 1 本増えた。`scripts/isolate-pollution.sh`（`plumb-isolate-pollution`）は
+「単独では通るのに、まとめると落ちる」ときの汚染源を一件ずつ切り分ける。
+**上流の同種のスクリプトは npm 決め打ちで、しかも走らせる前から残骸が在ると
+最初の一件を犯人として報告する。**判定コマンドと実行コマンドを引数に取る形に書き直し、
+**事前汚染は exit 2 で落とす**ようにした（無実の一件を犯人にしない）。
 
 **落としたもの**は、それぞれの型が既に別の形で持っているか、この環境に無い機械に乗っていた
 手順（menu の定型文、開始時の口上、severity の三段階、承認の合言葉、`.worktrees/` 決め打ち、

@@ -7,10 +7,9 @@ step leaves a `skip: <reason>` line you cannot delete.
 
 ## What it adds
 
-plumb sits next to [superpowers](https://github.com/obra/superpowers), not on top
-of it. superpowers owns the innermost loop of a single unit of work — debugging,
-TDD, task-by-task execution. plumb owns what surrounds it, and since 2026-08-30
-the shaping and planning steps too, written in plumb's own vocabulary:
+plumb is self-contained: 22 playbooks covering the whole arc of a unit of work —
+shaping it, planning it, running the plan task by task, fixing what breaks,
+writing the tests, and landing the result. It depends on no other plugin.
 
 - **Visible skip.** A non-trivial task must open a todo line for the judgment
   pass. That line closes one of two ways: it runs, or it carries an explicit
@@ -21,7 +20,7 @@ the shaping and planning steps too, written in plumb's own vocabulary:
   reviewer of it: it shares the blind spots that produced the bug. plumb routes
   the adversarial pass to a different model family and treats a same-family-only
   verdict as unreviewed.
-- **A principle index you call by name.** Twenty-one principles, each with a
+- **A principle index you call by name.** 22 principles, each with a
   name. Citing one obliges you to name the specific decision it changed — a
   quotation with no decision attached is treated as proof the leaf was never
   read. Naming turns "be careful" into something a reviewer can check.
@@ -35,8 +34,8 @@ the shaping and planning steps too, written in plumb's own vocabulary:
 
 ## What's bundled
 
-Beyond the router and the 21 principles, plumb ships these skills (all called under
-the `plumb:` namespace) and their supporting agents:
+Beyond the router, the 22 playbooks and the 22 principles, plumb ships these skills
+(all called under the `plumb:` namespace) and their supporting agents:
 
 - **`plumb:pr-review`** — adversarial PR review: cross-checks the PR body against
   the diff, runs bidirectional inventory, and returns confidence × blocking
@@ -62,10 +61,9 @@ From a shell instead:
     claude plugin marketplace add Haruki1090/plumb
     claude plugin install plumb@plumb
 
-plumb also requires the [superpowers](https://github.com/obra/superpowers)
-plugin. plumb's router forwards bug-fixing and task-by-task plan execution to
-superpowers rather than reimplementing them; without it, `scripts/doctor.sh`
-reports `NG`.
+Nothing else is required. plumb has no plugin dependencies — `scripts/doctor.sh`
+checks only the tools you chose to route roles to, and reports `--` for the ones
+you left unset.
 
 ## Configuration
 
@@ -86,9 +84,9 @@ covers the same ground.
 
 ## Language
 
-SKILL.md, the 13 playbooks, and the docs/ files are written in Japanese. The 21
-files under principles/ are verbatim English, carried over from pstack (see
-NOTICE).
+SKILL.md, the 22 playbooks, and the docs/ files are written in Japanese. Most
+files under principles/ are verbatim English carried over from pstack; NOTICE
+carries the exact split, and `scripts/check-harness.sh` fails if it drifts.
 
 ## Credits
 

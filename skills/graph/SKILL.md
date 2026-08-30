@@ -141,7 +141,7 @@ barrier を置かずに並列で走らせると、コンフリクトの解決に
 
 | ノードの役割 | 委譲先 |
 |---|---|
-| 実装 | **plumb の `playbooks/writing-a-plan.md`** → **superpowers:subagent-driven-development**（小さいノードは直接実装してよい） |
+| 実装 | **plumb の `playbooks/writing-a-plan.md`** → **`playbooks/running-a-plan.md`**（小さいノードは直接実装してよい） |
 | 独立検証 | **REQUIRED SUB-SKILL: plumb の `playbooks/being-reviewed.md`**（頼む側の節） |
 | 差し戻しループ | SDD の fix loop（5ラウンド上限・裁定フロー付き） |
 | ノードへのモデル配置 | SDD の Model Selection に従う |

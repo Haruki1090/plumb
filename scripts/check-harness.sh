@@ -248,5 +248,29 @@ else
   fi
 fi
 
+# 14. README が主張する本数が実体と合っているか。
+#     2026-08-30 に実測: README は「the 13 playbooks」と書いていたが実体は 19 本、
+#     「Twenty-one principles」と書いていたが実体は 22 本だった。**plumb が README で
+#     「documentation rots silently」を防ぐと主張しているまさにその形で、README 自身が
+#     腐っていた。**NOTICE はルール 13 が守っているのに README は誰も見ていなかった
+#     （**principle-encode-lessons-in-structure**）。
+#     綴り字（"Twenty-one"）だと機械が読めないので、README 側は数字で書く規約にする。
+README_F="$root/README.md"
+if [ ! -f "$README_F" ]; then
+  note "NG" "README.md が無い"; fail=1
+else
+  r_pb=$(grep -oE '[0-9]+ playbooks' "$README_F" | grep -oE '[0-9]+' | head -1)
+  r_pr=$(grep -oE '[0-9]+ principles' "$README_F" | grep -oE '[0-9]+' | head -1)
+  if [ -z "$r_pb" ] || [ -z "$r_pr" ]; then
+    note "NG" "README から本数を読めない（'N playbooks' と 'N principles' を数字で書く）"
+    fail=1
+  elif [ "$r_pb" -ne "$pbs" ] || [ "$r_pr" -ne "$prs" ]; then
+    note "NG" "README の本数が実体と違う（README: プレイブック ${r_pb} / 原則 ${r_pr}、実体: ${pbs} / ${prs}）"
+    fail=1
+  else
+    note "ok" "README の本数（プレイブック ${pbs} / 原則 ${prs}）"
+  fi
+fi
+
 if [ $fail -eq 0 ]; then echo "  → 通過（SKILL.md ${scanned} 件 / プレイブック ${pbs} 件 / 原則 ${prs} 件 / agent ${ags} 件）"; else echo "  → 失敗"; fi
 exit $fail

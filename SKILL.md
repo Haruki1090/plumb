@@ -52,11 +52,14 @@ description: plumb の入口。原則を名前で呼べる索引を持ち、非�
 
 | 仕事 | 型 |
 |---|---|
+| **バグを直す**（落ちる・たまに落ちる・直したはずが戻った） | `playbooks/fixing-a-bug.md` |
 | 遅いのを一発直す | `playbooks/perf-issue.md` |
 | 一つの指標を継続的に押し下げる | `playbooks/hillclimb.md` |
 | 振る舞いを変えずに構造を変える | `playbooks/refactoring.md` |
 | **これから作るものの形を決める**（何を作るかがまだ決まっていない） | `playbooks/shaping-the-work.md` |
 | **承認された形を、他人が実行できる手順にする** | `playbooks/writing-a-plan.md` |
+| **その手順を、タスク単位で着地させる** | `playbooks/running-a-plan.md` |
+| テストを書く・既存のテストを直す | `playbooks/writing-tests.md` |
 | 設計判断を、捨てる実装で買う | `playbooks/prototype.md` |
 | 独立した仕事を、並列の役に配る | `playbooks/fan-out.md` |
 
@@ -96,14 +99,12 @@ description: plumb の入口。原則を名前で呼べる索引を持ち、非�
 
 ### plumb が型を持たないもの
 
-**バグを直す**は既存の資産が持っている。
-ここに同じものを置くと正本が二重になるので、**置いていない**。
-**機能を作る・計画を書く**は plumb 自身の型になった（`playbooks/shaping-the-work.md` →
-`playbooks/writing-a-plan.md`）。上の「変える」節から入る。
+**形を決める・計画を書く・計画を回す・バグを直す・テストを書く**は、
+すべて plumb 自身の型になった。**上の「変える」節から入る。**
+外部のプラグインへ転送する行は、もう一つも無い。
 
 | 仕事 | どこへ |
 |---|---|
-| **バグを直す** | `superpowers:systematic-debugging` → TDD のループ。**設計から始めない** |
 | **スキルを書く・直す** | Claude Code の skill 作成の作法 → `claude plugin validate` → `plumb:doctor` |
 | 誰に投げるか | `docs/role-map.md` |
 | ペイン・他エージェントの制御 | `pane.driver` が指すもの（未設定なら前面で実行する） |

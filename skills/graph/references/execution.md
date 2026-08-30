@@ -66,7 +66,8 @@ return results.filter(Boolean).filter(r => !r.verdict.refuted)
 
 ## モデルと effort の指定
 
-ノードを superpowers の subagent-driven-development に委譲する場合は、そちらの Model Selection に従う。以下は Workflow で直接組む場合の目安。
+ノードを `playbooks/running-a-plan.md` に委譲する場合、**役の割り当ては `docs/role-map.md` が正本**で、
+この文書はモデル名を持たない。以下は Workflow で直接組む場合の目安。
 
 既定は「指定しない」。指定しなければ親セッションのモデルを継ぐ。
 
