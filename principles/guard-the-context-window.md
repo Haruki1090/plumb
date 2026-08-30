@@ -1,16 +1,47 @@
 ---
 name: principle-guard-the-context-window
-description: "文脈が埋まってきたときに適用する。大きな出力、長いファイル、繰り返しの読み、fan-out の計画。かさばるものはサブエージェントに回し、本線には要約だけを置く。"
+origin: plumb
+description: "本線に何かを載せる直前に適用する。大きな出力、長いファイル、繰り返しの読み、fan-out の計画。かさばるものは配って本線には要約と指し先だけを置く。捨てる操作は無いので、判断は入れる前にしかできない。"
 ---
 
 # Guard the Context Window
 
-The context window is finite and non-renewable within a session. Every token that enters should earn its place.
+**本線の文脈は減らない。**一度入れたものを後から出す操作は無い。
+だから守れるのは**入れる前の一点だけ**で、埋まってから畳むのは常に手遅れ。
 
-**Why:** Context overflow degrades reasoning quality, creates compression artifacts, and halts progress. Unlike compute or time, context spent inside a session cannot be reclaimed.
+**なぜ:** 埋まったことは症状として出ない。出るのは推論の質の低下で、
+**低下した側からは低下が見えない。**「そろそろ危ない」という感覚は当てにならず、
+気づいたときには判断の材料そのものが薄くなっている。
+**入れる／入れないを、量ではなく用途で先に決める。**
 
-**Pattern:**
-- **Isolate large payloads.** Route verbose outputs, screenshots, and large documents to subagents. The main context gets summaries, not raw data.
-- **Don't read what you won't use.** Read selectively based on relevance. If a file isn't needed for the current task, skip it.
-- **Keep frequently used content inline.** Templates and references used on every invocation belong in the skill file, not in separate files that cost a read each time.
-- **Size phases and cap scope.** Limit files per phase, set turn budgets, account for mechanism costs.
+## 入れてよいのは、この後もう一度参照するもの
+
+一度読んで終わるものは本線に置かない。**置き場は二つ。**
+
+- **配る。**かさばる読み・長い出力・広い探索・手数の多い編集は、役を立てて渡す。
+  返させるのは**ファイルの指し先と、判断が変わる事実だけ**。生データを返させない
+- **ファイルに置いて、パスを持つ。**本線には道順だけが残る
+
+差分そのもの、trace の全文、長い時系列、計画ファイルの全体——
+**貼らずに、削った結果か指し先を置く。**
+
+## 渡すものもファイルにする
+
+**長い依頼文を返答の本文に書くと、渡す側の文脈から先に食われる。**
+依頼書・ブリーフ・材料はファイルに書き、**パスだけを渡す。**
+渡す範囲も切る。隣の仕事まで読める文書を渡すと、読んだ側が隣を始める。
+
+## 逃がす値段も勘定に入れる
+
+**配るのは無料ではない。**渡す文面を書く時間、戻ってきたものを読む時間、
+統合の手間が乗る。**小さいもの、互いに強く絡むものは本線で刻んだほうが安い。**
+毎回使う定型や参照は、**逆に手元に置く**——読みに行く回数のほうが高くつく。
+
+## 判定
+
+いま本線に載っているもののうち、**この後もう一度参照するものを数えられるか。**
+数えて残りが多いなら、載せ方が間違っている。次に同じものを載せる前に、
+**指し先に置き換えられないかを一度問う。**
+
+**誰に配るか・どう配るかは `playbooks/fan-out.md`。**この原則が持つのは、
+本線に載せるかどうかの判断だけ。

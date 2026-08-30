@@ -1,21 +1,47 @@
 ---
 name: principle-outcome-oriented-execution
-description: "フェーズの区切りが明示された、計画済みの書き換えや移行の最中に適用する。目標のアーキテクチャに収束させる。使い捨ての互換コードで滑らかな中間状態を温存しない。"
+origin: plumb
+description: "段の区切りが明示された、計画済みの書き換えや移行の最中に適用する。目標の設計に収束させる。使い捨ての互換コードで中間状態を滑らかに保たない。"
 ---
 
 # Outcome-Oriented Execution
 
-Optimize for the intended, verifiable end state rather than preserving smooth intermediate states.
+**移行と書き換えは、目標の設計に収束させる。**途中の各時点を滑らかに保つことを目標にしない。
+呼び出し元の移行と旧 API の削除を同じ波でやる手口は
+**principle-migrate-callers-then-delete-legacy-apis**、
+検証できる単位への刻み方は **principle-sequence-verifiable-units**。
+この原則が持つのは**中間状態の扱い**——どこまでの破断を、計画として引き受けるか。
 
-**Why:** Keeping every intermediate step fully stable often creates temporary compatibility code that becomes long-lived debt. Converge on the target architecture and prove correctness at explicit verification boundaries.
+**掛ける場面は狭い。**段の区切りが明示された、計画済みの移行や書き換え。
+`playbooks/running-a-plan.md` で台帳を開いて回す種類の仕事だけ。
+**日々の変更には掛けない。**そちらは常に緑を保つ。
 
-**Core rule:**
-- Prioritize end-state integrity over transitional stability
-- Intermediate breakage is acceptable when it is planned, scoped, and reversible
-- Always run final verification before declaring done
+**なぜ守れないか:** 各時点で壊さないことは、その場では常に正しく見える。
+壊さないために入る互換層は「一時的」と名乗って入る。
+**しかし、それを消す条件と担当は、たいてい誰の todo にも乗らない。**
+移行が終わる頃には、その層に新しい呼び出し元が付いている。
+**一時的なものが永久になるのは、消す約束が最初に書かれていないから。**
 
-**Guardrails:**
-- Use this for planned rewrites and migrations with explicit phase boundaries
-- Declare where temporary breakage is acceptable
-- Keep high-signal checks for actively touched areas while migrating
-- Require full static and runtime verification at plan completion
+## 互換層を入れる前の関門
+
+書く前に、次の三つを計画に書く。書けないなら、その層は入れない。
+
+1. **消す条件。**何が満たされたら不要になるか
+2. **消す段と担当。**どの段で誰が消すか。**「移行が終わったら」は段ではない**
+3. **消し忘れに気付く仕掛け。**残存を数える検査を緑の条件に入れる
+   （**principle-encode-lessons-in-structure**）
+
+## 壊してよい中間状態の条件
+
+三つ全部を満たすときだけ。
+
+- **宣言してある。**どの段で何が一時的に動かなくなるかを、着手前に計画に書いた
+- **範囲が閉じている。**壊れるのは移行中の領域だけで、それ以外は緑のまま
+- **戻せる。**その段を revert すれば、元の状態に戻る
+
+**触っている領域の検査は、移行中も落とさない。**
+壊れてよい範囲を宣言することと、観測をやめることは別。
+
+**完了の条件:** 計画の最後で、静的検査と実行時の検証を通しで走らせる。
+段ごとに緑だったことは、**通しで緑だったことの根拠にならない**
+（**principle-gate-claims-on-evidence**）。

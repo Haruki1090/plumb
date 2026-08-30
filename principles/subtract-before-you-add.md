@@ -1,21 +1,40 @@
 ---
 name: principle-subtract-before-you-add
+origin: plumb
 description: "追加・リファクタ・書き換えの順序を決めるときに適用する。まず不要な重荷、冗長なバリデータ、スタブ参照を取り除き、単純になった土台の上に積み上げる。"
 ---
 
 # Subtract Before You Add
 
-When evolving a system, remove complexity first, then build. Deletion gives you a simpler base, which makes the next addition smaller and less brittle.
+**先に消す。簡単になった土台の上に建てる。**
+出す差分そのものを小さく保つのは **principle-laziness-protocol**、
+旧 API を実際に畳む手口は **principle-migrate-callers-then-delete-legacy-apis**。
+この原則が持つのは**順序**——引き算を、足し算より前に置くこと。
 
-**Why:** Adding to a complex system compounds complexity. Removing first cuts the surface area, reveals the essential structure, and usually makes the next design obvious. Default to subtraction.
+**なぜ守れないか:** 消しても、動くものは増えない。**引き算は進捗として計上されない。**
+足せば新しい振る舞いが見え、報告に書けて、レビューでも評価される。
+そのうえ**消す窓は時間とともに閉じる**——後回しにした死んだ重さは、
+次に足したコードから参照され、参照された瞬間に「消す」が「移行する」に変わる。
+だから「気付いたら消す」では遅い。**足す作業の前に、消す作業を置く。**
 
-Make simplification a continual investment. Leave the design slightly simpler and more capable behind the same or smaller surface than you found it.
+## 順序
 
-**The pattern:**
-- Sequence removal before construction
-- Cut before you polish (get to the minimum before investing in quality)
-- Design for observed usage, not speculative edge cases
-- No speculative validators, parsers, or guards beyond what the spec demands
-- Out-of-spec features drag validators behind them. Persistence, retry-on-startup, and schema migration each need guards to defend their inputs.
-- Simplify prompts (remove redundant instructions, excessive templates)
-- When a reference has no novel content, delete it rather than leaving a stub
+1. **死んだ重さを消す。**呼ばれていないもの、届かない分岐、参照だけ残った孤児
+2. **仕様が要求していない守りを落とす。**投機的なバリデータ、パーサ、ガード。
+   **仕様の外の機能は、それを守る検証を引き連れてくる**——保存、起動時の再試行、
+   スキーマの移行は、それぞれ入力を守る仕掛けを要求する。機能ごと落とせば、守りも一緒に落ちる
+3. **中身の無い参照を消す。**リンク先に新しいことが何も書いていないなら、
+   置き換えではなく削除。**空の踏み台は、次の読み手に一往復させるだけ**
+4. **観測された使われ方に形を合わせる。**推測した例外的な使い方のために広げない
+5. **そこから建てる**
+
+## 引く対象の見つけ方
+
+- **同じことを二度言っている文章。**指示、テンプレート、説明。
+  片方を消して意味が変わらないなら、それは冗長であって強調ではない
+- **片側しか通らない切り替え。**設定で分岐しているが、一方しか使われていないもの
+- **発明された機構。**既にある道具で足りるのに、新しい台帳・新しい置き場を作っていないか。
+  plumb では `plumb-decision-log` と `plumb-path` で足りる場面がほとんど
+
+**残す判定:** 消そうとして手が止まったら、**それを使っている場所を実際に示す。**
+示せないなら消す。「たぶん使われている」は参照ではない。

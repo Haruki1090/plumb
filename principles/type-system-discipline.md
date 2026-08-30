@@ -1,30 +1,52 @@
 ---
 name: principle-type-system-discipline
-description: "型を設計するとき、関数シグネチャをレビューするとき、静的型付け言語でコードを書くときに適用する。不正な状態を表現不可能にし、意味のあるプリミティブにはブランド型を付け、外部データは境界でパースし、コンパイラに嘘をつかず、バリアントを網羅し、正典となるスキーマから型を導出する。"
+origin: plumb
+description: "型を設計するとき、関数のシグネチャを見るとき、型のある言語で書くときに適用する。不正な状態を作れない形にし、意味の違う値を取り違えられなくし、外から来たものは境界でパースし、コンパイラに嘘をつかず、分岐の網羅を検査器に持たせ、形の正本は一つにする。"
 ---
 
-# Type System Discipline
+# Type system discipline
 
-The type checker is a proof assistant. Use it to eliminate impossible states, mismatched primitives, and unhandled variants at compile time. A case the types let you ignore becomes a runtime failure the compiler could have stopped. Prefer defining errors and special cases out of existence over proliferating handlers; unrepresentable states, total functions, and interface redesign (the patterns below) are the tools.
+**型検査器は、毎回ただで走る唯一のレビュアー。**
+人のレビューは見落とすし、疲れるし、次の担当者には効かない。
+**型に証明させたことだけが、来月も効いている。**
 
-Applies to any typed language. Skills like `typescript-best-practices` ground it in specific syntax.
+**なぜ守れないか:** 緩い型は、書いた本人には一度も痛くない。
+代償は「この組み合わせは起きるのか」という問いの形で、**後から読む人と、落ちた本番に回る。**
+書いた時点では常に「今は問題ない」が真になる。だから自制では守れず、**印で捕まえる。**
 
-**The patterns:**
+## 印と、その直し方
 
-- **Make illegal states unrepresentable.** Model variants as sum types: discriminated unions in TypeScript, enums with payloads in Rust/Swift/Kotlin, sealed classes in Scala, ADTs in Haskell/OCaml. Don't model state as a bag of optional fields where contradictory combinations compile. A subtle anti-pattern worth naming: `{ completed: boolean; completedAt?: Date }` admits `completed: true; completedAt: undefined`, which is meaningless. Derive the boolean from a single source like `completedAt !== null`, or model the variants explicitly as `{ kind: 'open' } | { kind: 'done'; at: Date }`. If a bug forces the question "wait, can this combination actually happen?", the type is too loose.
-- **Types are constructions, not restrictions.** Build the type up from the values you want instead of carving them out of a looser type with checks. The invariant that seems to need a refinement type is usually a construction away. A non-empty list is a head plus a rest, not a list with a length check. A valid time range is a start plus a duration, not two timestamps you must keep ordered. No representation is privileged. A list of pairs is an even-length list if you interpret it that way, so choose the shape that cannot build the illegal value and expose the interface callers need on top.
-- **Brand semantic primitives.** `UserId` and `OrderId` are strings underneath but should not be interchangeable. Newtypes in Rust, opaque types in Swift, value classes in Kotlin, phantom types in Haskell, branded intersections in TypeScript. Validate once at creation, trust the type downstream.
-- **External data is untyped until parsed.** RPC payloads, JSON, IPC messages, CLI args, config files, environment variables, database rows. Have a parse function at every boundary that turns unstructured input into the typed model. See the **boundary-discipline** principle skill for where to put validation.
-- **Don't lie to the type system.** Casts, unsafe coercions, and assertion functions that bypass the compiler are runtime crashes waiting to happen. If the compiler can't prove a fact, prove it (validate, narrow, refine the model) or accept that the cast is a hazard. The cast you bury today is the postmortem you write next week.
-- **Exhaustive matching is the compiler's job.** When you match on a sum type, the compiler must fail compilation if a new variant is added without handling. Use the idiom your language provides: `never`-typed binding in TypeScript, unannotated `match` in Rust, `-Wincomplete-patterns` in Haskell, sealed-class match exhaustiveness in Kotlin.
-- **Derive types from authoritative schemas.** When a protocol buffer, OpenAPI spec, GraphQL schema, database migration, or design-system token file defines a shape, derive from it instead of hand-rolling a parallel type. Manual duplication drifts. See the **encode-lessons-in-structure** principle skill.
-- **Strengthen a type only where partiality appears.** A runtime assertion, null check, or "this should never happen" throw marks the place a type is too weak. Push that check up into the type. Then stop. The type system's job is to track the cases each use site must handle, not to describe the data as precisely as possible. Prefer total functions. `sum` of an empty list is 0, so it takes the plain list. `head` of an empty list has no answer, so it demands the non-empty one. Extra precision costs reuse and ceremony and buys no safety.
+- **フィールドの組み合わせに、有効と無効がある。**
+  承認済みと差し戻しを別々の真偽値で持てば、両方立った状態が作れる。
+  **作れない形にする**——状態を1つの値として持ち、そこから両方を導く
+- **制約を後から掛けている。**検査で絞るのではなく、**構成で作る。**
+  重み付きの候補は「候補と重みの対の列」であって、
+  「候補の列と重みの列、長さが揃っているという約束」ではない
+- **意味の違う値が、同じ素の型で並んでいる。**取り違えても通る引数は、いつか取り違える。
+  素の型に名前を付けて別物にし、**作る所で1回検証したら以後は信じる**
+- **外から来たものを、そのまま内側の型として扱っている。**外はパースするまで型が無い。
+  検査の置き場は **principle-boundary-discipline**
+- **キャストや「ここは絶対に来ない」の断言がある。**それは検査器に嘘をついた記録。
+  証明できないなら、証明する（検証・絞り込み・形の作り直し）か、
+  **危険が残っていることを認める。**握り潰した1行は、後で書く事故報告の原因欄
+- **バリアントを増やしてもコンパイルが落ちない。**
+  網羅は人の注意ではなく検査器の仕事。落ちない書き方なら、次の担当者は気付けない
+- **同じ形が2箇所で手書きされている。**形の正本が別に在るなら、そこから導く
+  （**principle-encode-lessons-in-structure**）。手で写した形は必ずずれる
 
-**The tests:**
+## 強くしすぎない
 
-- "Can I write a comment explaining when this combination of fields is valid?" If yes, the type is too loose. Split it into a sum type.
-- "Do two of my function arguments share a primitive type but mean different things?" Brand them.
-- "Where did this `any`, this `as`, this `assertNotNull` come from?" Trace it to the boundary and validate there instead.
-- "If a new variant is added next month, will the compiler tell the next agent where to add a case?" If no, the match isn't exhaustive.
-- "Is this type duplicating a shape another file owns?" Derive instead.
-- "Am I strengthening this type to keep an operation total, or just to be more precise?" If nothing would otherwise panic, keep the plain type.
+**型を強くするのは、実行時にしか答えの無い場所が現れたときだけ。**
+そこに出た検査や断言を型へ押し上げ、**そこで止める。**
+何も落ちないのに精密にした型は、再利用と儀式の負担だけを増やす。
+台帳の件数は空でも 0 なので普通の列を取る。最新の1件を返す操作は空に答えが無いので、
+空でない列を要求する。**この差だけが、型を強くする理由になる。**
+
+## 判定
+
+- **この欄の組み合わせがいつ有効かを、コメントで説明したくなったか**——形が緩い
+- **この強制変換は、どの境界から来た値か**——遡って、そこで検証する
+- **来月バリアントを1つ足したとき、次の担当者は直す場所を教えてもらえるか**
+- **いま強くしようとしている型は、何を落ちなくするのか**——答えられないなら戻す
+
+言語ごとに道具の名前は違う。**この原則が見るのは名前ではなく、検査器に何を証明させたか。**

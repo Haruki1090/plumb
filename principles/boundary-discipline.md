@@ -1,33 +1,46 @@
 ---
 name: principle-boundary-discipline
-description: "バリデーション、エラーハンドリング、フレームワークアダプタを組むときに適用する。ガードをシステム境界（CLI、設定、ネットワーク、外部API）に集中させる。内部の型は信頼し、ビジネスロジックは純粋関数に保つ。"
+origin: plumb
+description: "検証・エラー処理・枠組みとの接続を書くときに適用する。ガードは外から入る地点に集める。内側では型を信じ、同じ値を二度検査しない。ロジックは枠組みに依存しない純関数に置く。"
 ---
 
-# Boundary Discipline
+# Boundary discipline
 
-Place validation, type narrowing, and error handling at system boundaries. Trust internal code unconditionally. Business logic lives in pure functions; the shell is thin and mechanical.
+**検査は、外から入る地点に集める。内側では信じる。**
+この原則が決めるのは**ガードの置き場所**であって、何が原因かの特定ではない
+（それは **principle-fix-root-causes**）。
 
-**Why:** Scattered validation is noisy, redundant, and gives a false sense of safety. Validate data once at the boundary. Keep logic out of framework wiring so it can be tested without the framework.
+**なぜ守れないか:** 落ちた場所に検査を足すのが、いつでも一番安い。
+入口まで遡るには経路の調査が要り、直したことの証明も遠くなる。
+だから防御は**落ちた場所に溜まり、入口は薄いまま**になる。
+しかも**撒いた検査は消せない。**誰が何のために置いたか分からない検査を消す判断は、
+置く判断より高くつく。**片道の変更だと知って置く。**
 
-**The pattern:**
-- **At boundaries** (CLI args, config files, external APIs, network protocols): validate, return errors, handle defensively.
-- **Inside the system:** typed data, error propagation, no re-validation. Trust the types.
-- **Across the boundary.** Expose domain concepts, not the boundary's private representation. Keep general-purpose mechanism inside and special-purpose policy at the edge.
+## 境界とは何か
 
-**Applications:**
+**プロセスの外から来たもの全部。**引数、環境変数、設定ファイル、ネットワークの応答、
+外部 API の返り値、保存済みのデータ、別プロセスの出力、人が打った値。
+**自分が書いたコードが渡してきた値は、境界ではない。**
 
-Validation and error handling:
-- Validate config at parse time (the boundary), not inside business logic
-- Parse raw data into domain types at the boundary
-- Do not re-export transport, storage, framework, or wire types through the public surface
-- No redundant nil checks deep in call chains if the boundary already validated
+## 規則
 
-Code organization:
-- Business logic in pure functions with no framework dependencies
-- Parse functions: pure transforms from raw bytes to typed state
-- Prompt construction: structured state in, string out
-- Scoring and assessment: pure transforms from state to results
+- **入口で1回だけ検証し、生の入力を内側の型に変える。**以後は検証し直さない
+- **内側は型を信じる。**入口が検証済みなら、呼び出し鎖の途中の nil 検査は余分
+- **越えるときに表現を変える。**外の都合の形（転送・保存・枠組みの型）を内側に持ち込まず、
+  内側の型も公開面に出さない。**出すのはドメインの概念**
+- **ロジックは枠組みを知らない純関数に置く。**枠組みとの接続層は薄く、機械的に
 
-**The tests:**
-- "Is this data crossing a system boundary right now?" If not, validation is redundant.
-- "Can this be a pure function that the shell just calls?" If yes, extract it.
+## 判定
+
+- **この値は、いまシステムの外から来たか。**違うなら、その検査は余分
+- **この検査を消したとき、どのテストが落ちるか。**名指せないなら、根拠が無いまま置いている
+- **同じ値の検査が、呼び出し鎖の何段に在るか。**2段以上あるなら境界が決まっていない
+- **枠組みの型を引数に取っている関数はどれか。**取っているなら、そこにロジックが漏れている
+
+## 全層に撒かない
+
+**「念のため全部の層で検査する」は、この原則の逆。**
+入口が緩いまま内側を厚くしても不正な値は入り続け、
+**入口を締める理由だけが見えなくなる。**
+バグを踏んだときに足すのは、通り道のガードではなく、
+**その値を通した入口の検査と、再現を固定した回帰テスト。**

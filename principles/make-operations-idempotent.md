@@ -1,23 +1,41 @@
 ---
 name: principle-make-operations-idempotent
-description: "クラッシュ・再起動・リトライの最中に走るコマンド、ライフサイクルの各段階、処理ループを設計するときに適用する。前回の実行が途中で終わっていても、同じ終了状態に収束させる。"
+origin: plumb
+description: "クラッシュ・再起動・再投入の中で走る操作、起動処理、繰り返し回るループを設計するときに適用する。前回が途中で終わっていても、同じ終状態に収束させる。"
 ---
 
-# Make Operations Idempotent
+# Make operations idempotent
 
-Design operations so they converge to the correct state regardless of how many times they run or where they start from. Every state-mutating operation should answer: "What happens if this runs twice? What happens if the previous run crashed halfway?"
+**同じ操作を2回走らせて、終状態が同じになること。**
+1回目が途中で死んでいても、同じであること。
 
-**Why:** Commands, lifecycle operations, and processing loops run where crashes, restarts, and retries are normal. If partial state changes the next run's outcome, every restart becomes a debugging session.
+**なぜ守れないか:** 手で試すときは、必ず**きれいな状態から1回**しか走らせない。
+途中で死んだ状態を作るのは面倒なので、誰も試さない。
+だから**冪等でない操作は、書いた時点では常に正しく見える。**
+壊れるのは長く走る run の中、再投入の後、そして人がいない時間。
 
-**The pattern:**
-- Convergent startup: scan for existing state, clean stale artifacts, adopt live sessions
-- Content-based cleanup: compare by content equivalence, not creation order
-- Self-healing locks: use PID-based stale lock detection
-- Idempotent scheduling: failed work respawns cleanly, fresh input regenerated after each cycle
+## 収束であって、飛ばすことではない
 
-**The test:**
-1. What happens if this runs twice in a row?
-2. What happens if the previous run crashed at every possible point?
-3. Does re-execution converge to the same end state?
+**「既に在るなら何もしない」は冪等ではない。**
+中身が古いまま残っている場合を直せない。
+**あるべき形を宣言し、現状との差を埋める。**有無ではなく、内容で判定する。
 
-If any answer is "it depends on what state was left behind," the operation needs a reconciliation step.
+- **残骸の判定は内容と持ち主で行う。**作られた順番や時刻で決めない
+- **死んだ持ち主のロックは、次の起動が外せる。**外せないロックは、
+  一度落ちたら人を呼ぶまで止まる
+- **やり直しは入力から作り直す。**前回の途中生成物を拾って続けない
+
+## 判定
+
+1. **2回続けて走らせる。**終状態が同じか（言葉ではなく実際に走らせて見る——
+   **principle-gate-claims-on-evidence**）
+2. **書き込みの直後で殺す。**各書き込み点について、次の起動が回復するか
+3. **その回復が「それまでに何が残っていたか」に依存していないか**
+
+3 が「依存する」なら、その操作には**現状を読んで差を埋める段**が足りていない。
+
+## 隣の原則との境界
+
+**これは1人の書き手が2回走る話。**2人が同時に書く話は
+**principle-separate-before-serializing-shared-state** が持つ。
+冪等にしても、同時に走る2人は直らない。

@@ -1,25 +1,45 @@
 ---
 name: principle-model-the-domain
-description: "状態を持つロジックを書くとき、あるいはコードの分岐が多い、複数ファイルで同じ形の前提を繰り返しているときに適用する。散らばった条件分岐の代わりに、ドメインを構造として組み込む。"
+origin: plumb
+description: "状態を持つロジックを書くとき、分岐が増えたとき、複数のファイルで同じ形の前提を繰り返しているときに適用する。ドメインの知識を条件分岐に散らさず、構造として1箇所に置く。"
 ---
 
-# Model the Domain
+# Model the domain
 
-Encode the real domain in a data structure instead of scattering it across conditionals.
+**ドメインの知識は構造で持つ。**条件分岐に散らした知識は、
+どの分岐が同じ規則を表しているかを機械が知らないので、次の変更で必ずずれる。
 
-**Why:** Scattered booleans, repeated shape assumptions, and branching spread across files are accidental complexity. A structure that matches the domain makes invalid states unrepresentable and deletes branches. Choosing it at write time is cheap; recovering it later reads as a refactor and gets deferred.
+**なぜ守れないか:** 分岐を1本足すのは、いつでもその場の最小変更に見える。
+構造を入れ替えるには調査と作り直しが要る。**差が出るのは3回目以降**で、
+1回目と2回目は足したほうが速い。だから自制では守れない。
+**書くときに選ばなければ、後から取り戻す作業はリファクタとして先送りされ続ける。**
 
-**Reach for structures like these:**
+## 構造が欠けている印
 
-- A state machine instead of scattered booleans, phases, or lifecycle checks.
-- A typed object/model instead of loose parameters or repeated shape assumptions.
-- A map, registry, lookup table, or discriminated union instead of branching spread across files.
-- A reducer or command/event model instead of ad hoc state mutations.
-- A module organized around one body of domain knowledge instead of a sequence such as load, validate, transform, and save. Execution order is not ownership.
-- A small module boundary that gathers repeated behavior, ownership, or invariants.
-- A queue, cache, index, graph/tree, or normalized collection where the data access pattern calls for it.
-- Any other structure that fits. The list above covers the common cases only. When none fits, work out what the code must never allow and how the data gets read, then find the structure that encodes exactly that.
+- **新しい要件が、既存の if/else に1本足す形で入った**
+- **2つの真偽値が、常に同期していなければならない**（片方だけ立った状態が作れてしまう）
+- **同じ形の前提が複数のファイルで繰り返されている**（この種別なら必ずこの欄がある、等）
+- **module の名前が処理の段階になっている**（読み込み・検査・変換・保存）。
+  **実行の順番は所有ではない。**段階で割ると、同じドメイン規則が全段階に写る
+- **「この組み合わせは実際に起きるのか」に、書いた人以外が答えられない**
 
-Do not force an abstraction. Prefer boring code if the current shape is already clear, local, and unlikely to grow. Be skeptical of an abstraction that adds indirection without removing branches, duplicated rules, invalid states, or lifecycle risk.
+## 何を入れるか
 
-The tell that you skipped this is a new feature that grows an existing if/else chain by one more branch, or a second boolean that must stay in sync with the first. Temporal decomposition is another tell. Phase-named modules repeat the same domain rules across steps.
+**答えは一つではない。**決めるのは二つの問い——**何を作れなくしたいか**と、
+**どう読まれるか**。散らばった真偽値なら状態機械、広がった分岐なら表かレジストリ、
+繰り返す形の仮定なら型、その場限りの書き換えなら命令と履歴。
+**どれも当てはまらないなら、この二つの問いに自分で答えてから形を決める。**
+
+**module の割り方も同じ問いで決まる。1つの module は1つのドメイン知識を持つ。**
+一緒に変わるものを一緒に置き、技術の層で割らない。
+
+型検査器に何を証明させるかは **principle-type-system-discipline** が持つ。
+ロジックより先に中核の型を決めるという着手順は **principle-foundational-thinking** が持つ。
+この原則が持つのは、**構造が欠けていることの判定**だけ。
+
+## 入れすぎの側
+
+**間接を足して、分岐も不正状態も減らないなら、それは構造ではなく層。**
+形が既に明快で、局所的で、増える見込みが無いなら、退屈なコードのまま残す。
+判定は読み手側で行う——問いと答えの間の層が減ったか
+（**principle-minimize-reader-load**）。どこも下がっていないなら取り消す。

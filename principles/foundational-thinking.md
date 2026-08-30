@@ -1,20 +1,43 @@
 ---
 name: principle-foundational-thinking
-description: "ロジックを書く前に適用する。中核となる型とデータ構造を選ぶとき、足場作りと機能実装の順序を決めるとき、並行アクター間で何を共有するかを問うとき。データ構造を正しく作れば、下流のコードは自明になる。"
+origin: plumb
+description: "ロジックを書く前に適用する。中核となる型とデータ構造を選ぶとき、足場作りと機能実装の順序を決めるとき、並行して走るものの間で何を共有するかを問うとき。データ構造を正しく作れば、下流のコードは自明になる。"
 ---
 
 # Foundational Thinking
 
-**Structural decisions** protect option value. **Code-level decisions** protect simplicity. Over-engineering is often a premature decision that closes doors. The right foundational data structure keeps doors open.
+**ロジックを書く前に、中核の型とデータ構造を決める。**形が正しければ、下流は自明になる。
+既存の設計に新しい要件が刺さったときの作り直しは
+**principle-redesign-from-first-principles** が持つ。
+この原則が持つのは**順序**——何を先に確定させ、何を後に回すか。
 
-**Data structures first.** Get the data shape right before writing logic. The right shape makes downstream code obvious. Define core types early, trace every access pattern, and choose structures that match the dominant paths. A data-structure change late is a rewrite. Early, it is often a one-line diff.
+**なぜ守れないか:** データ構造を変える費用は、時間とともに跳ね上がる。
+着手直後なら 1 行の差分、呼び出し元が増えた後なら書き直し。
+それなのに、**進捗が見えるのはロジックのほう**で、型を眺めている時間は
+何も進んでいないように見える。この非対称が、毎回同じ向きに押す。
+費用が跳ね上がる前に払えるのは、押し戻すことを手順にしたときだけ。
 
-At code level, DRY the structure, not every line. Types and data models should converge. Three similar statements still beat a premature abstraction. Prefer explicit over clever. Test behavior and edge cases, not line counts.
+## 先に確定させるもの
 
-**Concurrency corollary.** Before sharing state between actors, ask "what happens if another actor modifies this concurrently?" If not "nothing", isolate.
+- **中核の型。**この仕事が扱う対象は何で、どんな状態を取りうるか
+- **支配的な経路。**その型に**実際に**掛かるアクセスを全部並べ、太い経路に形を合わせる。
+  珍しい経路のために形を歪めない
+- **足場。**後続の全部の段が、それが在ることで楽になるもの。
+  「次の段も、その次の段も、これが在ると助かるか」に yes なら先に置く
+- **共有するかどうか。**別々に走るものの間に状態を持たせる前に、
+  「片方が書き換えている最中にもう片方が読んだら何が起きるか」を答える。
+  **「何も起きない」以外の答えが出たら、共有しないで分ける**
+  （**principle-separate-before-serializing-shared-state**）
 
-**Scaffold first.** If something helps every later phase, do it first. Ask "does every subsequent phase benefit from this existing?" CI, linting, test infrastructure, and shared types are scaffold. Sequence for option value: setup before features, tests before fixes. Keep commits small and single-purpose.
+## 先に決めないもの
 
-Each increment should land a coherent abstraction or deepen one that exists. Do not spread a new capability across callers as special-case coordination.
+- **抽象。**似た書き方が 3 回現れても、まだ足りない。揃えるのは型とデータの形であって、行ではない
+- **一般化。**まだ来ていない要件に効く形は選ばない。来たときに作り直すのが
+  **principle-redesign-from-first-principles** の仕事で、**そのための余地を残すのがここの仕事**
+- **賢さ。**読んで分かる形が、短い形より上。試験で固定するのは振る舞いと際であって、行数ではない
 
-Subtraction comes before scaffolding: remove dead weight first, then lay foundations.
+**足場を敷く前に、引き算が先**（**principle-subtract-before-you-add**）。
+死んだ重さの上に土台を敷くと、その重さごと固まる。
+
+**判定:** 一段進むごとに、その差分が**一つのまとまった形**を置いたか、既にある形を深くしたか。
+新しい能力を呼び出し元の側に特別扱いとして撒いたなら、形がまだ足りていない。

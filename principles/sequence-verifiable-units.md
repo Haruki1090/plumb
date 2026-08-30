@@ -1,21 +1,49 @@
 ---
 name: principle-sequence-verifiable-units
-description: "複数ステップの作業（一斉調査、移行、同種の編集の連続実行）や、コミット・PRの積み方に適用する。作業を検証可能な状態で終わる小さな単位に分け、次に進む前に各単位を確認し、その並び自体がレビュアーへの証明になるよう届け方を順序立てる。"
+origin: plumb
+description: "複数ステップの作業と、その届け方に適用する。検証できる状態で終わる単位に割り、一つ緑にしてから次へ進む。単位の緑は合成の緑ではないので、繋いだあとにもう一度通す。並べる順序そのものがレビュアーへの証明になる。"
 ---
 
 # Sequence work into verifiable units
 
-Order work as a sequence of small units, each ending in a state you can check, and don't advance until the current one is green. The same discipline runs at two altitudes, how you execute and how you deliver.
+**一度に進める幅は、一度に切り分けられる幅を超えない。**
 
-**Why:** A break caught at the unit that caused it is cheap to localize. A break caught after a batch is buried, and you have already built further on a broken base. Sequencing those same units into a delivery a reviewer can replay turns "trust me" into "watch it go red, then green."
+**なぜ:** まとめて編集して最後に一度確認するほうが、いつも速く見える。
+**速いのは失敗しなかったときだけで、その分岐は事前に見えない。**
+外れたときは、赤い出力から原因の一件を特定する作業が丸ごと乗り、
+しかもその上に既に何段か積んでいる。**期待値が非対称なので、感覚で選ぶと必ず外れる側を選ぶ。**
 
-**Execution.** In a sweep, migration, or any run of similar edits, verify each change before starting the next. Never batch the edits and verify once at the end. Each unit is a before/after bracket: known-good state, one change, run the check, then proceed. Rebase onto clean trunk first so every check measures against the real baseline. When a lever does the edits, the per-unit check is nearly free; run it anyway.
+## 出発点を先に緑にする
 
-**Delivery.** Stack commits and PRs in the order that proves the work. The canonical shape is the failing test first, then the fix on top. The first unit shows the bug is real (red), the next shows it resolved (green), so a reviewer sees both the problem and the proof. Other story orders are a subtraction before the reshape, a baseline capture before the treatment, the scaffold before the feature. Each commit lands on its own and the sequence reads as an argument.
+**割る前に、いまのツリーが緑であることを見る。**
+ここを飛ばすと、最初の赤が自分のせいなのか元からなのかを分ける手段が消える。
+作業場を作った直後、幹に乗せ直した直後は、**必ず一度通してから始める。**
 
-**Pattern:**
-- Pick the smallest unit that ends in a check: an edit plus its test, or a commit that stands alone.
-- Verify before advancing. Red to green per unit, never deferred to a final batch.
-- Order the units so the sequence builds confidence on its own, for you while executing and for a reviewer reading the stack.
+## 単位の作り方
 
-The sequencing complement to the **prove-it-works** principle skill, which keeps each check real, and the **build-the-lever** principle skill, which makes the per-unit check cheap.
+- **検査で終わる最小の塊を取る。**一つの編集とそれを見るテスト、単独で成立するコミット
+- **緑にしてから次へ。**まとめて編集してから一度回す、をしない
+- **1回の取り消しが1単位を戻せる形にする。**戻せない粒度は、割ったことになっていない
+- **道具が編集を代行しているときほど、単位ごとの検査を省かない。**
+  手が速くなった分だけ、赤の発見が遅れたときの巻き戻しが大きい
+
+## 単位の緑は、合成の緑ではない
+
+**繋がって初めて出る失敗は、単位の検査を一つも通っていない。**
+単位ごとの関門は範囲がその単位に閉じているので、原理的にそこを見ていない。
+
+- 配った仕事が個々に緑でも、**統合したあとに全体をもう一度通す**
+- ブランチを閉じる前に、**ブランチ全体を一度だけ見る**
+- 指摘に応じるときも、**一件ずつ直して一件ずつ通し**、最後に全体をもう一度
+
+## 順序を証明に使う
+
+**並べ方は、レビュアーが再生できる筋書きになる。**
+基準になる形は**先に落ちるテスト、その上に修正**——
+一つ目が問題の実在を示し（赤）、二つ目が解決を示す（緑）。
+
+他にも、消してから作り直す、基準値を捕ってから手を入れる、土台を置いてから機能を乗せる。
+**どれも「信じてほしい」を「赤が緑になるところを見てほしい」に変える。**
+
+**一回一回の検査を本物にするのは prove-it-works、単位ごとの検査を安くするのは build-the-lever。**
+この原則が持つのは、割り方と並べ方だけ。

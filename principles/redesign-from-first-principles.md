@@ -1,15 +1,43 @@
 ---
 name: principle-redesign-from-first-principles
+origin: plumb
 description: "新しい要件を既存の設計に組み込むときに適用する。後付けするのではなく、その要件が初日から根本の前提だったかのように設計をやり直す。"
 ---
 
 # Redesign From First Principles
 
-When integrating a change, don't bolt it onto the existing design. Redesign as if the requirement had been there from the start. The result should look like what we would have built if we'd known on day one.
+**新しい要件が来たら、初日からそれが在った設計に作り直す。**既存の形に貼り付けない。
+着手前に何を先に決めるかは **principle-foundational-thinking**、
+呼び出し元の移行と旧 API の削除を同じ波でやる手口は
+**principle-migrate-callers-then-delete-legacy-apis**。
+この原則が持つのは**要件が刺さった瞬間の扱い**——足すのか、作り直すのか。
 
-- Read all affected files and understand the current design holistically
-- Ask: "if we were writing this from scratch with this new requirement, what would we build?"
-- Propagate the change through every reference: types, docs, examples, rationale sections
-- Think about the redesign holistically, then deliver it incrementally
+**なぜ守れないか:** 後付けは常に小さく見える。差分が小さく、既存の振る舞いに触らず、
+レビューも通りやすい。**破綻が出るのは次の要件のとき**なので、後付けした本人は費用を見ない。
+**安全に見える選択と、安全な選択が逆を向いている。**だから毎回、判定を明示的に通す。
 
-This is the method for preserving option value when integrating changes into an existing design.
+## 判定
+
+**「今日ゼロから、この要件を知った状態で書くなら、この形になるか。」**
+ならないなら、**ならない差だけを列挙する。**それが作り直す範囲。
+
+もう一つ、後から効く読み方がある。
+**その要件だけが特別扱いされている痕跡が、コードから読み取れるか。**
+後から足された引数、要件名の付いたフラグ、例外的な経路。読み取れるなら貼り付けている。
+**初日から在った要件は、特別扱いの跡を残さない。**
+
+## 作り直しの範囲
+
+- **影響するファイルを全部読んでから形を決める。**1 ファイルずつ直すと、
+  最初に開いたファイルの都合が全体の形になる
+- **参照を全部追う。**型、ドキュメント、例、根拠を書いた節。
+  **要件の由来を説明している文章が古いまま残ると、次の読み手が古い前提で設計する**
+- **形は全体で決め、出すのは小さく順に**（**principle-sequence-verifiable-units**）。
+  全体で決めることと、一気に出すことは別
+
+## 貼り付けを選ぶとき
+
+- 要件が既存の形の内側に素直に収まる。**収まると言い切れるなら、収まっている**
+- 作り直しの範囲が、その要件の価値を超える。
+  **そのときは、貼り付けたことを記録する**——次に同じ場所へ要件が来たら、そこが作り直しの起点。
+  記録しないと、二つ目の後付けは一つ目を前提にして、もう戻れなくなる

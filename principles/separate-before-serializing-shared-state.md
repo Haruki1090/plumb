@@ -1,15 +1,41 @@
 ---
 name: principle-separate-before-serializing-shared-state
-description: "複数の並行アクターが同じファイル、ブランチ、キー、状態オブジェクトに書き込みうるときに適用する。まず共有そのものをなくす。単一の書き手であることが本当に不変条件である場合に限り、構造的にシリアライズする。"
+origin: plumb
+description: "複数の書き手が同時に走りうるときに適用する。まず共有そのものを消す。1つの書き込み先であることが本物の不変条件のときだけ、構造で直列化する。"
 ---
 
-# Separate Before Serializing Shared State
+# Separate before serializing shared state
 
-When concurrent actors might share mutable state, first ask whether they truly need the same mutable object. If not, eliminate the sharing. When sharing is real, enforce serialization structurally: lockfiles, sequential phases, exclusive ownership. Instructions and conventions are not concurrency control.
+**同じものに書く二人を作らない。**分けられないと分かってから、初めてロックを考える。
 
-**Why:** Concurrent writes to shared state create race conditions that are intermittent, hard to reproduce, and expensive to debug. Telling agents or goroutines to "take turns" does not work.
+**なぜ守れないか:** 並行にするとき、人は**仕事**を分ける。
+**書き込み先**は仕事の説明に出てこないので、独立の判定から落ちる。
+しかも壊れ方が間欠的で、**最初の数回は通ってしまう。**
+通ったことが「独立だった」の証拠に見えるため、
+**自分の観測では反証できない。**だから走らせる前に、書き込み先を並べて数える。
 
-**Pattern:**
-1. **Identify shared mutable state** (files both read and write, branches both push to, APIs both define and consume).
-2. **Default: eliminate the shared write target.** Ask: do these actors need one canonical object, or are they publishing independent facts? Give each actor its own owned file, key, branch, or state directory, and merge only at the read/reporting boundary. Two workers writing their own `lastX` field into one `state.json` is still shared mutation; `indexer-state.json` + `metrics-state.json` is not.
-3. **Only when one shared write target is a real invariant, serialize access structurally** (lockfiles, sequential phases, single-writer actor, or atomic compare-and-swap). Treat "we need a lock" as a design smell to check, not as the default answer.
+## 手順
+
+1. **各書き手の書き込み先を全部並べる。**ファイル、ブランチ、生成物の置き場、
+   外部の状態、同じ鍵。**一つでも重なったら、それは独立ではない**
+2. **既定は共有を消すこと。**書き込み先を書き手ごとに分け、
+   **合流は読むときだけにする。同じファイルの別の欄に書くのは分離ではない**——
+   書いている先は同じファイル
+3. **1つの書き込み先が本物の不変条件のときだけ、構造で直列化する。**
+   ロック、段階を分ける、書き手を1人に決める、比較して入れ替える。
+   **「ロックが要る」と思ったら、まず分けられないかを見る**
+
+**散文は並行制御ではない。**「順番に触ってね」と書いて渡しても、同時に走る2つは待たない。
+
+## 判定
+
+- **書き込み先を数え上げたか。**数えていないなら、独立の判定はまだ済んでいない
+- **重なりを解いた方法は、分離か構造か。**約束なら解けていない
+- **合流点はどこか。**読む側に1箇所あるか
+
+## 隣の原則との境界
+
+**これは2人以上が同時に書く話。**1人が2回走る話は
+**principle-make-operations-idempotent** が持つ。
+そもそも配るかどうかの理由——待ち時間とかさばるものの追い出し——は
+**principle-guard-the-context-window** が持つ。

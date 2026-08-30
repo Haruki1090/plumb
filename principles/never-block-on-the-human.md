@@ -1,22 +1,41 @@
 ---
 name: principle-never-block-on-the-human
-description: "取り消せる作業について「Xをやっていいか」と聞きたくなったときに適用する。進めて結果を提示し、事後に人が軌道修正できるようにする。確認を求めるのは不可逆な行為のためだけに取っておく。"
+origin: plumb
+description: "「これをやっていいですか」と訊きたくなったときに適用する。取り消せる作業は決めて進め、結果を差分で見せて直してもらう。止まってよいのは、取り消しが効かないものと、何を作るかの決定だけ。"
 ---
 
 # Never Block on the Human
 
-The human supervises asynchronously. Agents must stay unblocked: make reasonable decisions, proceed, and let the human course-correct after the fact. Code is cheap. Waiting is expensive.
+**持ち主は非同期で見ている。**だから往復1回の値段は、こちらの数分ではなく**持ち主の注意**。
+**「念のため訊く」は安全側ではない。**その注意を使い切って、何も生まない。
 
-**Why:** Every permission pause stalls the pipeline and makes the human the bottleneck. Since code changes are reversible and reviewable, a wrong decision usually costs less than blocking.
+**なぜ:** 訊くほうが常に楽に見える。外した判断は自分の失点になるが、
+訊いて待った時間は誰の失点にもならないので、**費用が自分に返ってこない側へ流れる。**
+だから「自信が無いから訊く」で線を引くと、線はどこまでも手前に寄る。
+**引くべき線は自信ではなく、取り消しの値段。**
 
-**Pattern:**
-- **Proceed, then present.** Do the work, show the result. Don't ask "should I do X?" Do X, explain why.
-- **Reserve questions for genuine ambiguity.** Ask only when you truly cannot infer intent from context.
-- **Make the system self-healing.** When you notice a problem, log it and fix it in the next round.
-- **Supervision is async.** The human reviews plans, diffs, and changes on their own schedule. Design workflows for review-after-the-fact.
-- **Code is cheap, attention is scarce.** A wrong implementation costs minutes to fix. A blocked agent costs the human's attention to unblock.
+## 線
 
-**Boundaries:**
-- **Irreversible actions** (force-push, delete production data, send external messages) still require confirmation.
-- **Reversible actions** (write code, edit notes, split tasks) should proceed without blocking.
-- **Product direction** comes from the human; *execution* should not block.
+**「何を作るか」は持ち主のもの。「どう作るか」は止めない。**
+
+| | 中身 | どうするか |
+|---|---|---|
+| **止まる** | 何を作るか。どの案を採るか。範囲。既存の何を壊してよいか | 渡して、答えを待つ |
+| **止まる** | 取り消しの効かない操作。強制的な上書き、本番のデータ、外部への送信、公開 | 実行前に確認を取る |
+| **止まらない** | ファイルの割り方。名前。テストの書き方。順序。使う API。刻み方 | 決めて進み、差分で見せる |
+
+判定は一つ——**外したとき、差分1本で戻せるか。**
+戻せるなら進む。戻せないなら、進む前に渡す。
+
+## 止まらない側の作法
+
+- **決めて、決めたことを残して、進む。**曖昧さも、衝突も、計画の欠陥も同じ。
+  **問いを立てて止まった夜は、何も戻せない**
+- **進捗の報告では止まらない。**「このまま続けていいですか」は問いの形をしているだけで、
+  分岐を持っていない
+- **止まると決めたなら、まとめて一度で止まる。**節ごとに頷きを取ると、往復が回数分積む
+- **待っている間も、その分岐に依存しない作業は進める**
+- 気づいた問題は、そこで報告して待つのではなく**記録して、次の周回で直す**
+
+**渡し方**——分岐を持つ判断を持ち主に渡すときの様式は `skills/decision-brief`。
+**どこで止まるかの線をこの原則から引き直すのは `playbooks/shaping-the-work.md`。**

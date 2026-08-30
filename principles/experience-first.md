@@ -1,18 +1,50 @@
 ---
 name: principle-experience-first
-description: "プロダクト、UX、機能スコープのトレードオフが出てきたときに適用する。実装の都合よりユーザーの満足を優先する。数を絞ってでも磨き込んだ機能を、粗い機能を多く出すことより優先してリリースする。"
+origin: plumb
+description: "プロダクト、UX、機能スコープのトレードオフが出てきたときに適用する。実装の都合より使う人の体験を採る。数を絞ってでも磨き込んだ機能を、粗い機能を多く出すことより優先する。"
 ---
 
 # Experience First
 
-The product is the experience. Every technical decision either helps or hurts it. When implementation convenience conflicts with user delight, choose delight.
+**実装の都合と、使う人の体験がぶつかったら、体験を採る。**
+案を複数作って比べる手続きは **principle-exhaust-the-design-space**、
+コードを読む人が払う負荷は **principle-minimize-reader-load**。
+この原則が持つのは**裁き方**——都合と体験が正面衝突したときに、どちらを落とすか。
 
-- Say no to 1,000 things (every feature, control, and option must earn its place)
-- Ship less, ship better (polished experience with three features beats rough one with ten)
-- Prototype before committing (design decisions are cheaper in throwaway HTML than production code)
-- Sweat the details (transitions, alignment, spacing, feedback, error states)
-- Tighten the core loop (every feature should serve the central workflow or get out of the way)
+**掛ける場面:** 何を作るかとスコープを決めるところ。
+`playbooks/shaping-the-work.md` で削る側に倒すとき、`playbooks/prototype.md` で案を選ぶとき。
+**実装が始まってからでは、裁く材料がもう消えている**——
+そこに在るのは動いているコードと、それを直す費用だけになる。
 
-The user is whoever consumes the work. For a UI that is the end user. For a library or an internal API it is the colleague who imports it. The engineer who maintains the code next is a user too. Weigh their experience the same way, and explain impact from their seat.
+**なぜ守れないか:** 非対称が二つある。
+**一つ目**——実装の都合は自分に見え、使う人の不便は自分に見えない。
+**二つ目**——実装の都合は作業時間として測れるが、体験の劣化は測れない。
+測れるものと測れないものを並べれば、毎回測れるほうが勝つ。
+だから都度考えるのではなく、**衝突したときに倒す向きを先に決めておく。**
 
-Foundations should serve the experience, not the other way around. Foundational thinking governs the *sequence* of work; this principle governs the *target*.
+## 使う人は誰か
+
+**その仕事の出力を受け取る人**が使う人。座る席が違うだけで、扱いは同じ。
+
+- 画面なら、その画面を触る人
+- ライブラリや内部 API なら、それを import する同僚
+- この型やスクリプトなら、次にそれを回す人
+- **次にこのコードを保守する人も使う人**——ただしその席の負荷を数えるのは
+  **principle-minimize-reader-load** で、ここではない
+
+**影響を語るときは、その席から語る。**「実装が複雑になる」ではなく、
+「使う人に何が起きるか」で書く。
+
+## 裁き方
+
+- **数を絞って磨く。**粗い機能が 10 個より、仕上がった機能が 3 個
+- **機能・設定・選択肢は、席を勝ち取ったものだけ残す。**
+  「あっても困らない」は勝ち取っていない
+- **手触りの分岐は、訊く前に作って観察する。**捨てる前提の実装で答えが出るなら、
+  それが一番安い決め方（`playbooks/prototype.md`）
+- **細部を落とさない。**遷移、揃え、間隔、応答、失敗したときの表示。
+  **失敗時の表示は、一番よく見られる画面のことがある**
+
+**土台を先に敷くのは、体験を出すため。**何を先に決めるかを答えるのが
+**principle-foundational-thinking** で、**何に向かって決めるか**を答えるのがこの原則。
+土台の都合が行き先を決め始めたら、順序が目的にすり替わっている。

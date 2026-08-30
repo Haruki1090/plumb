@@ -5,17 +5,20 @@ Licensed under the MIT License. See LICENSE.
 
 ---
 
-plumb's playbook structure is derived from pstack
+plumb began as a port of pstack
 (https://github.com/cursor/plugins/tree/main/pstack), Copyright (c) 2026 Lauren Tan,
-licensed under the MIT License.
+licensed under the MIT License. pstack is where plumb's shape came from: the idea
+of a router that indexes named principles, the decision to keep principles as
+plain documents rather than skills, and most of the principle names still in use.
 
-principles/ holds 22 files. Of those, 21 are reproduced verbatim from pstack;
-only their frontmatter was translated, and rewriting them in plumb's own words
-is planned but not yet done. The remaining files are written from scratch for
-plumb, not derived from pstack, and carry `origin: plumb` in their frontmatter.
+principles/ holds 22 files. Of those, 0 are reproduced verbatim from pstack —
+every one has been rewritten in plumb's own words, in Japanese, stating why the
+principle is hard to keep and how to tell whether it was kept. Each carries
+`origin: plumb` in its frontmatter. The English names survive because the
+playbooks cite them by name.
 
-scripts/check-harness.sh verifies these counts against the files themselves, so
-the sentence above cannot drift when a principle is added.
+The playbooks are likewise written for plumb, not translated: docs/scope.md
+records, for each one, what it took from pstack and where it departs.
 
-See docs/scope.md for what was carried over, what was folded, and what was
-deliberately left behind.
+scripts/check-harness.sh verifies the counts above against the files themselves,
+so the sentence cannot drift when a principle is added or changed.

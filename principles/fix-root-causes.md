@@ -1,22 +1,51 @@
 ---
 name: principle-fix-root-causes
-description: "デバッグするときに適用する。症状をひとつずつ根本原因まで辿り、そこで直す。まず再現させ、根本に届くまで「なぜ」を問い続け、クラッシュを黙らせるだけのnilチェックガードに逃げない。"
+origin: plumb
+description: "落ちているもの・おかしいものに手を入れるときに適用する。先に再現を手に入れ、症状ではなく原因に当てる。ガードで黙らせない。原因まで届かないまま回避するなら、届かなかったことを残す。"
 ---
 
 # Fix Root Causes
 
-When debugging, do not paper over symptoms. Trace every problem to its root cause and fix it there.
+**症状を根本原因まで辿るという判断を持つのがこの原則。**
+辿るための手順は `playbooks/fixing-a-bug.md` が持っている。
 
-**Why:** Symptom fixes accumulate. Each workaround makes the system harder to reason about, and the real bug remains. Root-cause fixes are slower upfront but reduce total debugging time.
+**なぜ:** 症状が消えた瞬間に、報酬だけが先に来る。しかも
+**「直った」と「隠れた」は、消えた症状の側からは区別できない。**
+nil チェックを足せば落ちなくなり、リトライを足せば失敗が見えなくなる。
+どちらも観測を潰しているだけなのに、見た目は修正と同じ形をしている。
+**だから「症状で満足しない」という気構えでは守れない。判定を外から掛ける。**
 
-**Pattern:**
-- Reproduce first (if you can't reproduce it, you can't verify your fix)
-- Ask "why" until you hit the root cause
-- Resist the urge to add guards (adding a nil check to silence a crash is a symptom fix)
-- If a workaround needs a paragraph-long comment to justify it, the code is wrong (fix the code, not the comment)
-- Check for the pattern, not just the instance (grep for the same pattern, fix all instances)
-- When stuck, instrument. Don't guess (add logging, read the actual error)
+## 先に再現を持つ
 
-**Restart bugs: suspect state before code**
+**再現が無いと、直ったことの反証ができない。**
+消えたのか、たまたま出なかったのかを、後から分ける手段が残らない。
 
-Code doesn't change between runs. State does. When something "fails after restart," suspect stale persistent state first: config files, caches, lock files, serialized state. If clearing a state file restores behavior, prioritize state validation as the fix.
+再現とは、**同じ入力で同じ結果が返るもの**——落ちるテスト、短いスクリプト、
+決まった手順で必ず出る終了コード。**手で触って一度出た、は再現ではない。**
+再現しないなら材料が足りない。回数・負荷・環境を揃えるほうが、推測で直すより速い。
+
+## 原因に届いたかを判定する
+
+「なぜ」を、**それ以上遡ると設計判断になる**ところまで送る。届いた印は二つ。
+
+1. **その原因から、観測した症状が全部説明できる。**説明できない残りがあるなら、まだ手前にいる
+2. **原因を直せば、症状の側を触らなくても消える。**症状の側も触る必要があるなら、当てていない
+
+**回避策を入れるかどうかは、この判定の後。**
+「なぜこれで消えるのか」を段落で書かないと正当化できない回避策は、
+**コードのほうが間違っている印。**注釈を足して済ませない。
+
+## 一件は事例、そこで止めない
+
+- **同じ形を探す。**一箇所を直したら、同じ書き方が他に何箇所あるかを機械で数える。
+  一件だけ直して閉じると、残りが次のバグとして戻ってくる
+- **走り直しで直るなら、コードではなく状態を疑う。**
+  コードは実行のたびに変わらない。変わるのは設定・キャッシュ・ロックファイル・保存された状態。
+  **消したら直った、は「状態が壊れうる」という発見であって、修正ではない**
+- **詰まったら計測に戻る。**推測を積むより、ログを足して実際の値を見るほうが安い
+
+**原因が自分の管理の外にある**（上流の不具合、変えられない環境）なら、そこで止めてよい。
+**ただし、どこまで辿ってどこで止めたかを残す。**残さない回避は症状隠しと見分けがつかない。
+
+**再現と修正後の検査をどう見るかは prove-it-works、
+同じ穴を二度塞がない仕組みは encode-lessons-in-structure。**

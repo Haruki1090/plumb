@@ -1,20 +1,42 @@
 ---
 name: principle-exhaust-the-design-space
-description: "コードベースに前例のない新規のUIインタラクションやアーキテクチャ判断に直面したときに適用する。決定する前に、競合する2〜3案のプロトタイプを作り並べて比較する。"
+origin: plumb
+description: "コードベースに前例のない新規の UI インタラクションやアーキテクチャ判断に直面したときに適用する。決める前に、競合する 2〜3 案を作って並べて比べる。"
 ---
 
 # Exhaust the Design Space
 
-When a novel interaction or architectural decision has no established precedent, explore several concrete alternatives before implementation. Building the wrong thing costs more than exploring three options.
+**前例のない判断では、2〜3 個の競合する案を作って並べてから決める。**
+どの案を採るかの基準は **principle-experience-first**、
+安く作って捨てる手順は `playbooks/prototype.md` が持つ。
+この原則が持つのは**決める前に何本要るか**——1 本で決めてよい場面と、そうでない場面の線。
 
-**The rule.** When the right answer is not obvious, build 2-3 competing prototypes or sketches. Compare them side by side. Only then commit. Design it twice is this rule by another name. A second flavor of the first shape does not count.
+**なぜ守れないか:** 最初に思い付いた案は、その後の思考の足場になる。
+2 本目を作れと言われて出てくるのは 1 本目の変奏で、
+**しかも本人には「別案を検討した」と感じられる。**
+そのうえ 1 本目には既に手が動いていて、捨てる費用が発生している。
+**本数を先に決めておかないと、探索は必ず 1 本で終わる。**
 
-**When it applies:**
-- Novel UI interactions (no prior art in the codebase)
-- Architectural choices with multiple viable approaches
-- Product design decisions where user experience depends on feel, not logic
+## 別案であることの判定
 
-**When it doesn't:**
-- Mechanical implementation where the pattern is established
-- Bug fixes or refactors with a clear target state
-- Changes where constraints dictate a single viable approach
+**共倒れ試験。**1 本目が置いている前提が崩れたとき、その案も一緒に落ちるか。
+落ちるなら、それは同じ案の別の見た目。**違う前提を置いている案が 2 本目。**
+
+- データの持ち方が同じで、見せ方だけ違う → 同じ案
+- 制御の流れが同じで、名前だけ違う → 同じ案
+- **どちらかが成立すれば、もう一方が要らなくなる**関係にあるなら、別案
+
+## 並べ方
+
+- **同じ土俵に載せる。**同じ入力、同じ場面、同じ評価軸。
+  完成度の違うものを並べると、比べているのは案ではなく作り込みの量になる
+- **1 つの切替器の裏に置き、名前を付ける。**持ち主が名前で呼べる形にする
+- **決めたら、落とした案を落とした理由ごと残す。**
+  残さないと、次に同じ分岐が来たときにもう一度全部作ることになる
+
+## 掛けない場面
+
+- **形が既に決まっている機械的な実装。**同じ型がコードベースに何度も在る
+- **目標の状態がはっきりしているバグ修正とリファクタ**
+- **制約が案を 1 本に絞りきっている場面。**ただし**絞りきっていると言うなら、
+  他の案が制約のどれに当たって落ちるかを言う。**言えないなら、絞れていない

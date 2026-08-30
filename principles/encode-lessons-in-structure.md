@@ -1,30 +1,52 @@
 ---
 name: principle-encode-lessons-in-structure
-description: "同じ指示を二度書いていると気づいたとき、または繰り返しの修正に気づいたときに適用する。ルールを文章で増やすのではなく、lint、メタデータフラグ、ランタイムチェック、スクリプトとして組み込む。"
+origin: plumb
+description: "同じ指示を二度書こうとしたとき、同じ修正を二度したとき、同じ事実を二箇所に書き写そうとしたときに適用する。文章を増やさず、機構にする。lint、検査、スクリプト、唯一の入口。書き写しは機構ではない。"
 ---
 
 # Encode Lessons in Structure
 
-Encode recurring fixes in mechanisms (tools, code, metadata, automation) instead of textual instructions. Every error, human correction, and unexpected outcome is a learning signal. Capture it, route it, and close the loop.
+**文章は、読まれたときにしか効かない。**機構は、読まれなくても効く。
+**同じことを二度書いた時点で、文章では足りないという観測が出ている。**
 
-**Why:** Textual instructions are easy to miss. They require the reader to notice, remember, and comply. Structural mechanisms (lint rules, metadata flags, runtime checks, automation scripts) enforce the rule without cooperation.
+**なぜ:** 規則を文章で足すのは、その場では一番安い。費用は書いた瞬間には現れず、
+**守られなかった回数として後から分散して出る**ので、原因の側に返ってこない。
+しかも増えた文章は読む量を押し上げ、次の規則がさらに読まれなくなる。
+**放っておくと必ず文章が増える方向に倒れる。**
 
-**Pattern:**
-When you catch yourself writing the same instruction a second time:
-1. Ask: can this be a lint rule, a metadata flag, a runtime check, or a script?
-2. If yes, encode it. Delete the instruction
-3. If no (genuinely requires judgment), make the instruction more prominent and add an example of the failure mode
+## 二度目に気づいたら、強いほうへ落とす
 
-**Pick the strongest rung.** When more than one mechanism would work, choose the strongest the situation allows (an unrepresentable state that cannot compile, then a lint or banned API that fails CI, then a canonical helper, then a runtime check), because agents copy whatever the surrounding code already does and a weaker guard becomes the next template.
+上から順に、その状況で使える一番強いものを取る。
 
-**Corollary:** Don't paper over symptoms. If the fix is structural, ONLY use the structural fix. The instruction IS the symptom.
+1. **そもそも表現できない形にする** — 書けないものは守られる
+2. **検査で赤くする** — lint、CI の関門、`scripts/` の検査。落ちなければ通らない
+3. **入口を一つにする** — 正しいやり方が唯一の呼び口になっていれば、間違いは書きにくい
+4. **実行時に落とす** — 遅いが、確実に一度は出る
+5. **文章で書く** — 上が全部使えないときだけ
 
-**Feedback loop:**
-- **Capture every correction.** When the human intervenes or tests fail, decide if it's a one-off or a pattern.
-- **Route to the right layer.** One-off -> brain note. Recurring fix -> skill or lint rule. Systemic issue -> principle.
-- **Close the loop.** Don't just record. Apply now or create a concrete todo.
+**弱い段で妥協すると、それが次の手本になる。**周りのコードに合わせて書く者にとって、
+既にあるゆるい書き方は許可と同じ意味を持つ。
 
-**Anti-patterns:**
-- Acknowledging without recording ("I'll keep that in mind" does not persist)
-- Recording without routing (a brain note about a lint rule that should exist is wasted unless the lint rule gets implemented)
-- Fixing without generalizing (fixing one instance while leaving the recurring pattern intact)
+## 書き写しは機構ではない
+
+**同じ事実を二箇所に書いたら、片方が古くなる。**手順も、パスも、判定基準もそう。
+だから**書き写さず、指す。**
+同じ理由で、**事実を手で組み立てない。**worktree の一覧も、置き場のパスも、
+手で綴った瞬間に本物とずれうる複製になる。**機械に訊いて、返ってきたものを使う。**
+
+指すだけでは古さは止まらないので、**ずれたら赤くなる検査を一緒に置く。**
+片側を直して片側を忘れても落ちるなら、そこで初めて機構になっている。
+
+## 全員に同じ間違いが出たら、直す先は個体ではない
+
+配った先が揃って外したなら、外したのは渡し方。**個別に直さず、渡す文面を直して配り直す。**
+一人が一度外しただけなら、それは一回の失敗として扱う。
+
+## 閉じる
+
+- **「気を付けます」は残らない。**記録するか、機構にするか、どちらかにする
+- **記録して終わりにしない。**「lint にすべき」というメモは、lint になるまで何も守っていない
+- **今やるか、行き先の付いた作業として置くか。**行き先の無い気づきは消える
+
+**症状に当てないという判断そのものは fix-root-causes。**
+この原則が持つのは、**同じ失敗が二度起きない形にする**ところだけ。

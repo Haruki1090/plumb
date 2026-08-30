@@ -1,22 +1,50 @@
 ---
 name: principle-build-the-lever
-description: "一括作業に限らず、編集・移行・分析・チェックなど非自明な作業全般に適用する。手作業でやる代わりに、それを行う・証明するツール（codemod、スクリプト、ジェネレータ、サブエージェントが従うスキル）を作る。ツールこそがレビュアーが再実行できる成果物になる。"
+origin: plumb
+description: "一括作業に限らず、編集・移行・分析・チェックなど非自明な作業全般に適用する。手作業でやる代わりに、それを行う・証明する道具（codemod、スクリプト、ジェネレータ、サブエージェントが従うスキル）を作る。道具こそがレビュアーの再実行できる成果物になる。"
 ---
+
 # Build the Lever
 
-When the work isn't trivial, build the tool that does it instead of doing it by hand.
+**自明でない作業は、それをやる道具・それを証明する道具を作ってから回す。**
+繰り返す教訓を恒久的なガードにするのは **principle-encode-lessons-in-structure**、
+検証そのものの設計は **principle-prove-it-works**。
+この原則が持つのは**目の前の一件**——回す速さと、レビュアーが再実行できる形。
 
-**Why:** Two payoffs. Throughput: a codemod, generator, or script does the work the same way every time and reruns for free. Confidence: the tool is one artifact a reviewer can read and rerun to check the work. Hand-done changes can only be re-verified by redoing them. A deterministic script turns "trust me" into "run this".
+**なぜ守れないか:** 手作業は着手が速い。道具は着手が遅く、
+**しかも手で 3 件やった時点で「もう半分終わった」に見える。**
+着手の速さだけで比べれば、毎回手作業が勝つ。
+そして手でやった結果は、**レビュアーが再実行できない。**
+確かめる方法が「同じ作業をもう一度やる」しかないので、実際には誰も確かめない。
+**手作業は「信じてくれ」で終わり、道具は「これを走らせて」で終わる。**
 
-**Pattern:** Default to building the lever. Skip it only when the task is genuinely trivial, a couple of obvious edits you can see at a glance.
+## 作り方
 
-- Do the first unit by hand to learn the recipe, then build the tool. Prove it by rerunning it on that unit and diffing against your hand-done version. Make the lever safe to rerun. A reviewer will.
-- Codemod or script for edits, generator for repetitive files, a dump-to-sqlite query for analysis, a rerunnable check for verification.
-- A deterministic lever beats fan-out. If the tool can process every unit in one pass, run it yourself; don't fan out delegates to hand-apply what a script can do.
-- When you fan work out to subagents, write the lever as a skill they all read: the recipe, the verification contract, and the do-not-touch fences in one artifact, so every delegate inherits the same hardened version instead of re-explaining it per prompt and watching each one drift. Keep it outside the delegates' write scope so they can't quietly edit the contract.
-- Applying this principle produces a file. If you cited it and there is no codemod, script, generator, or delegate skill in the diff, you didn't apply it.
-- Commit the lever when the work outlives the session, so the next run reruns it instead of redoing it.
+1. **最初の 1 件を手でやる。**手順が分かる前に一般化すると、道具のほうが間違う
+2. **道具にして、その 1 件に当て直す。**手作業の結果と差分を取る。
+   一致しないとき、間違っているのが手作業のほうであることもある
+3. **何度走らせても安全にする。**レビュアーは必ずもう一度走らせる
+4. **仕事がセッションより長生きするならコミットする。**次の回が、やり直しではなく再実行になる
 
-**Balance:** The bar is triviality, not repetition. A one-off still earns a lever when the lever is what makes the work checkable. Per the [Laziness Protocol](../principle-laziness-protocol/SKILL.md), build the smallest script that does or proves the job, never a framework.
+## 決定的な道具は、撒くより強い
 
-Distinct from [Encode Lessons in Structure](../principle-encode-lessons-in-structure/SKILL.md), which makes a recurring instruction a durable guardrail. This is throughput and reviewability on the work in front of you. For scripting the verification itself, see [Prove It Works](../principle-prove-it-works/SKILL.md).
+1 回で全件を処理できるなら、**自分で走らせる。**
+スクリプトでできることを、委譲先に手で当てさせない。
+
+撒くしかないときは、**道具を委譲先が読む型として書く。**
+手順・検証の契約・触ってはいけない範囲を、1 つの成果物に置く。
+プロンプトごとに書き直すと、**同じ指示のつもりで少しずつ違う版が配られ、各自が別々に逸れる。**
+その成果物は委譲先の書き込み範囲の外に置く——契約を、契約に従う側が編集できてはいけない。
+
+## 引用したなら、差分にファイルが増える
+
+この原則を引いたのに、差分にスクリプトも生成器も委譲先の型も無いなら、**引用が嘘。**
+`plumb-worktree-audit` と `plumb:doctor` は、この原則を当てた結果としてそこに在る。
+
+## 掛けない場面
+
+- **本当に自明なとき。**一目で全部見える、2〜3 箇所の明らかな編集
+- 道具を作る費用が作業を超えるとき。**ただし基準は繰り返しの回数ではない**——
+  1 回きりの作業でも、**道具が唯一の確かめる手段になるなら作る**
+
+道具は**最小で作る**（**principle-laziness-protocol**）。枠組みを作らない。

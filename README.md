@@ -23,7 +23,9 @@ writing the tests, and landing the result. It depends on no other plugin.
 - **A principle index you call by name.** 22 principles, each with a
   name. Citing one obliges you to name the specific decision it changed — a
   quotation with no decision attached is treated as proof the leaf was never
-  read. Naming turns "be careful" into something a reviewer can check.
+  read. Naming turns "be careful" into something a reviewer can check. Each
+  principle states *why it is hard to keep* — the mechanism that makes people
+  and models break it — and how to tell afterwards whether it was kept.
 - **A harness that checks its own claims.** Documentation rots silently: a
   playbook names a script that was since renamed, the router indexes a principle
   that was deleted, an agent definition points at a skill that moved.
@@ -84,13 +86,15 @@ covers the same ground.
 
 ## Language
 
-SKILL.md, the 22 playbooks, and the docs/ files are written in Japanese. Most
-files under principles/ are verbatim English carried over from pstack; NOTICE
-carries the exact split, and `scripts/check-harness.sh` fails if it drifts.
+plumb is written in Japanese: SKILL.md, the 22 playbooks, the 22 principles and
+the docs/ files. Only this README is English. The principle *names* stay English
+because the playbooks cite them by name (`principle-prove-it-works`).
 
 ## Credits
 
-Derived from pstack by Lauren Tan. See NOTICE and docs/scope.md.
+plumb began as a port of pstack by Lauren Tan, which is where its shape came
+from — the router, principles as plain documents, and most of the principle
+names. No text is carried over verbatim any more. See NOTICE and docs/scope.md.
 
 ## License
 

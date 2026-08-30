@@ -1,21 +1,41 @@
 ---
 name: principle-migrate-callers-then-delete-legacy-apis
-description: "旧来の呼び出し元が残ったまま新しい内部APIを導入するときに適用する。互換レイヤーを温存するのではなく、呼び出し元の移行と旧APIの削除を同じ波でやり切る。"
+origin: plumb
+description: "内側の API を作り直すときに適用する。呼び出し元の移行と旧 API の削除を、同じ波の中でやり切る。互換層を既定にしない。"
 ---
 
-# Migrate Callers Then Delete Legacy APIs
+# Migrate callers then delete legacy APIs
 
-When we decide a new API is the right design, migrate callers and remove the old API in the same refactor wave instead of preserving compatibility layers.
+**新しい形が正しいと決めたなら、呼び出し元の移行と旧 API の削除を同じ波に入れる。**
+「あとで消す」は消えない。
 
-**Rule:**
-- Do not keep legacy API paths alive only because internal callers still exist
-- Inventory callers, migrate them, and delete the old API immediately
-- Treat temporary adapters as exceptional and time-boxed, not default architecture
-- Update tests to assert the new contract, and delete tests that only protect pre-refactor implementation details
+**なぜ守れないか:** 削除を別の回に切り出すと、その回は
+**機能が1つも増えないのに壊す危険だけがある**変更になる。
+価値の説明を求められて、毎回いちばん後ろに置かれる。
+一方で旧 API は、残っている限り新しい呼び出し元を増やし続ける。
+**先送りするほど、次に消すときの仕事は増える。**だから期限では守れず、
+**同じ波に入れるという切り方**でしか守れない。
 
-**When this applies:**
-- No external users depend on backward compatibility
-- The project can absorb coordinated breaking changes
-- The new API is part of a simplification or refactor initiative
+## やり切るとはどういうことか
 
-Keeping both old and new APIs creates dual-path complexity, slows cleanup, and makes the codebase feel append-only.
+- **先に呼び出し元を数え、その数を書く。**数えていないなら、移行はまだ始まっていない
+- **移行と削除を同じ波に置く。**波の終わりに旧い経路が残っていないこと
+- **テストは新しい契約を主張する形に直す。**旧実装の内部だけを守っているテストは、
+  旧 API と一緒に消す
+- **中間の層を残すなら、消す条件と消す担当を書く。**書けないなら、それは恒久の分岐
+
+## 判定
+
+**波が終わった時点で、旧い名前の検索が 0 件になること。**
+コードだけでなく、テスト・設定・文書・コメントも数える。
+0 件でないなら、残した理由をその場で書く。
+
+## 効かない場合
+
+**外の利用者が旧 API に依存しているなら、この原則は当たらない。**
+そこでは互換そのものが契約。**この原則が対象にするのは、
+呼び出し元を全部自分で数え切れる内側の API だけ。**
+
+移行の途中の形を目標として扱わない、という向きは
+**principle-outcome-oriented-execution** が持つ。
+この原則が持つのは**切り方**——移行と削除を別の波に分けないこと。

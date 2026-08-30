@@ -1,22 +1,48 @@
 ---
 name: principle-minimize-reader-load
-description: "追いにくいコードをレビューする、あるいは形作るときに適用する。疑問から答えまでの層の数と、読み手の頭の中に残る隠れた状態を数える。呼び出し元が一つしかないラッパーは畳み、可変なスコープは縮める。"
+origin: plumb
+description: "追いにくいコードをレビューする、あるいは形作るときに適用する。問いから答えまでの層の数と、読み手の頭に残る隠れ状態を数える。呼び出し元が一つしかないラッパーは畳み、可変なスコープは縮める。"
 ---
 
 # Minimize Reader Load
 
-Maintainability is the work a reader must do to understand code. Track two axes:
-1. **Layers to trace.** How many indirections sit between the question and the answer.
-2. **State to hold.** How much hidden or mutable context the reader must keep in their head.
+**保守しやすさとは、読み手が理解のために払う労力のこと。**それを二つの軸で数える。
+差分を小さく保つのは **principle-laziness-protocol**、消す順序は
+**principle-subtract-before-you-add**。
+この原則が持つのは**尺度**——その変更が良くなったかどうかを、何で判定するか。
 
-**Why:** Code is read far more than it is written. LOC, cyclomatic complexity, and "clean architecture" are proxies. Reader load is the thing that matters. The two axes are independent. A flat file with 50 globals can be as hard to reason about as a 6-layer adapter stack. Guard both. This is the human analog of [Guard the Context Window](../principle-guard-the-context-window/SKILL.md): working memory is finite for readers too.
+**なぜ守れないか:** 隠れ状態は、書いた本人には見えない。**もう頭に入っているから。**
+書き手の「読めば分かる」は、読んだ経験の後に出る感想であって、初見の読み手の負荷とは無関係。
+**自己評価では原理的に測れない。**だから感想ではなく数える。数えられる形にした軸が下の二本。
 
-**The pattern:**
-- **Collapse layers** that do not earn their keep: wrappers with one caller, adapters with no second implementation, indirection introduced for a future that never came. Inline them.
-- **Make adjacent layers change the abstraction.** A layer that repeats the same methods and arguments adds reader load without compression. Collapse pass-through layers.
-- **Demand interface compression.** A broad interface that hides little complexity makes readers learn both the surface and the implementation. Prefer boundaries that hide meaningful decisions.
-- **Shrink state scope:** prefer pure functions (returns over mutations), locals over fields, fields over module state, and module state over globals. Derive instead of sync.
-- **Name the invariant at the boundary,** not in every consumer, so the reader learns it once.
-- Before adding a layer or a piece of state, ask: does this reduce reader load somewhere else by at least as much?
+## 軸 1：問いと答えの間の層
 
-**The test:** Can a new reader answer "where does X come from?" and "what can change X?" in under 30 seconds? If not, cut layers or cut state.
+「この値はどこから来たか」に答えるまでに開く定義の数。
+
+- **2 人目の消費者がいない層は畳む。**呼び出し元が 1 つの wrapper、
+  実装が 1 つしか無い adapter、来なかった将来のために入れた間接
+- **隣り合う層が同じ言葉で話しているなら、片方は要らない。**
+  引数の名前も並びもほぼ同じまま渡しているだけの層は、抽象を変えていない
+- **境界は、隠す量で正当化する。**広い面を見せて、その裏に大した判断が無いなら、
+  読み手は面と中身の両方を覚える羽目になる。**隠す判断が多い境界だけが、層として元を取る**
+
+## 軸 2：読み手が頭に持つ状態
+
+「この値は、どこで書き換わりうるか」に答えるまでに抱える可変の文脈の量。
+
+- **狭いほうへ倒す。**戻り値 > 局所変数 > フィールド > module の状態 > グローバル。
+  **同期させるより、導出する**
+- **不変条件は境界で 1 度名指す。**使う側の全部に書くと、読み手は毎回それを確かめ直す
+
+**二軸は独立していて、片方を減らすともう片方が増えることがある。**
+層の無い一枚のファイルが、可変の状態で読めなくなることも、その逆もある。**両方を見る。**
+モデルの文脈窓についての同じ話は **principle-guard-the-context-window** が持つ。
+こちらが数えるのは人間の読み手の負荷。
+
+## 試験
+
+初見の読み手が、**「X はどこから来たか」と「X は何によって変わるか」に 30 秒で答えられるか。**
+答えられないなら、層を削るか、状態を狭める。
+
+**層や状態を足してよいのは、どこか別の場所で同じだけ減るときだけ。**
+足す前に、減る場所を名指す。名指せないなら足さない。

@@ -1,32 +1,54 @@
 ---
 name: principle-prove-it-works
-description: "タスクを終えて完了と言う前に適用する。実物で検証する。機能を実際に動かし、値を読み、差分を見る。代理指標や自己申告や「ビルドが通った」で済ませない。"
+origin: plumb
+description: "「動いた」と言える状態を作るときに適用する。実物を一つ選んで直接見る。代理指標・自己申告・要約・伝聞は主張であって観測ではない。落ちるところを見ていない検証器は、緑になっても何も証明していない。"
 ---
 
 # Prove It Works
 
-Verify every task output by checking the real thing directly. Do not infer from proxies, self-reports, or "it compiles."
+**確かめる方法を持つのがこの原則。**いつ確かめるかは **gate-claims-on-evidence** が持っている。
+あちらが主張の直前に関門を置き、**こちらがその関門で何を見るかを決める。**
 
-**Why:** Unverified work has unknown correctness. Indirect verification (file mtimes, output freshness, agent self-reports, cached screenshots) feels cheaper than direct observation. Acting on a wrong inference costs far more than checking the source.
+**なぜ:** 代理指標は安いのではなく、**速く緑になる**。ビルドの成功、ファイルの更新時刻、
+サブエージェントの完了報告——どれも実物を見たときと同じ手触りの安心を、一段手前で返す。
+**観測の手軽さと観測の強さは逆に並んでいる**ので、楽なほうを選び続けると必ず弱いほうへ寄る。
+気を付けて直る種類の話ではない。**何が実物かを先に決めておく**しかない。
 
-**Pattern:** After completing any task, ask: "how do I prove this actually works?"
+## 実物と代理を分ける
 
-Check the real thing, not a proxy:
-- Check process liveness directly, not indirectly through derived state
-- Read the actual value, not a cached or derived representation
-- When verification fails, suspect the observation method before suspecting the system
+**導出が一段でも挟まったものは代理。**
 
-Code and features:
-1. Build it (necessary but not sufficient)
-2. Run it and exercise the actual feature path
-3. Check the full chain: does data flow from input to output?
-4. For integrations, test the full communication path end-to-end
+| 代理 | 実物 |
+|---|---|
+| ビルドが通った | 機能の経路を実際に通し、出た値を読んだ |
+| ファイルが更新されている | 中身を開いて、変わっているのを見た |
+| プロセスが起動している | そのプロセスに要求を投げ、返事を見た |
+| 配った先が「やった」と言った | 差分と生成物を自分で見た |
+| レビュー指摘にそう書いてある | 指摘された行を開き、このコードベースでそうか確かめた |
+| 「だいたい捨てていいと言われた」 | 捨てる候補を全部並べ、持ち主の言葉と突き合わせた |
 
-Delegation: trust artifacts, not self-reports.
-When verifying delegated work, inspect the actual output artifact (git diff, file contents, runtime behavior), not the delegate's summary. Agents report what they intended, not always what happened.
+**人が言ったことも代理の側。**指摘も、引き継ぎ文も、前のセッションが残した主張も、
+**仮説として受け取って、実物で当たり直す。**
 
-## Script the check when you can
+## 検証器が動いていることを、先に見る
 
-The strongest proof is a deterministic script that re-runs the same comparison, not a one-time eyeball. Write the script, run it, and keep its output as an artifact a reviewer can re-run instead of trusting your word. A script comparing the old and new compiled output catches what a glance misses.
+**赤を見ていない緑は、検証器が働いた証拠を持っていない。**
+テストは実装より先に書き、**落ちるところを一度見る。**
+既にあるテストで確かめるなら、対象を一度壊して赤くなるか試す。
 
-Keep the artifact visible for the human. Commit it only for large or complex work where the trail has to be auditable later, like a big port or migration (the **show-me-your-work** skill). Most work just needs it visible, not committed.
+- **行数 0 は緑ではない。**何も走っていない可能性のほうが先に立つ
+- **観測が合わないとき、まず疑うのは観測の側。**見る場所・時刻・環境がずれているほうが、
+  系が壊れているより多い
+- **通すために検証器を緩めない。**閾値を下げる、対象を外す、失敗を握り潰す——
+  **検証器を殺すのと同じ**で、以後その領域は永久に無観測になる
+
+## 再実行できる形にする
+
+一度眺めて終わりにせず、**同じ比較をもう一度回せるものにする。**
+等価性の検査、基準値との突き合わせ、before/after を並べるスクリプト。
+**再実行できる観測だけが、レビュアーが自分で確かめられる証拠になる。**
+その道具をどう作るかは **build-the-lever** が持っている。
+
+**何を一単位として確かめるかは sequence-verifiable-units、
+症状ではなく原因に当てているかは fix-root-causes。**
+この原則が持つのは、一回一回の観測の中身だけ。
