@@ -57,7 +57,7 @@ description: 分岐のある判断を持ち主に渡すときに使う。選択�
 **選ばれた理由ではなく、選ばれた結果を実行する。**再説得しない。
 
 選択が長く効くもの（正本の裁定、方式の選択、スコープの切り方）なら、
-**決定を残す** — `plumb/scripts/decision-log.sh`、または memory の `feedback` / `project`。
+**決定を残す** — `plumb-decision-log`、または memory の `feedback` / `project`。
 残さないと、次のセッションで同じ表をもう一度作ることになる。
 
 ## よくある崩れ方

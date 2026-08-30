@@ -1,7 +1,6 @@
 ---
 name: pr-diff-reader
 description: PR の差分だけを読み、「この PR は何をしているか」を復元する。著者の説明を一切与えないことで、説明に引きずられない読み手を人工的に作るための agent。plumb:pr-review スキルの 1 段（双方向の棚卸し）から呼ばれる。
-model: opus
 tools: Read, Grep, Glob
 color: blue
 ---

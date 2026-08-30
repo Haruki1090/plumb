@@ -23,7 +23,16 @@ targets() {
 }
 playbooks() { find "$PB_DIR" -name '*.md' 2>/dev/null; }
 principles() { find "$PR_DIR" -name '*.md' 2>/dev/null; }
-bodies() { targets; playbooks; principles; }
+# agents_md / skill_refs / skill_scripts: 2026-08-30 に bodies() の穴として実測。
+# 同梱 agent（agents/*.md）・スキルの補助資料（skills/*/references/*.md）・
+# スキル同梱スクリプト（skills/*/scripts/*.{sh,mjs,ts,py}）はエージェントが実際に読む／
+# 実行する本文だが、targets（frontmatter 必須のファイルのみ）にも playbooks/principles にも
+# 入らず、禁止語チェックなどの走査から漏れていた（I-1 の model: opus 固定が好例）。
+# frontmatter 必須ルール（3・4）は targets() 直参照のままなので、ここを広げても壊れない。
+agents_md() { find "$root/agents" -name '*.md' 2>/dev/null; }
+skill_refs() { find "$SKILLS_DIR" -path '*/references/*.md' 2>/dev/null; }
+skill_scripts() { find "$SKILLS_DIR" -path '*/scripts/*' \( -name '*.sh' -o -name '*.mjs' -o -name '*.ts' -o -name '*.py' \) 2>/dev/null; }
+bodies() { targets; playbooks; principles; agents_md; skill_refs; skill_scripts; }
 # docs() と readme() はルール 11（bin/ 参照の実在）専用。bodies() には足さない——
 # 既存ルール（禁止語チェックなど）の走査対象を広げると別の検査が壊れる。
 docs_md() { find "$root/docs" -name '*.md' 2>/dev/null; }
@@ -36,7 +45,10 @@ echo "plumb harness check: $root"
 scanned=$(targets | wc -l | tr -d ' ')
 pbs=$(playbooks | wc -l | tr -d ' ')
 prs=$(principles | wc -l | tr -d ' ')
-note "--" "走査した SKILL.md: ${scanned} 件 / プレイブック: ${pbs} 件 / 原則: ${prs} 件"
+ags=$(agents_md | wc -l | tr -d ' ')
+refs=$(skill_refs | wc -l | tr -d ' ')
+scs=$(skill_scripts | wc -l | tr -d ' ')
+note "--" "走査した SKILL.md: ${scanned} 件 / プレイブック: ${pbs} 件 / 原則: ${prs} 件 / agent: ${ags} 件 / references: ${refs} 件 / スキル同梱スクリプト: ${scs} 件"
 
 # 1. 本文にモデル slug が無い
 slug=0
@@ -106,12 +118,18 @@ check "この環境に無い機械を指す本文" "$ext" 0
 #     $(bodies) を素通しで grep の引数展開に渡すと、root にスペースが入るファイル名で
 #     単語分割され、grep が「存在しないファイル」を渡されて黙って 0 件（誤って ok）になる。
 #     1 ファイルずつ read で回し、パスをクオートしたまま grep に渡す。
+#     2026-08-30: 抽出パターンが `scripts/...` にしか当たらず、`plumb/scripts/...` の
+#     ように誤った接頭辞が付いた参照は「scripts/...」部分だけが切り出されて実在判定に
+#     通ってしまっていた（本文の誤りを見逃す）。接頭辞の英数字/./-/ を丸ごと含めて
+#     切り出し、書かれた文字列そのものが root から解決できるかを見る。
+#     `scripts/foo.sh` のように接頭辞が無い素の相対参照はそのまま抽出されるので、
+#     本文がスクリプトを「名前として述べる」箇所（bare な `scripts/...`）は影響を受けない。
 miss=0
 while IFS= read -r ref; do
   [ -f "$root/$ref" ] || { miss=$((miss+1)); note "NG" "本文が指すスクリプトが無い: $ref"; }
 done < <(
   while IFS= read -r f; do
-    grep -ohE 'scripts/[a-z0-9._/-]+\.(sh|mjs|ts|py)' "$f" 2>/dev/null
+    grep -ohE '[A-Za-z0-9._/-]*scripts/[a-z0-9._/-]+\.(sh|mjs|ts|py)' "$f" 2>/dev/null
   done < <(bodies) | sort -u
 )
 check "実体の無いスクリプト参照" "$miss" 0
@@ -186,5 +204,17 @@ done < <(
 )
 check "実体の無い plumb-* コマンド参照" "$nobin" 0
 
-if [ $fail -eq 0 ]; then echo "  → 通過（SKILL.md ${scanned} 件 / プレイブック ${pbs} 件 / 原則 ${prs} 件）"; else echo "  → 失敗"; fi
+# 12. 同梱 agent の frontmatter が model を固定していない
+#     SKILL.md「本文にモデル名を書かない」・docs/role-map.md「model を書かない」との
+#     規律に、同梱物自身（agents/*.md）が違反していないかを見る。2026-08-30 に
+#     agents/*.md 6 体が `model: opus` を固定していたのを実測——bodies() の穴（旧）で
+#     ルール 1（モデル slug）は通っていた。slug 検査は "claude-opus-..." 形の固有 slug
+#     しか拾わないため、frontmatter の `model: opus` はここで別途見る。
+pinned=0
+while IFS= read -r f; do
+  head -20 "$f" | grep -q '^model:' && { pinned=$((pinned+1)); note "NG" "model を固定している agent: ${f#$root/}"; }
+done < <(agents_md)
+check "model を固定する agent frontmatter" "$pinned" 0
+
+if [ $fail -eq 0 ]; then echo "  → 通過（SKILL.md ${scanned} 件 / プレイブック ${pbs} 件 / 原則 ${prs} 件 / agent ${ags} 件）"; else echo "  → 失敗"; fi
 exit $fail

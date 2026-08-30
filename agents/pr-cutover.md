@@ -1,7 +1,6 @@
 ---
 name: pr-cutover
 description: 本番で実際に起きる時系列を 1 本の物語として辿り、各ステップの破断点と「そこで落ちたら何が残るか」を洗う。コードの正しさではなく手順・運用・不可逆性を担当する。plumb:pr-review スキルの 3 段 C 軸から呼ばれる。
-model: opus
 color: red
 ---
 

@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # PR の版を固定し、本文と差分のドリフト・保護設定の穴を検出する。
 #
-# 使い方: pr-drift.sh <owner/repo> <PR番号>
+# 使い方: plumb-pr-drift <owner/repo> <PR番号>
 #
 # 日時は必ず UTC の ISO8601 で比較する。git の %cI はローカルタイムゾーン付きで
 # 文字列比較が壊れるため、比較は Python 側で datetime に落としてから行う。
 
 set -euo pipefail
 
-REPO="${1:?usage: pr-drift.sh <owner/repo> <pr-number>}"
-PR="${2:?usage: pr-drift.sh <owner/repo> <pr-number>}"
+REPO="${1:?usage: plumb-pr-drift <owner/repo> <pr-number>}"
+PR="${2:?usage: plumb-pr-drift <owner/repo> <pr-number>}"
 OWNER="${REPO%%/*}"
 NAME="${REPO##*/}"
 

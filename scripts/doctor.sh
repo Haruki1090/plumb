@@ -36,6 +36,12 @@ echo "— 実行先"
 for c in git gh; do
   command -v "$c" >/dev/null 2>&1 && note "ok" "$c" || bad "$c が PATH に無い（plumb の全ての型が前提にしている）"
 done
+# python3 は plumb-pr-drift（skills/pr-review/scripts/pr-drift.sh）だけが使う。
+# 他の型は前提にしていないので git/gh と同列の必須にはしない。持っていない人の
+# 初回体験を「壊れている」にしないため、無ければ情報行（--）に留める。
+command -v python3 >/dev/null 2>&1 \
+  && note "ok" "python3" \
+  || note "--" "python3 が PATH に無い（plumb-pr-drift を使うときだけ必要）"
 
 cfg() { bash "$root/scripts/plumb-config.sh" "$1" ""; }
 for k in role.judge role.bulk pane.driver; do
@@ -75,13 +81,29 @@ for d in "$CLAUDE"/plugins/cache/*/superpowers "$CLAUDE/skills/superpowers"; do
 done
 [ "$sp_found" -eq 1 ] || bad "superpowers が見つからない（plumb の索引が委譲先にしている）"
 
-# 3b. 同梱した agent 6 体が実在するか
+# 3b. 同梱した agent 6 体が実在するか（本文 → 実体）
 #     pr-review スキルが名指す agent が消えると、反証段の呼び出し先を失ったまま気付けない。
+#     抽出は本文形式（backtick 付き `pr-xxx`）で候補を拾うだけなので、`pr-drift` のような
+#     bin/plumb-pr-drift の略称（agent ではない）も同じ形に見えてしまう。2026-08-30 に実測。
+#     候補が bin/plumb-<name> コマンドとして実在する場合は agent 判定から外す。
 echo "— 同梱 agent"
 while IFS= read -r name; do
+  [ -z "$name" ] && continue
+  [ -f "$root/bin/plumb-$name" ] && continue
   if [ -f "$root/agents/$name.md" ]; then note "ok" "agents/$name.md"
   else bad "agents/$name.md が無い（skills/pr-review/SKILL.md が名指している）"; fi
 done < <(grep -oE '`pr-[a-z-]+`' "$root/skills/pr-review/SKILL.md" | tr -d '`' | sort -u)
+
+# 3c. agents/ に置いたのに、誰からも名指されていない agent は無いか（実体 → 本文）
+#     check-harness のルール8（プレイブック/原則の索引）は本文↔実体を両方向見ているが、
+#     agent はここまで 3b の一方向（本文が指す先の実在）しか見ていなかった。片方向だと
+#     agent を足しただけで、誰にも呼ばれない孤児ファイルが静かに残っても気付けない。
+for f in "$root"/agents/*.md; do
+  [ -f "$f" ] || continue
+  n=$(basename "$f" .md)
+  grep -q "\`$n\`" "$root/skills/pr-review/SKILL.md" \
+    || bad "agents/$n.md を名指す本文が無い（孤児 agent）"
+done
 
 # 4. agent が名指す呼び出し元が実在するか
 #    ここで見る ~/.claude/agents/*.md は plumb が同梱するものではなく、あなた自身が

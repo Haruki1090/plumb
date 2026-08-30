@@ -228,7 +228,7 @@ BLOCK 候補は 7 件中 6 件が降格し、最終的に BLOCK は 1 件だけ�
 | **FIX** | 止めないが、マージ前に直す |
 | **NOTE** | 記録だけ。今回は直さない |
 
-CONFIRMED と書く前に `verification-before-completion` の原則を通す
+CONFIRMED と書く前に `superpowers:verification-before-completion` の原則を通す
 ——**それを証明するコマンドを、このターンで実行したか。**していないなら PLAUSIBLE。
 
 **ただしコマンド実行だけでは足りない。** 実際に BLOCK 候補 4 件中 3 件が、
