@@ -22,8 +22,8 @@
 3. 決定ログを開く。**最初の試行の前に。**
 
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/decision-log.sh" <ログ> --header id 仮説 変更 前 後 差 テスト 判定 備考
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/decision-log.sh" <ログ> 1 "<仮説>" "<変更>" 1200 940 -260 green 採用 ""
+   plumb-decision-log <ログ> --header id 仮説 変更 前 後 差 テスト 判定 備考
+   plumb-decision-log <ログ> 1 "<仮説>" "<変更>" 1200 940 -260 green 採用 ""
    ```
 
    手で書かない——列がずれ、タブが混ざり、根拠に入った文字列が表計算で数式として走る

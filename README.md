@@ -58,8 +58,10 @@ To route a role elsewhere, write `~/.claude/plumb/config`:
     pane.driver  = <command>   # terminal multiplexer for long-running work
     stack.tool   = gh-stack    # stacked-PR tooling
 
-Run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/doctor.sh"` to see what is wired and what is unset. Unset reads `--`,
-never `NG` — plumb does not report a tool you chose not to install as breakage.
+Run `plumb-doctor` from a shell to see what is wired and what is unset (installing the
+plugin puts it on your PATH). Unset reads `--`, never `NG` — plumb does not report a
+tool you chose not to install as breakage. From inside Claude Code, the `doctor` skill
+covers the same ground.
 
 ## Language
 

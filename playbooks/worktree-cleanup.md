@@ -9,7 +9,7 @@
    手打ちの `myrepo-worktrees/x` は、別の根にある同名を取りこぼす
    （**principle-encode-lessons-in-structure**）。
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-audit.sh"   # 読むだけ。何も消さない
+   plumb-worktree-audit   # 読むだけ。何も消さない
    ```
 
    容量・最終更新・マージ状態・未コミットの有無・**戻せない ignore 済みファイル**・PR の状態で

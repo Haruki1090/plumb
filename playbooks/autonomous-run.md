@@ -40,9 +40,9 @@
 
    ```bash
    # 最初の反復より先に作る。述語もここに書き込む
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/decision-log.sh" <ログ> --header 反復 やったこと なぜ 根拠 述語が動いたか
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/decision-log.sh" <ログ> 0 "述語を固定" "<述語の全文>" "-" "-"
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/decision-log.sh" <ログ> 1 "<やったこと>" "<なぜ>" "<根拠>" yes
+   plumb-decision-log <ログ> --header 反復 やったこと なぜ 根拠 述語が動いたか
+   plumb-decision-log <ログ> 0 "述語を固定" "<述語の全文>" "-" "-"
+   plumb-decision-log <ログ> 1 "<やったこと>" "<なぜ>" "<根拠>" yes
    ```
 
    **後から作ると、その時点までの反復が存在しなかったことになる。**

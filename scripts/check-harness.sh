@@ -24,6 +24,11 @@ targets() {
 playbooks() { find "$PB_DIR" -name '*.md' 2>/dev/null; }
 principles() { find "$PR_DIR" -name '*.md' 2>/dev/null; }
 bodies() { targets; playbooks; principles; }
+# docs() と readme() はルール 11（bin/ 参照の実在）専用。bodies() には足さない——
+# 既存ルール（禁止語チェックなど）の走査対象を広げると別の検査が壊れる。
+docs_md() { find "$root/docs" -name '*.md' 2>/dev/null; }
+readme() { [ -f "$root/README.md" ] && printf '%s\n' "$root/README.md"; }
+bin_ref_sources() { bodies; docs_md; readme; }
 
 echo "plumb harness check: $root"
 
@@ -36,7 +41,7 @@ note "--" "走査した SKILL.md: ${scanned} 件 / プレイブック: ${pbs} �
 # 1. 本文にモデル slug が無い
 slug=0
 while IFS= read -r f; do
-  grep -qIE 'grok-[0-9]|gpt-[0-9]+(\.[0-9]+)?-|claude-(opus|sonnet|haiku|fable)(-[0-9]+)+|claude-[0-9]+(-[0-9]+)*-(opus|sonnet|haiku|fable)' "$f" \
+  grep -qIE 'grok-[0-9]|gpt-[0-9]+(\.[0-9]+)?[a-z]*(-[a-z0-9.]+)*|claude-(opus|sonnet|haiku|fable)(-[0-9]+)+|claude-[0-9]+(-[0-9]+)*-(opus|sonnet|haiku|fable)|(^|[^A-Za-z0-9])o[0-9]+-[a-z]+|gemini-[0-9]+(\.[0-9]+)?-[a-z]+(-[a-z]+)*' "$f" \
     && { slug=$((slug+1)); note "NG" "モデル slug: ${f#$root/}"; }
 done < <(bodies)
 check "モデル slug を含むファイル" "$slug" 0
@@ -163,6 +168,23 @@ while IFS= read -r f; do
   [ -n "$hit" ] && { tool=$((tool+1)); note "NG" "実行先を直接名指している [${hit%% }]: ${f#$root/}"; }
 done < <(bodies)
 check "実行先を名指す本文" "$tool" 0
+
+# 11. 本文が名指す plumb-* コマンドが bin/ に実在する
+#     7b と同じ形。プラグインルートを指す変数は SKILL.md でしか展開されないため、
+#     本文は bin/ のコマンド名を素で呼ぶ約束にした。名指した先が無いと exit 127 になる。
+#     走査は bodies() だけでなく README.md と docs/ も含む——README がコマンド名を
+#     持つ以上、そこだけ機械の外に置くのは筋が悪い（bodies() 自体は既存ルールが
+#     使うので広げない。bin_ref_sources() をこのルール専用に別で持つ）。
+BIN_DIR="$root/bin"
+nobin=0
+while IFS= read -r cmd; do
+  [ -f "$BIN_DIR/$cmd" ] || { nobin=$((nobin+1)); note "NG" "本文が指す plumb-* コマンドが無い: bin/$cmd"; }
+done < <(
+  while IFS= read -r f; do
+    grep -ohE '\bplumb-[a-z-]+\b' "$f" 2>/dev/null
+  done < <(bin_ref_sources) | sort -u
+)
+check "実体の無い plumb-* コマンド参照" "$nobin" 0
 
 if [ $fail -eq 0 ]; then echo "  → 通過（SKILL.md ${scanned} 件 / プレイブック ${pbs} 件 / 原則 ${prs} 件）"; else echo "  → 失敗"; fi
 exit $fail

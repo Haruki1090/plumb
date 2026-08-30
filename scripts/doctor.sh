@@ -103,8 +103,13 @@ for d in "$HOME/.herdr/worktrees" "$HOME/.codex/worktrees"; do
 done
 
 # 5b. 成果物の置き場が解決できるか
+#     plumb-path.sh は cwd の git リポジトリを起点に解決する。git リポジトリの外から
+#     doctor を回すと「壊れている」のではなく「確認できない」——bin/ を入れると
+#     どこからでも plumb-doctor を叩けるようになるぶん、ここを踏みやすくなった。
 echo "— 成果物の置き場"
-if r=$(bash "$root/scripts/plumb-path.sh" root 2>/dev/null); then
+if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+  note "--" "確認できない（git リポジトリの外。対象リポジトリの中で doctor を回す）"
+elif r=$(bash "$root/scripts/plumb-path.sh" root 2>/dev/null); then
   note "ok" "解決できる（${r/#$HOME/~}）"
   # 追跡する側と捨てる側が入れ替わっていないか。
   # specs が ignore されていたら、正本が working tree と一緒に消える。

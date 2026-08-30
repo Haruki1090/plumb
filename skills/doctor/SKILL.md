@@ -6,7 +6,7 @@ description: plumb が主張する環境が、いまも実在するかを見る�
 # doctor
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/doctor.sh"
+plumb-doctor
 ```
 
 **判断はスクリプトが持つ。この文書は、いつ回すかと、落ちたときに何を疑うかだけを持つ。**
@@ -42,8 +42,8 @@ pr-review スキル        agent 6 体が「pr-review スキルの N 段から�
 
 | 落ちた場所 | 疑うもの |
 |---|---|
-| 内側（横断ルール） | plumb 自身の編集。`bash "${CLAUDE_PLUGIN_ROOT}/scripts/check-harness.sh"` を直接走らせて内容を見る |
-| 内側（スクリプトの振る舞い） | selftest.sh 自体の前提が壊れている可能性がある。`bash "${CLAUDE_PLUGIN_ROOT}/scripts/selftest.sh"` を直接走らせて内容を見る |
+| 内側（横断ルール） | plumb 自身の編集。`plumb-check` を直接走らせて内容を見る |
+| 内側（スクリプトの振る舞い） | selftest.sh 自体の前提が壊れている可能性がある。`plumb-selftest` を直接走らせて内容を見る |
 | 実行先 | PATH と拡張のインストール。`docs/role-map.md` の前提が崩れている |
 | 外部スキル | 退避・削除・リネーム。まずそのスキルがいまも `~/.claude/skills/` や有効なプラグインとして存在するか確認する |
 | agent の呼び出し元 | **上と同じ原因で、被害が agent 側に出ている。**スキルを戻すか、agent の description を直すか |

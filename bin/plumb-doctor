@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# $0 が symlink でも実体を辿る。readlink -f は macOS に無いのでループで解く。
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir=$(cd -P "$(dirname "$src")" && pwd)
+  src=$(readlink "$src")
+  case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+exec bash "$(cd -P "$(dirname "$src")/.." && pwd)/scripts/doctor.sh" "$@"
