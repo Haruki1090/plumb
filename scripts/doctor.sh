@@ -67,22 +67,31 @@ for s in agent-routing graph-engineering herdr pr-review; do
   if [ -f "$CLAUDE/skills/$s/SKILL.md" ]; then note "ok" "$s"
   else note "--" "$s: 未導入（plumb の索引が任意の転送先として名指している）"; fi
 done
-[ -d "$CLAUDE/plugins/cache/claude-plugins-official/superpowers" ] \
-  && note "ok" "superpowers プラグイン" \
-  || bad "superpowers が見つからない（plumb の索引が委譲先にしている）"
+#    superpowers は marketplace 名の下に入る。README が案内する github.com/obra/superpowers
+#    は公式（claude-plugins-official）とは別名で入るため、決め打ちの1パスだけを見ると
+#    別名から入れた人を NG にする。marketplace 名に依存せず探す。
+sp_found=0
+for d in "$CLAUDE"/plugins/cache/*/superpowers "$CLAUDE/skills/superpowers"; do
+  [ -d "$d" ] && { note "ok" "superpowers プラグイン（${d/#$HOME/~}）"; sp_found=1; break; }
+done
+[ "$sp_found" -eq 1 ] || bad "superpowers が見つからない（plumb の索引が委譲先にしている）"
 
 # 4. agent が名指す呼び出し元が実在するか
-#    2026-08-29 に実際に壊れていた: pr-* agent 6 体が、退避済みの pr-review を指していた
-echo "— agent の呼び出し元"
+#    ここで見る ~/.claude/agents/*.md は plumb が同梱するものではなく、あなた自身が
+#    置いた私物。plumb を使う人ほど agent を増やすため、私物 agent の書き方次第で
+#    plumb の doctor が NG になるのは筋が違う。fail は立てず、件数だけ報告する
+#    （中身は持ち主にとって有用な情報なので検査自体は残す）。
+echo "— agent の呼び出し元（あなたの ~/.claude/agents/ 私物。plumb は同梱していない）"
 orphan=0
 for f in "$CLAUDE"/agents/*.md; do
   [ -f "$f" ] || continue
   while IFS= read -r name; do
     [ -f "$CLAUDE/skills/$name/SKILL.md" ] || {
-      bad "$(basename "$f" .md) が指す「$name スキル」が無い"; orphan=$((orphan+1)); }
+      note "--" "$(basename "$f" .md) が指す「$name スキル」が見当たらない（あなたの私物 agent。plumb には無関係）"
+      orphan=$((orphan+1)); }
   done < <(grep -oE '`?[a-z][a-z0-9-]+`? スキル' "$f" | tr -d '`' | sed 's/ スキル//' | sort -u)
 done
-[ $orphan -eq 0 ] && note "ok" "宙吊りの agent（0）"
+note "--" "宙吊りの private agent: ${orphan} 件"
 
 # 5. path-map が主張するパスが実在するか
 echo "— パス"

@@ -36,7 +36,7 @@ note "--" "走査した SKILL.md: ${scanned} 件 / プレイブック: ${pbs} �
 # 1. 本文にモデル slug が無い
 slug=0
 while IFS= read -r f; do
-  grep -qIE 'grok-[0-9]|gpt-[0-9]+(\.[0-9]+)?-|claude-(opus|sonnet|haiku|fable)-[0-9]+-[a-z]' "$f" \
+  grep -qIE 'grok-[0-9]|gpt-[0-9]+(\.[0-9]+)?-|claude-(opus|sonnet|haiku|fable)(-[0-9]+)+|claude-[0-9]+(-[0-9]+)*-(opus|sonnet|haiku|fable)' "$f" \
     && { slug=$((slug+1)); note "NG" "モデル slug: ${f#$root/}"; }
 done < <(bodies)
 check "モデル slug を含むファイル" "$slug" 0
@@ -98,10 +98,17 @@ check "この環境に無い機械を指す本文" "$ext" 0
 
 # 7b. 本文が名指すスクリプトが実在する
 #     「在るはずのものが無い」は grep でも lint でも出ない。2026-08-29 に 2 回踏んだ。
+#     $(bodies) を素通しで grep の引数展開に渡すと、root にスペースが入るファイル名で
+#     単語分割され、grep が「存在しないファイル」を渡されて黙って 0 件（誤って ok）になる。
+#     1 ファイルずつ read で回し、パスをクオートしたまま grep に渡す。
 miss=0
 while IFS= read -r ref; do
   [ -f "$root/$ref" ] || { miss=$((miss+1)); note "NG" "本文が指すスクリプトが無い: $ref"; }
-done < <(grep -ohE 'scripts/[a-z0-9._/-]+\.(sh|mjs|ts|py)' $(bodies) 2>/dev/null | sort -u)
+done < <(
+  while IFS= read -r f; do
+    grep -ohE 'scripts/[a-z0-9._/-]+\.(sh|mjs|ts|py)' "$f" 2>/dev/null
+  done < <(bodies) | sort -u
+)
 check "実体の無いスクリプト参照" "$miss" 0
 
 # 8. プレイブックとルータの索引が一致している（片方だけ足すと索引が嘘になる）

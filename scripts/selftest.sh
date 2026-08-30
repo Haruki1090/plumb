@@ -43,7 +43,18 @@ for c in git gh; do
     ng "サンドボックスに $c を用意できない（doctor の欠陥ではなく、このテストの前提が壊れている）"
   fi
 done
-out=$(PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_IN_SELFTEST=1 PLUMB_CONFIG=/nonexistent \
+
+# PATH だけ剥いで HOME はそのままだと、持ち主自身の ~/.claude（superpowers 導入済み・
+# 私物 agent あり）が常に真になり、「持っていない人」の分岐を検証できない。
+# 偽 HOME を作り、「README のとおり superpowers を入れ、任意のツールは何も
+# 持っていない人」を模す。marketplace 名は plumb が決め打ちしていないことを
+# 確かめるため、公式（claude-plugins-official）とは違う名前を使う。
+fake_home="$sandbox_root/home"
+mkdir -p "$fake_home/.claude/projects" \
+         "$fake_home/.claude/plugins/cache/obra/superpowers" \
+         "$fake_home/.claude/agents"
+
+out=$(HOME="$fake_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_IN_SELFTEST=1 PLUMB_CONFIG=/nonexistent \
       bash "$root/scripts/doctor.sh" "$root" 2>&1)
 ng_count=$(printf '%s\n' "$out" | grep -c '^  NG ' || true)
 eq "素の環境で doctor の NG" "$ng_count" "0"

@@ -1,5 +1,6 @@
 {
   "name": "plumb",
+  "description": "Marketplace for plumb, a harness for Claude Code that names discipline and routes judgment to another model family.",
   "owner": {
     "name": "Haruki1090"
   },

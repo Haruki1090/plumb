@@ -14,7 +14,7 @@ pstack 原本の Cursor 依存パスを、plumb では以下に置き換える�
 | `.cursor/skills/<handle>-mode/` `.cursor/skills/<handle>/<handle>-mode/SKILL.md` `.cursor/skills/**/*-mode/SKILL.md` `.cursor/skills/verify-<app>/` `.cursor/skills/verify-*/` | `.claude/skills/` 配下の対応パス | 上と同じ置換規則を、ワイルドカード・プレースホルダ入りのパスにも適用する |
 | `.cursor/settings.json` | `.claude/settings.json` | |
 | `.cursor/worktrees/<repo>/...` | **置換しない。`git worktree list` から読む** | 原本の主張が既に「手打ちのパスは取りこぼす」。この環境の worktree 根は複数系統に分かれるので、単一の置換先を書くと嘘になる。下の「注意」参照 |
-| `~/.cursor/plugins/` | `~/.claude/skills/`（本プラグイン自体の設置場所） | pstack はプラグインとして `~/.cursor/plugins/` 配下に置かれていたが、plumb は `~/.claude/skills/plumb/` 配下に置く |
+| `~/.cursor/plugins/` | `~/.claude/skills/`（開発時に手で置く場合の設置場所） | pstack はプラグインとして `~/.cursor/plugins/` 配下に置かれていたが、plumb を手で `~/.claude/skills/plumb/` 配下に置くとそこが実体になる。**marketplace 経由でインストールした場合はここではなく `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/` が実体になる**（本文からスクリプトを呼ぶときは相対パスではなく `${CLAUDE_PLUGIN_ROOT}` を使う） |
 | `~/.cursor/projects/*/` `HOME/.cursor/projects/` | `~/.claude/projects/*/` | ワイルドカード表記のスラッグ一覧パス |
 | `//api2.cursor.sh/automations/webhook/<id>` | 対象外 | Cursor のクラウド Webhook API。plumb はこの機能を持たない |
 | `.cursor/automations/benny/` とその配下（`skills/`, `skills/triage-issue-reports/SKILL.md`, `skills/reproduce-and-fix-issues/SKILL.md`, `skills/setup-benny/SKILL.md`）、`<target-repository>/.cursor/automations/benny/` | 対象外 | benny は移植しない |

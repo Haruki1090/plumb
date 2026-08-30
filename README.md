@@ -58,8 +58,14 @@ To route a role elsewhere, write `~/.claude/plumb/config`:
     pane.driver  = <command>   # terminal multiplexer for long-running work
     stack.tool   = gh-stack    # stacked-PR tooling
 
-Run `scripts/doctor.sh` to see what is wired and what is unset. Unset reads `--`,
+Run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/doctor.sh"` to see what is wired and what is unset. Unset reads `--`,
 never `NG` — plumb does not report a tool you chose not to install as breakage.
+
+## Language
+
+SKILL.md, the 13 playbooks, and the docs/ files are written in Japanese. The 21
+files under principles/ are verbatim English, carried over from pstack (see
+NOTICE).
 
 ## Credits
 

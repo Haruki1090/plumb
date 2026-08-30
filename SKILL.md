@@ -105,11 +105,11 @@ description: plumb の入口。原則を名前で呼べる索引を持ち、非�
 **パスを組み立てない。道具に訊く。**
 
 ```bash
-scripts/plumb-path.sh spec      # 承認された設計
-scripts/plumb-path.sh plan      # 実行中の計画
-scripts/plumb-path.sh history   # 終わった計画
-scripts/plumb-path.sh run       # 台帳・決定ログ・ブリーフ
-scripts/plumb-path.sh spec --mkdir   # 無ければ作る
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/plumb-path.sh" spec      # 承認された設計
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/plumb-path.sh" plan      # 実行中の計画
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/plumb-path.sh" history   # 終わった計画
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/plumb-path.sh" run       # 台帳・決定ログ・ブリーフ
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/plumb-path.sh" spec --mkdir   # 無ければ作る
 ```
 
 既定は `<リポジトリ直下>/.plumb/`。`PLUMB_ROOT` か `.plumb/config` の `root=` で変えられる。

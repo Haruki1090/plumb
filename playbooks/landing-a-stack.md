@@ -5,7 +5,7 @@
 **この型は `stack.tool` が設定されているときの手順。**
 未設定なら、下の「素の gh で落とす」に落ちる。
 
-    scripts/plumb-config.sh stack.tool ""
+    bash "${CLAUDE_PLUGIN_ROOT}/scripts/plumb-config.sh" stack.tool ""
 
 ### 素の gh で落とす（`stack.tool` 未設定）
 

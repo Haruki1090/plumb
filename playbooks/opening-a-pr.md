@@ -93,7 +93,7 @@ s.textContent = 'nextjs-portal, #claude-agent-glow-border { display:none !import
 貼り付け用 Markdown の出力までを引き受ける。**撮影はしない。**
 
 ```bash
-~/.claude/skills/plumb/scripts/host-shots.sh --branch assets/<topic>-<yyyymmdd> \
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/host-shots.sh" --branch assets/<topic>-<yyyymmdd> \
   --pair before-expanded.png after-expanded.png "展開の比較" \
   --file before-full.png "変更前（全体）" --file after-full.png "変更後（全体）"
 ```

@@ -15,7 +15,7 @@
 
 問い合わせ方:
 
-    scripts/plumb-config.sh role.judge ""
+    bash "${CLAUDE_PLUGIN_ROOT}/scripts/plumb-config.sh" role.judge ""
 
 **未設定は異常ではない。**空を返して exit 0 する。
 判定役が未設定でも、**判定役の todo の行は消えない**（**可視スキップ**）。
