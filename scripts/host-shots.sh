@@ -49,7 +49,10 @@ while [ $# -gt 0 ]; do
       FILE_P+=("$2"); shift 2
       if [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; then FILE_L+=("$1"); shift; else FILE_L+=(""); fi
       ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    # Print the header block and stop at the first line that is not a comment. A hard-coded
+    # line range goes stale the moment an option is added, which is how this came to spill
+    # `set -euo pipefail` and die() into --help.
+    -h|--help) awk 'NR>1 && /^#/ {print; next} NR>1 {exit}' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done

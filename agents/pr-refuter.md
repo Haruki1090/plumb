@@ -53,6 +53,12 @@ REFUTED | NOT REFUTED
 ## If NOT REFUTED: what uncertainty is left
 <what you could not confirm yourself. Empty here means the caller reads it as CONFIRMED;
  anything left means the caller reads it as PLAUSIBLE>
+
+## Other things found along the way
+<anything you turned up while checking this finding that is not this finding. Write "none" when
+ there is none. Refutation walks code no axis was aimed at, so it produces by-products - one real
+ run surfaced an alert log line with no monitoring attached to it. Leave this section out and the
+ by-product is thrown away>
 ```
 
 ## How to return it (required)

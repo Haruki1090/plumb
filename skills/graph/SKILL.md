@@ -142,9 +142,9 @@ Once the graph layer is designed, do not write the inside of each node yourself.
 | What the node does | Delegate to |
 |---|---|
 | Implementation | **plumb's `playbooks/writing-a-plan.md`** -> **`playbooks/running-a-plan.md`** (a small node can be implemented directly) |
-| Independent verification | **REQUIRED SUB-SKILL: plumb's `playbooks/being-reviewed.md`** (the section for the side asking) |
-| Send-back loop | SDD's fix loop (5-round cap, with an arbitration flow) |
-| Which model goes on which node | SDD's Model Selection |
+| Independent verification | **plumb's `playbooks/being-reviewed.md`** (the section for the side asking) |
+| Send-back loop | **plumb's `playbooks/running-a-plan.md`**, "Cap the rework rounds" (rounds one and two to the same role, round three to a different one, then the cap, then you rule) |
+| Which role goes on which node | **`docs/role-map.md`**. Do not write a model name into the graph definition |
 | Closing out the branch | **plumb's `playbooks/closing-a-branch.md`** |
 
 Four principles about verification survive the delegation. Write them into the "Verification" field of the graph definition and hand them over.

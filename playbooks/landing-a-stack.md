@@ -77,8 +77,10 @@ Conflicts and thread responses both demand a push, and a push makes the checks r
 | It fails in the diff's own code | Real | Commit the fix |
 
 Whether the base is stale is checked by **handing over two commits**.
-**Do not hard-code `origin` or `main`.** (plumb's own repository has the remote as `upstream` and the
-branch as `master`. A hard-coded name falls over at `git fetch`.)
+**Do not hard-code `origin` or `main`.** Neither is guaranteed: a fork carries `upstream` beside
+`origin`, and a repository older than the rename still calls its default branch `master`. Resolve
+it — `git rev-parse --abbrev-ref "$(git remote | head -1)/HEAD"` — because a hard-coded name does
+not fail at the name, it fails later at `git fetch`, with an error about the wrong thing.
 
 **Do not go through a remote's *name* either.** In a repository with several remotes, the ordering of
 `git remote` puts a fork or an unrelated remote first. **Hand over the URL directly.**

@@ -65,8 +65,13 @@ picks it up. Switch branches or stash and the surroundings move too, and there i
 compare.
 
 ```bash
-git checkout origin/develop -- <touched-file>   # shoot
-git checkout HEAD -- <touched-file>             # put it back once you have the shot
+# Resolve the base. Do not hard-code a remote or a branch name (`playbooks/landing-a-stack.md`):
+# a repository whose remote is not origin, or whose default branch is not main, dies on the spot.
+base=$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null) \
+  || base=$(git rev-parse --abbrev-ref "$(git remote | head -1)/HEAD")
+
+git checkout "$(git merge-base HEAD "$base")" -- <touched-file>   # shoot
+git checkout HEAD -- <touched-file>                               # put it back after the shot
 ```
 
 Confirm with `git status` that **nothing was left un-restored** before you go on.
