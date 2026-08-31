@@ -49,7 +49,7 @@ What stays in the terminal is the decision sentence and the link. **Do not write
 | Reporting progress or completion | a few lines in the terminal |
 | Work with one path | build it. Do not ask |
 | Nothing but "is this OK" | proceed without asking. If the action needs approval, confirm in one sentence |
-| Effectively one option (the rest are plainly worse) | do not dress it as a choice. **Report that, and proceed** |
+| Effectively one option (the rest are plainly worse) | do not dress it as a choice. **Report that, and proceed** — unless what you are reporting is a shape, which still passes the gate in `playbooks/shaping-the-work.md` |
 | An investigation report that is long but has no branch | land it as a standalone document (a single HTML report). No AskUserQuestion |
 
 ## Once the answer comes back

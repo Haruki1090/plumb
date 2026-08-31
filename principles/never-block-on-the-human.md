@@ -37,7 +37,10 @@ If it does not, hand it over before you go.
 - **Do not stop to report progress.** "Shall I carry on?" has the shape of a question but
   carries no branch
 - **When you do stop, stop once, for everything at once.** Collect a nod per section and
-  the round trips pile up, one per section
+  the round trips pile up, one per section. **A question that genuinely cannot be asked until
+  another is answered is not a second stop** — it could not have gone in the first one. That
+  ordering is `playbooks/shaping-the-work.md`'s; what this principle forbids is stopping twice
+  on questions that could have gone together
 - **While you wait, keep doing the work that does not depend on that branch**
 - A problem you notice gets **recorded and fixed on the next pass**, not reported and
   waited on where you found it
