@@ -1,47 +1,54 @@
-# リファクタリング
+# Refactoring
 
-**契約を持つのはあなた。構造は変わる。振る舞いは変わらない。**
+**You hold the contract. The structure changes. The behavior does not.**
 
-「リファクタ」「リネーム」「抽出」「インライン化」「重複排除」「この module を移す」「この辺を整える」。
-振る舞いを足す `playbooks/shaping-the-work.md` の先とも、振る舞いを直すデバッグとも別。
+"Refactor this", "rename it", "extract it", "inline it", "kill the duplication", "move this
+module", "tidy this area up". Distinct from `playbooks/shaping-the-work.md` and what follows
+it, which adds behavior, and from debugging, which repairs behavior.
 
-**振る舞いの変更を密輸したリファクタは、安全網を失う。**
-掃除の途中で本物のバグや足りない機能が見つかったら、切り出して、
-**まず固定した契約に対する構造変更だけを出す。**設計をやり直すのは構わないが、
-それは名前を変えて `playbooks/shaping-the-work.md` へ回す。
+**A refactor that smuggles in a behavior change loses its safety net.** When the cleanup turns
+up a real bug or a missing feature, cut it out and **ship the structural change against a
+frozen contract first**. Redesigning is fine, but it goes under a different name to
+`playbooks/shaping-the-work.md`.
 
-1. **先に振る舞いの契約を固定する。**構造を動かす前に、現在の振る舞いを捉える
-   characterization テスト、スナップショット、または等価性の道具を書く。
-   これが「リファクタした」を検証可能な主張にする（**principle-prove-it-works**）。
-   **その領域に被覆が無いなら、構造に触る前に固定を書く。型検査と lint は固定ではない。**
-2. コードに欠けている構造を名指す（**principle-model-the-domain**）。
-   散らばった真偽値ではなく状態機械、広がった分岐ではなく表かレジストリ、
-   繰り返される形の仮定ではなく型。**形が既に明快で局所的なら、退屈なコードのまま残す。**
-   作り直しは分岐か不正状態を消すものであって、間接を足すものではない。
-3. 目標の形を名指す。**今日ゼロから作るなら** module 配置・型・呼び出しグラフはどうあるべきか
-   （**principle-foundational-thinking**、**principle-redesign-from-first-principles**）。
-4. 足す前に引く（**principle-subtract-before-you-add**）。死んだ重さを消し、
-   呼び出し元が1つの wrapper を畳み、冗長な検証を落とし、孤児参照を消してから新しい形を入れる。
-   目標の形に届く最小の変更が出る（**principle-laziness-protocol**）。
-5. 振る舞いを保つ小さな歩幅で動かし、各歩で固定を緑に保つ。
-   API を作り直すなら、**呼び出し元の移行と旧 API の削除を同じ波でやる**
-   （**principle-migrate-callers-then-delete-legacy-apis**）。互換 shim も新旧並存も作らない。
-   **原則側は「消す条件と担当を書けるなら中間の層を残してよい」と例外を持つが、
-   この型では持たない**——呼び出し元を全部自分で数え切れる範囲を作り直しているので、
-   残す理由が無い。外の利用者が旧 API に依存しているなら、それは作り直しではなく移行。
-   **リネームは必ず実ファイルに当てて突き合わせる。**文字列・散文・後方参照の中の使用は静かに漏れる。
-   機械的な編集は実装役に狭い範囲で渡し、差分は本線がレビューする。
-6. 「コンパイルが通った」ではなく実物で振る舞いが変わっていないことを証明する
-   （**principle-prove-it-works**）。大きな作り直しなら等価性検査を走らせる。
-   新旧の出力を差分するスクリプト、記録した基準の再生。
-   **検証は自分で持つ。委譲先の「大丈夫そうです」を信じない。**
-7. その変更が席に見合うか確かめる。成功の尺度は**読み手の負荷が減ったこと**
-   （**principle-minimize-reader-load**）。問いと答えの間の層が減ったか、隠れ状態が減ったか、
-   2人目の消費者がいない間接が減ったか。**どこも下がっていないなら取り消す。**
-8. 物語になる小さな順序付きコミットに rebase する。引き算、作り直し、後片付けの順。
-   1回の revert が1スライスを戻せる形にする（**principle-sequence-verifiable-units**）。
-   `playbooks/closing-a-branch.md` で締める。**PR を出すと決まったら**
-   `playbooks/opening-a-pr.md` へ。
+1. **Pin the behavioral contract first.** Before you move any structure, write the
+   characterization tests, snapshots, or equivalence tooling that capture today's behavior.
+   This is what turns "I refactored it" into a verifiable claim
+   (**principle-prove-it-works**). **If the area has no coverage, write the pin before you
+   touch the structure. Type checks and lint are not a pin.**
+2. Name the structure the code is missing (**principle-model-the-domain**): a state machine
+   instead of scattered booleans, a table or registry instead of a spreading branch, a type
+   instead of a repeated shape assumption. **If the shape is already clear and local, leave
+   the boring code alone.** A rebuild removes a branch or an invalid state; it does not add
+   indirection.
+3. Name the target shape. **If you were building it from zero today**, what would the module
+   layout, the types and the call graph be (**principle-foundational-thinking**,
+   **principle-redesign-from-first-principles**)?
+4. Subtract before you add (**principle-subtract-before-you-add**). Delete the dead weight,
+   collapse the wrapper with one caller, drop the redundant validation, remove the orphaned
+   references — then put the new shape in. What falls out is the smallest change that reaches
+   the target shape (**principle-laziness-protocol**).
+5. Move in small behavior-preserving steps, keeping the pin green at every one. When you
+   rebuild an API, **migrate the callers and delete the old API in the same wave**
+   (**principle-migrate-callers-then-delete-legacy-apis**). No compatibility shim, no old and
+   new living side by side. **The principle carries an exception — you may keep an
+   intermediate layer if you can write down who removes it and when — but this playbook does
+   not**: you are rebuilding inside a radius where you can count every caller yourself, so
+   there is no reason to keep one. If outside consumers depend on the old API, that is a
+   migration, not a rebuild. **Always check a rename against the real files.** Uses inside
+   strings, prose and back-references go missing quietly. Hand mechanical edits to the
+   implementer role with a narrow scope; the main session reviews the diff.
+6. Prove the behavior did not change against the real thing, not against "it compiled"
+   (**principle-prove-it-works**). For a large rebuild, run an equivalence check: a script
+   that diffs old and new output, a replay of a recorded baseline. **Own the verification
+   yourself. Do not take "looks fine" from whoever you delegated to.**
+7. Check that the change earns its seat. The measure of success is **less load on the reader**
+   (**principle-minimize-reader-load**): fewer layers between question and answer, less hidden
+   state, less indirection with no second consumer. **If nothing went down, revert it.**
+8. Rebase into small ordered commits that tell a story: subtraction, rebuild, cleanup. Shape
+   them so one revert takes back one slice (**principle-sequence-verifiable-units**). Close it
+   out with `playbooks/closing-a-branch.md`. **Once a PR is the decision**, go to
+   `playbooks/opening-a-pr.md`.
 
-**返すもの:** 変わった構造、固定した契約、等価性の証明、読み手負荷の差、
-出したものと取り消したもの。新しい振る舞いは無い。
+**What you return:** the structure that changed, the contract you pinned, the equivalence
+proof, the difference in reader load, what you shipped and what you reverted. No new behavior.

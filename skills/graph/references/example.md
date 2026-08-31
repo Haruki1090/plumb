@@ -1,62 +1,62 @@
-# 実例：モック 125 差分の一括更新
+# A worked example: 125 mock diffs in one pass
 
-実際にこの手順を回したときの記録。数字と判断を具体的に残す。手順のどこで何が起きるかの感触をつかむために読む。
+A record of actually running these steps, with the numbers and the calls left concrete. Read it to get a feel for what happens where.
 
-## 状況
+## The situation
 
-- HTML/CSS/JS の素のモック 15 画面（顧客12 + 社内3）、共有アセット4ファイル
-- 設計書（正本）26 本と突き合わせた差分が **125 件**、うち P0 が 14 件
-- 未決の裁定事項が **11 件**
-- 差分は Notion のデータベースに整理済み。**全行に「根拠 = 設計書の項番」が入っていた**
+- 15 screens of plain HTML/CSS/JS mocks (12 customer-facing + 3 internal), 4 shared asset files
+- **125 diffs** against the 26 design docs that are the source of truth, 14 of them P0
+- **11 open questions** awaiting a ruling
+- The diffs were already organized in a Notion database. **Every row carried its grounds: the numbered clause of the design doc**
 
-## グラフ化の判定
+## Graph or loop
 
-該当シグナル: 専門性の分化（実装と規約チェックは別の頭）、並列処理の需要（125件）、監査可能な制御フロー（設計書との整合を後から説明する必要）、検証器の過負荷（実装者が自分で規約適合を判断していた）。**4つ該当 → グラフ化。**
+Signals that hold: split specialization (implementing and checking conventions are different heads), demand for parallelism (125 items), auditable control flow (the alignment with the design docs has to be explainable later), an overloaded verifier (the implementer was judging their own conformance). **4 hold -> draw the graph.**
 
-## 手順2：ノードの束ね直しで分かったこと
+## Step 2: what regrouping the nodes turned up
 
-素朴には「15画面 = 15レーン」。しかし根拠の項番で束ね直すと違った。
+Naively, "15 screens = 15 lanes". Regrouping by the clause each diff cited said otherwise.
 
-- **課金クラスタ** — A9-01/02/03・A5-01・C-08・D-03・D-04 が全部 `08-プランシート設計.md` §1.2・§5 という単一の正本を参照していた。別レーンで直すと数字が食い違う。**1ノード**
-- **F-069 クラスタ** — A6-08・A7-06・A8-01〜05・D-06 が `15-A8 §5` の1契約。**1ノード**
-- **「デモ要素の混在」** — X-02・A5-12・A8-08 と3画面に別項目で立っていたが、原因は共有の `mock.js` の1箇所。**1ノード**
+- **Billing cluster** — A9-01/02/03, A5-01, C-08, D-03, D-04 all referenced one source of truth, `08-plan-sheet-design.md` §1.2 and §5. Fixed in separate lanes, the numbers disagree. **One node**
+- **F-069 cluster** — A6-08, A7-06, A8-01 through 05, D-06 are one contract in `15-A8 §5`. **One node**
+- **"Demo elements mixed in"** — filed as three separate items across three screens (X-02, A5-12, A8-08), but the cause is one place in the shared `mock.js`. **One node**
 
-結果、15レーンではなく **9〜10レーン**が実際の並列度だった。
+The real parallelism turned out to be **9-10 lanes**, not 15.
 
-## 手順3：barrier 分析（一番効いた）
+## Step 3: barrier analysis (this paid the most)
 
-全ノードの「触るファイル」を書き出したところ、4ファイルが複数ノードに現れた。
+Writing out "files it touches" for every node showed 4 files appearing under more than one node.
 
-| ファイル | 触るノード |
+| File | Nodes that touch it |
 |---|---|
-| `mock-data.js` | D-01〜D-08 の全件 ＋ 課金クラスタ |
-| `app.css` / `tokens.css` | X-01・X-03・X-04・X-05・C-06 |
-| `mock.js` | X-02・A5-12・A8-08 |
+| `mock-data.js` | all of D-01 through D-08 + the billing cluster |
+| `app.css` / `tokens.css` | X-01, X-03, X-04, X-05, C-06 |
+| `mock.js` | X-02, A5-12, A8-08 |
 
-これを並列レーンに散らしていたら、ほぼ全レーンが同じ4ファイルに書き込んで衝突していた。**13ノードを barrier フェーズとして先に直列で処理する**構成に変えた。
+Scattered across parallel lanes, nearly every lane would have been writing to the same 4 files and colliding. The structure changed to **13 nodes handled serially first, as the barrier phase**.
 
-## 手順7：Human Gate を割って分かったこと
+## Step 7: what splitting the Human Gate turned up
 
-ドキュメントには「§4 要裁定リストを先に閉じること」と書いてあった。素直に読むと11件全部の判断待ちになる。
+The documentation said "close the §4 rulings list first". Read plainly, that means waiting on all 11 decisions.
 
-未決11件 × 最初のバッチ（P0 是正）の構成差分を突き合わせたところ、**最初のバッチを本当に止めているのは1件だけ**だった（顧客テンプレート出力を今回のリリースに含めるか）。残り10件は後続バッチのゲート。
+Crossing the 11 open questions against the composition diffs in the first batch (the P0 corrections) showed that **exactly one of them genuinely blocked that batch**: whether customer template export was in this release. The other 10 were gates on later batches.
 
-この1回の突き合わせで、着手が「11件の裁定が揃うまで待ち」から「1件決めれば今日から」に変わった。
+That one cross-check turned the start from "waiting until all 11 rulings are in" into "decide one and start today".
 
-## 検証がほぼタダになった理由（現在は plumb の `playbooks/being-reviewed.md` に委譲する部分）
+## Why verification came nearly free (the part now delegated to plumb's `playbooks/being-reviewed.md`)
 
-Notion の各行に既に `根拠`（設計書の項番）が入っていたので、検証ノードの入力が最初から揃っていた。
+Every Notion row already carried its `grounds` — the numbered clause of the design doc — so the verification node's input was assembled from the start.
 
 ```
-入力: 変更後の HTML + 根拠の項番
-問い: この変更は当該項番の要求を満たすか。否定を試みよ。
+Input: the HTML after the change + the numbered clause it stands on
+Ask: does this change satisfy what that clause requires? Try to refute it.
 ```
 
-加えて横断ルール（禁止語 / 精度表記の規約 / エラーはインライン・トーストは成功系のみ）は、レーンごとに解釈させると必ずぶれるので、**全レーンに同じ検証ノードを当てる**構成にした。
+On top of that, the cross-cutting rules (banned words, the convention for writing precision, errors inline and toasts for success only) drift whenever they are interpreted per lane, so the structure put **the same verification node across every lane**.
 
-## 学び
+## What it taught
 
-1. **既存のドキュメントが既にグラフだったことが多い。** 新しい台帳を作るのではなく、既にあるものの構造を読む。この件では「全行に根拠が入っている」ことが、ノード→正本のエッジが既に張られていることを意味していた
-2. **リストの並び（画面別・Issue別）は、たいていグラフのノードとしては間違っている。** 束ね直しに時間をかける価値がある
-3. **barrier 分析と Human Gate の分割が、投下時間あたりの効果が突出して大きい。** どちらも15分程度で終わる
-4. **件数の数え方はズレる。** ドキュメントの集計は P0=12 だったが、行数で数えると14だった。ノード数は自分で数え直す
+1. **The documents that already exist are often already the graph.** Read the structure of what is there instead of creating a new ledger. Here, "every row carries its grounds" meant the node-to-source-of-truth edges were already drawn
+2. **The order of a list — by screen, by issue — is usually the wrong set of graph nodes.** Regrouping is worth the time
+3. **Barrier analysis and splitting the Human Gate return far more per hour spent than anything else.** Both take about 15 minutes
+4. **Counts disagree.** The document's tally said P0 = 12; counting rows gave 14. Count the nodes yourself

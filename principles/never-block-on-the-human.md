@@ -1,41 +1,47 @@
 ---
 name: principle-never-block-on-the-human
 origin: plumb
-description: "「これをやっていいですか」と訊きたくなったときに適用する。取り消せる作業は決めて進め、結果を差分で見せて直してもらう。止まってよいのは、取り消しが効かないものと、何を作るかの決定だけ。"
+description: "Push reversible work forward, then show the result as a diff and let the owner correct it: stop only for what cannot be undone and for the decision of what to build. Use when you catch yourself asking \"is it OK if I make this change\", \"shall I keep going\", or \"how should I implement this\" in the middle of a task."
 ---
 
 # Never Block on the Human
 
-**持ち主は非同期で見ている。**だから往復1回の値段は、こちらの数分ではなく**持ち主の注意**。
-**「念のため訊く」は安全側ではない。**その注意を使い切って、何も生まない。
+**The owner is watching asynchronously.** So the price of one round trip is not your few
+minutes; it is **the owner's attention**. **"Asking just to be safe" is not the safe
+side.** It spends that attention and produces nothing.
 
-**なぜ:** 訊くほうが常に楽に見える。外した判断は自分の失点になるが、
-訊いて待った時間は誰の失点にもならないので、**費用が自分に返ってこない側へ流れる。**
-だから「自信が無いから訊く」で線を引くと、線はどこまでも手前に寄る。
-**引くべき線は自信ではなく、取り消しの値段。**
+**Why this is hard to keep.** Asking always looks easier. A call you got wrong is charged
+to you, while time spent waiting on an answer is charged to nobody, so **the cost flows
+toward the side that never comes back to you.** Draw the line at "ask whenever unsure" and
+the line keeps creeping earlier. **The line to draw is not confidence. It is the price of
+undoing.**
 
-## 線
+## The line
 
-**「何を作るか」は持ち主のもの。「どう作るか」は止めない。**
+**"What to build" belongs to the owner. "How to build it" does not stop.**
 
-| | 中身 | どうするか |
+| | What it covers | What to do |
 |---|---|---|
-| **止まる** | 何を作るか。どの案を採るか。範囲。既存の何を壊してよいか | 渡して、答えを待つ |
-| **止まる** | 取り消しの効かない操作。強制的な上書き、本番のデータ、外部への送信、公開 | 実行前に確認を取る |
-| **止まらない** | ファイルの割り方。名前。テストの書き方。順序。使う API。刻み方 | 決めて進み、差分で見せる |
+| **Stop** | What to build. Which option to take. The scope. What existing behavior may break | Hand it over and wait for the answer |
+| **Stop** | Operations that cannot be undone. Force overwrites, production data, sending to the outside, publishing | Confirm before running it |
+| **Do not stop** | How files are split. Names. How tests are written. Order. Which API to use. How to slice the commits | Decide, move, show it as a diff |
 
-判定は一つ——**外したとき、差分1本で戻せるか。**
-戻せるなら進む。戻せないなら、進む前に渡す。
+One test decides it: **if you got it wrong, does one diff take it back?** If it does, go.
+If it does not, hand it over before you go.
 
-## 止まらない側の作法
+## How to work on the do-not-stop side
 
-- **決めて、決めたことを残して、進む。**曖昧さも、衝突も、計画の欠陥も同じ。
-  **問いを立てて止まった夜は、何も戻せない**
-- **進捗の報告では止まらない。**「このまま続けていいですか」は問いの形をしているだけで、
-  分岐を持っていない
-- **止まると決めたなら、まとめて一度で止まる。**節ごとに頷きを取ると、往復が回数分積む
-- **待っている間も、その分岐に依存しない作業は進める**
-- 気づいた問題は、そこで報告して待つのではなく**記録して、次の周回で直す**
+- **Decide, record what you decided, and move.** The same goes for ambiguity, for a
+  conflict, for a flaw in the plan. **A night lost to stopping on a question cannot be
+  recovered**
+- **Do not stop to report progress.** "Shall I carry on?" has the shape of a question but
+  carries no branch
+- **When you do stop, stop once, for everything at once.** Collect a nod per section and
+  the round trips pile up, one per section
+- **While you wait, keep doing the work that does not depend on that branch**
+- A problem you notice gets **recorded and fixed on the next pass**, not reported and
+  waited on where you found it
 
-**渡し方**——分岐を持つ判断を持ち主に渡すときの様式は `skills/decision-brief`。
-**どこで止まるかの線をこの原則から引き直すのは `playbooks/shaping-the-work.md`。**
+**How to hand it over** — the form for handing a branching decision to the owner is
+`skills/decision-brief`. **Redrawing the stop line from this principle is
+`playbooks/shaping-the-work.md`.**

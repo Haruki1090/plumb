@@ -1,70 +1,78 @@
-# 隔離した作業場を作る
+# Setting up an isolated workspace
 
-**作る側の型。**畳む側は `playbooks/worktree-cleanup.md`。
-**同じ操作の正本を二つ作らないため、消す手順はここに書かない。**
+**This is the playbook for creating one.** Tearing one down is
+`playbooks/worktree-cleanup.md`.
+**The removal steps are not written here, so that one operation does not get two sources of truth.**
 
-隔離が要るのは、**同じブランチに二つ以上の書き手を置かないため**
-（**principle-separate-before-serializing-shared-state**）。
-一人で順にやる仕事に、作業場を増やす理由は無い。
+You isolate in order to **keep two or more writers off the same branch**
+(**principle-separate-before-serializing-shared-state**).
+Work you do alone, in order, has no reason to grow another workspace.
 
-## 1. すでに隔離の中にいないか、先に見る
+## 1. Check first whether you are already inside one
 
-**作る前に、いまいる場所を判定する。**二重に作った作業場は、片方が誰にも見られないまま残る。
+**Decide where you are before you create anything.** A workspace created twice leaves one copy
+that nobody ever looks at again.
 
     git rev-parse --git-dir --git-common-dir
     git rev-parse --show-superproject-working-tree 2>/dev/null
 
-二つのパスが違えば隔離の中。**ただし submodule の中でも同じように違って見える。**
-三行目が何かを返したらそれは submodule で、隔離ではない。ここを飛ばすと、
-「もう worktree にいる」と誤判定して本体を汚す。
+Two different paths means you are inside an isolated workspace. **But a submodule looks exactly
+the same.** If the third line returns anything, that is a submodule, not isolation. Skip this
+check and you misjudge "I am already in a worktree" and dirty the main tree.
 
-隔離の中にいたなら、**作らずに手順 3 へ**。いま何というブランチのどこにいるかを報告する。
+If you were already inside one, **create nothing and go to step 3.** Report which branch you
+are on and where.
 
-## 2. 置き場を自分で決めない
+## 2. Do not pick the location yourself
 
-**ハーネスが作業場を作る道具を持っているなら、それを使う。**
-道具は置き場・ブランチ・後片付けまでを一つの台帳で持っている。
-**素の `git worktree add` で横から作ると、道具から見えない作業場ができる**——
-一覧にも出ず、掃除の対象にもならず、ディスクだけが減る。
+**If the harness has a tool for creating workspaces, use it.** The tool holds the location, the
+branch and the teardown in one ledger.
+**Create one on the side with a bare `git worktree add` and you get a workspace the tool cannot
+see** — it is in no listing, no cleanup pass touches it, and only the disk notices.
 
-道具が無いときだけ、手で作る。そのときも:
+Create one by hand only when there is no tool. Even then:
 
-- **根は複数系統ある。**どれが正しいかは `docs/path-map.md` が正本。
-  **ホーム直下に作られるとは限らない**（Claude Code の作業場はリポジトリの中に作られる）
-- **リポジトリの中に置くなら、追跡されない場所であることを確かめてから作る。**
-  確かめずに作ると、作業場の中身が丸ごとリポジトリに入る
+- **There is more than one family of roots.** `docs/path-map.md` is the source of truth for
+  which one is right. **It is not necessarily created directly under home** (Claude Code
+  creates its workspaces inside the repository)
+- **If it goes inside the repository, confirm the location is untracked before you create it.**
+  Create it without checking and the entire contents of the workspace land in the repository
 
-        git check-ignore -q <置き場> && echo ignored
+        git check-ignore -q <location> && echo ignored
 
-  ignore されていなければ、**先に `.gitignore` へ足してコミットしてから**作る
-- **一覧は必ず `git worktree list` から読む。**パスを手で組み立てない
-  （**principle-encode-lessons-in-structure**）
+  If it is not ignored, **add it to `.gitignore` and commit that first**, then create it
+- **Always read the listing from `git worktree list`.** Do not assemble paths by hand
+  (**principle-encode-lessons-in-structure**)
 
-権限で作成が撃ち落とされたら、**そのまま本体で作業する**と言って続ける。
-黙って隔離無しに落ちない。
+If permissions block the creation, say **you are working in the main tree instead** and carry
+on. Do not fall back to no isolation silently.
 
-## 3. 付いてこないものを、入れ直す
+## 3. Put back what does not follow you
 
-**新しい作業場には、追跡されていないものが一つも無い。**
-`playbooks/worktree-cleanup.md` が「ignore されたファイルは Git から戻らない」と
-言っているのは、**まさにここで複製されないから**。同じ事実の裏側を見ている。
+**A fresh workspace contains nothing that is untracked.**
+When `playbooks/worktree-cleanup.md` says "Git cannot bring an ignored file back", it is
+because **this is exactly where they fail to get copied**. Both are looking at the same fact
+from opposite sides.
 
-だから作った直後に落ちているのは、たいてい次のもの:
+So what is usually missing right after you create one:
 
-- **依存物**（ロックファイルが本体と同じなら、入れ直すより本体から借りるほうが速い）
-- **環境ファイル**——`.env` の類。無いままだと起動系が全部落ちる
-- **ローカルの DB・生成物・キャッシュ**。コンテナを立てる検査は、
-  この不在のせいで本体と同じ結果にならない
+- **Dependencies** (if the lockfile matches the main tree, borrowing from it is faster than
+  reinstalling)
+- **Environment files** — `.env` and its kind. Without them everything that starts up fails
+- **Local DBs, generated files, caches.** A check that stands a container up will not produce
+  the same result as the main tree because of what is missing here
 
-**コンテナ起動を伴う検査は、隔離の中では本体と一致しない。**
-一致しないと分かっている検査を作業場でやらない——本体でやる。
+**Checks that involve starting a container do not agree with the main tree inside an isolated
+workspace.** Do not run a check you already know will disagree in the workspace — run it in the
+main tree.
 
-## 4. 基準線を緑にしてから始める
+## 4. Get the baseline green before you start
 
-**変える前に、いまの検査結果を取る。**これを取らないと、あとで出た赤が
-自分のせいなのか元からなのか分からなくなる（**principle-sequence-verifiable-units**）。
+**Take the current check results before you change anything.** Without them, you cannot tell
+later whether the red is yours or was already there
+(**principle-sequence-verifiable-units**).
 
-赤かったら**手を付ける前に報告する。**進むかどうかは持ち主が決める。
+If it is red, **report it before you touch anything.** Whether to proceed is the owner's call.
 
-**返すもの:** 作業場のパスとブランチ名、**どちらの経路で作ったか**（道具か手か）、
-入れ直したもの、基準線の検査結果（件数と失敗数）。
+**What you return:** the workspace path and branch name, **which route created it** (tool or by
+hand), what you put back, and the baseline check results (how many ran, how many failed).

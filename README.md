@@ -91,9 +91,13 @@ covers the same ground.
 
 ## Language
 
-plumb is written in Japanese: SKILL.md, the 22 playbooks, the 22 principles and
-the docs/ files. Only this README is English. The principle *names* stay English
-because the playbooks cite them by name (`principle-prove-it-works`).
+plumb is written in English throughout — SKILL.md, the 22 playbooks, the 22
+principles, the bundled skills and agents, the scripts and the docs/ files.
+
+It was written in Japanese through v0.5.0 and rewritten in English for release.
+The Japanese original is frozen at the tag `v0.5.0-ja` and is not maintained:
+
+    git show v0.5.0-ja:playbooks/fixing-a-bug.md
 
 ## Credits
 

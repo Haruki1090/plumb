@@ -1,24 +1,31 @@
-# 成果物からの検屍
+# Artifact forensics
 
-**成果物から診断を持つのはあなた。読み込み、形を変え、原因まで絞り、ソースに帰す。**
+**You hold the diagnosis that comes out of the artifact. Load it, reshape it, narrow it to a
+cause, and take it back to the source.**
 
-`.cpuprofile`、`Trace-*.json.gz`、`Spindump.txt`、`.heapsnapshot` が「なぜ遅い / 固まる /
-漏れる / 落ちる」と一緒に渡されたとき。
+When a `.cpuprofile`, a `Trace-*.json.gz`, a `Spindump.txt` or a `.heapsnapshot` arrives
+alongside "why is it slow / hanging / leaking / crashing".
 
-**「生きたプロセスの検屍」との違いは、走らせるかどうか。**ここでは捕獲が既に済んでいる。
-成果物は固定されたデータセットなので、読む。取り直さない。
+**What separates this from "Live-process forensics" is whether you run anything.** Here the
+capture is already done. The artifact is a fixed data set, so you read it. You do not recapture
+it.
 
-1. 形式を見分けて、正しい道具で開く。**大きな成果物の解析は探索役に投げ**、
-   本線には削った結果だけを置く（**principle-guard-the-context-window**）。
-2. 生の成果物を、問い合わせられる形に変換する。trace やヒープを sqlite に流し込み、
-   サンプル・フレーム・ノードを1行にする。**読む前に問い合わせられる形まで持っていく。**
-3. 原因まで絞る。時間を最も抱えているフレームを引き、呼び出し木を辿ってホットパスへ。
-   漏れなら保持鎖を GC ルートまで。spindump なら CPU を掴んだまま／待たされているスレッドと待機理由。
-4. ソースに帰す。成果物自身のシンボルでファイル・シンボル・行へ。
-   **シンボルが解決できないフレームは、まだ診断ではない。**
-   解決するか、この成果物にはシンボルが載っていないと素直に書く。
-5. 対になる捕獲があれば突き合わせる。前後の成果物を差分すれば、
-   帰属が本物の退行か背景の雑音かが分かる。片方しか無いなら
-   **「この成果物が支持する最も強い仮説」と明記する。確定した原因と書かない。**
+1. Identify the format and open it with the right tool. **Hand analysis of a large artifact to
+   the explorer role** and keep only the cut-down result in the main session
+   (**principle-guard-the-context-window**).
+2. Convert the raw artifact into something you can query. Load the trace or the heap into
+   sqlite so that a sample, a frame or a node is one row. **Get it queryable before you start
+   reading.**
+3. Narrow to a cause. Pull the frames holding the most time and walk the call tree to the hot
+   path. For a leak, follow the retention chain to a GC root. For a spindump, the threads
+   holding the CPU or being made to wait, and what they are waiting on.
+4. Take it back to the source: file, symbol and line, using the artifact's own symbols.
+   **A frame whose symbol you cannot resolve is not yet a diagnosis.** Resolve it, or write
+   plainly that this artifact does not carry symbols for it.
+5. Cross-check against a paired capture if one exists. Diffing a before-and-after artifact
+   tells you whether the attribution is a real regression or background noise. With only one
+   side, **say explicitly that this is "the strongest hypothesis this artifact supports". Do
+   not write it up as a confirmed cause.**
 
-**返すもの:** 成果物と形式、削った結果、ソース上の位置、成果物のパス、対の捕獲で確認できたか。
+**What you return:** the artifact and its format, the cut-down result, the location in the
+source, the artifact paths, and whether a paired capture confirmed it.

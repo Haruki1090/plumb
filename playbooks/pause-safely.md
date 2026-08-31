@@ -1,33 +1,39 @@
-# 安全に中断する
+# Pause safely
 
-**きれいな停止を持つのはあなた。**冷えた状態から再開できるチェックポイントを残す。
+**You hold the clean stop.** Leave a checkpoint that can be resumed from cold.
 
-「安全に止めて」「オフラインになる」「一旦落とす」、そして**文脈が圧縮されそうなとき**。
+"Stop safely." "I'm going offline." "Shut it down for now." And **when the context is about to be
+compacted.**
 
-**発火するのは 2 つだけ。**
+**Only two things fire this.**
 
-- **持ち主の明示的な指示。**「そのまま進めて」「寝るけど続けて」「止まらないで」は
-  中断ではない。続ける、という意味。
-- **文脈の圧縮が近いと自分で判断したとき。**これは指示を待たない。
-  待っていると、待った結果が要約に飲まれる。**メモを書いてから続ける**のであって、
-  **仕事を止めるわけではない**（手順 1〜3 は飛ばし、手順 4 だけを実行する）。
+- **An explicit instruction from the owner.** "Carry on as you were", "I'm going to bed, keep going",
+  "don't stop" are not a pause. They mean continue.
+- **When you judge for yourself that compaction is close.** This one does not wait for an
+  instruction. Wait, and what you waited for gets swallowed by the summary. **You write the note and
+  then continue**; **you do not stop the work** (skip steps 1 to 3 and run only step 4).
 
-1. 安全な境界で止まる。今の原子的な一歩を終えるか、そこから抜ける。
-   **壊れていると分かっている状態の途中で止めない。**新しいことを始めない。
+1. Stop at a safe boundary. Finish the atomic step you are on, or back out of it.
+   **Do not stop in the middle of a state you know is broken.** Do not start anything new.
 
-   **走っているものは、畳む前に回収する。**
-   完了を待ち、出力をファイルに落とし、**再開に要る ID（ペイン ID、ブランチ、PR 番号）を
-   手順 4 のメモに書いてから**閉じる。閉じてから気付いても、計算は戻らない。
-   **閉じてよいのは自分が作ったペインだけ。**ペインを持つ道具には所有権の規則がある。
-   他の作業のペインは、走っていても触らない。
-2. **中断のために不可逆な線を越えない。**既に出していないなら、PR も push もしない。
-3. 作業を永続化する。未コミットの編集を `wip:` の1コミットとして現在のブランチに載せ、
-   何も失わせない。ツリーが壊れているなら、コミット本文に1行そう書く。
-4. **再開メモを文脈の外に書く。**意図、何をしていたか、どこまで進んで何が検証済みか、
-   現在の状態、次の手、鍵になるファイル、落とし穴。
-   圧縮が引き金なら、**スクラッチパッドのファイルに書く**——文脈内の計画は要約を生き延びない。
-   台帳が既にあるなら、複製せずにそれを指す。
+   **Collect what is running before you fold it up.**
+   Wait for it to finish, drop the output to a file, and **write the IDs a resume needs (pane ID,
+   branch, PR number) into the step 4 note before** you close it. Noticing after you closed it does
+   not bring the computation back.
+   **The only panes you may close are the ones you made.** A tool that owns panes has ownership
+   rules. Do not touch another job's pane, running or not.
+2. **Do not cross an irreversible line for the sake of pausing.** If it is not already out, do not
+   open the PR and do not push.
+3. Persist the work. Put the uncommitted edits on the current branch as one `wip:` commit so nothing
+   is lost. If the tree is broken, write one line saying so in the commit body.
+4. **Write the resume note outside the context.** The intent, what you were doing, how far you got and
+   what is verified, the current state, the next move, the key files, the traps.
+   If compaction is the trigger, **write it to a file in the scratchpad**: a plan that lives inside
+   the context does not survive the summary.
+   If a ledger already exists, point at it instead of duplicating it.
 
-**返すもの:** ループのどこにいるか、ディスク上にあるものと頭の中にしか無いもの（パスで。差分は貼らない）、
-作ったコミットとツリーが clean か、再開時の最初の一手。
-**これは中断であって最終報告ではない。**再開は `playbooks/session-pickup.md` がこのメモを読むところから。
+**What you return:** where in the loop you are, what is on disk and what exists only in your head (as
+paths; do not paste diffs), the commit you made and whether the tree is clean, the first move on
+resume.
+**This is a pause, not a final report.** Resuming starts where `playbooks/session-pickup.md` reads
+this note.

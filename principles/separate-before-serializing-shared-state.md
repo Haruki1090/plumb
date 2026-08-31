@@ -1,41 +1,45 @@
 ---
 name: principle-separate-before-serializing-shared-state
 origin: plumb
-description: "複数の書き手が同時に走りうるときに適用する。まず共有そのものを消す。1つの書き込み先であることが本物の不変条件のときだけ、構造で直列化する。"
+description: "Remove the sharing itself first, and serialize with structure only when a single write target is a real invariant. Use when two or more writers can run at once (parallel agents, concurrent jobs, a fan-out), or when asked \"can these run in parallel\", \"do we need a lock here\", or \"why is this flaky under load\"."
 ---
 
 # Separate before serializing shared state
 
-**同じものに書く二人を作らない。**分けられないと分かってから、初めてロックを考える。
+**Do not create two writers to the same thing.** Only once you know they cannot be
+separated do you start thinking about a lock.
 
-**なぜ守れないか:** 並行にするとき、人は**仕事**を分ける。
-**書き込み先**は仕事の説明に出てこないので、独立の判定から落ちる。
-しかも壊れ方が間欠的で、**最初の数回は通ってしまう。**
-通ったことが「独立だった」の証拠に見えるため、
-**自分の観測では反証できない。**だから走らせる前に、書き込み先を並べて数える。
+**Why this is hard to keep.** When people parallelize, they split **the work**. **The write
+target** never appears in the description of the work, so it falls out of the independence
+call. The breakage is intermittent on top of that: **the first few runs go through.**
+Going through looks like proof that they were independent, so **your own observation cannot
+refute it.** Count the write targets, written out, before you run anything.
 
-## 手順
+## Steps
 
-1. **各書き手の書き込み先を全部並べる。**ファイル、ブランチ、生成物の置き場、
-   外部の状態、同じ鍵。**一つでも重なったら、それは独立ではない**
-2. **既定は共有を消すこと。**書き込み先を書き手ごとに分け、
-   **合流は読むときだけにする。同じファイルの別の欄に書くのは分離ではない**——
-   書いている先は同じファイル
-3. **1つの書き込み先が本物の不変条件のときだけ、構造で直列化する。**
-   ロック、段階を分ける、書き手を1人に決める、比較して入れ替える。
-   **「ロックが要る」と思ったら、まず分けられないかを見る**
+1. **List every write target of every writer.** Files, branches, where artifacts land,
+   external state, the same key. **One overlap and they are not independent**
+2. **The default is to remove the sharing.** Split the write target per writer and
+   **join only on read. Writing to a different field of the same file is not separation** —
+   what is being written is still the same file
+3. **Serialize with structure only when one write target is a real invariant.** A lock,
+   splitting into phases, naming a single writer, compare-and-swap. **The moment you think
+   "this needs a lock", look first at whether it can be split**
 
-**散文は並行制御ではない。**「順番に触ってね」と書いて渡しても、同時に走る2つは待たない。
+**Prose is not concurrency control.** Hand someone a note saying "take turns with this" and
+two things running at the same time still do not wait.
 
-## 判定
+## How to tell afterwards
 
-- **書き込み先を数え上げたか。**数えていないなら、独立の判定はまだ済んでいない
-- **重なりを解いた方法は、分離か構造か。**約束なら解けていない
-- **合流点はどこか。**読む側に1箇所あるか
+- **Did you enumerate the write targets?** If you did not count them, the independence call
+  has not been made
+- **Was the overlap resolved by separation or by structure?** Resolved by a promise means
+  not resolved
+- **Where is the join?** Is there exactly one, on the reading side
 
-## 隣の原則との境界
+## The border with the neighboring principles
 
-**これは2人以上が同時に書く話。**1人が2回走る話は
-**principle-make-operations-idempotent** が持つ。
-そもそも配るかどうかの理由——待ち時間とかさばるものの追い出し——は
-**principle-guard-the-context-window** が持つ。
+**This one is about two or more writers at the same time.** One writer running twice
+belongs to **principle-make-operations-idempotent**. The reason for handing work out at
+all — the latency, and evicting what is bulky — belongs to
+**principle-guard-the-context-window**.

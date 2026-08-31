@@ -1,58 +1,60 @@
-# 返却テンプレート
+# Return template
 
-GitHub のレビューコメント本文にそのまま貼れる形。HTML で可視化する場合も、この 6 節の
-情報量を落とさないこと（可視化は読みやすさのためであって、要約のためではない）。
+Shaped so it pastes straight into a GitHub review comment. If you visualize it in HTML instead, do not
+lose the information in these six sections (visualizing is for readability, not for summarizing).
 
 ---
 
-## レビュー結果
+## Review result
 
-**対象 SHA**: `<sha>` — この承認は**この版に対するもの**。以降の push は対象外。
-**かけた時間**: <n> 時間 / **深さ**: <どの軸を何本走らせたか>
+**SHA under review**: `<sha>` — this approval is **against this revision**. Anything pushed later is out of scope.
+**Time spent**: <n> hours / **Depth**: <which axes were run, and how many>
 
-### 判断
+### Decision
 
 <Approve / Request changes / Comment>
 
-<一文で理由。「BLOCK が n 件あるため」「BLOCK は無く、残存リスク m 件を引き受けた上で承認」>
+<One sentence of reasoning. "Because n BLOCKs stand" / "No BLOCK; approved having accepted m residual risks">
 
-### ブロッカー（BLOCK）
+### Blockers (BLOCK)
 
-| # | 確度 | 箇所 | 壊れ方 |
+| # | Confidence | Where | How it breaks |
 |---|---|---|---|
-| 1 | CONFIRMED | `path:line` | <入力・状態 → 誤った出力／損失> |
+| 1 | CONFIRMED | `path:line` | <input or state → wrong output / loss> |
 
-### マージ前に直す（FIX）
+### Fix before merge (FIX)
 
-| # | 確度 | 箇所 | 壊れ方 |
+| # | Confidence | Where | How it breaks |
 |---|---|---|---|
 
-### 記録のみ（NOTE）
+### Recorded only (NOTE)
 
-- <今回は直さないと決めたもの。決めたことを残すのが目的>
+- <What was decided not to fix this time. The point is to leave the decision on the record>
 
-### 引き受ける残存リスク
+### Residual risk accepted
 
-承認にあたり、以下は「起こり得るが引き受ける」と判断した。**起きた場合の一次対応も書く。**
+In approving, I judged the following to be "possible, and accepted". **Write the first response for each,
+in case it happens.**
 
-| リスク | 起きたときに何が残るか | 一次対応 |
+| Risk | What is left when it happens | First response |
 |---|---|---|
 
-> 「たぶん大丈夫」は残存リスクではない。名前と対応が書けないものは BLOCK 側に倒す。
+> "Probably fine" is not a residual risk. If you cannot write the name and the response, fall to BLOCK.
 
-### 見ていない範囲
+### What I did not look at
 
-時間予算のため、以下は**読んでいない**。承認はこの範囲を保証しない。
+The time budget meant the following went **unread**. This approval guarantees nothing about it.
 
-- <2 段で切り捨てたリスト。除外理由も一言>
+- <The list cut in stage 2. One line of reasoning per exclusion>
 
 ---
 
-## 本文ドリフトがあった場合の追記
+## Addendum when the body has drifted
 
-本文の最終編集（<日時>）より後に <n> コミットが入っており、本文は現在の差分を説明していない。
-以下は**本文に記載が無い変更**：
+<n> commits landed after the body was last edited (<timestamp>), so the body does not describe the
+current diff. The following changes are **not written up in the body**:
 
-- `<sha>` <メッセージ> — <何が変わったか>
+- `<sha>` <message> — <what changed>
 
-承認前に本文の更新を求めるか、この差分を承認範囲に明示的に含めるかを決めること。
+Decide before approving: either require the body to be updated, or state explicitly that this diff is
+inside the scope of the approval.

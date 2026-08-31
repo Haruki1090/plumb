@@ -1,227 +1,227 @@
 ---
 name: graph
-description: 大きめの Goal に着手する前に使う。「まず設計してから」「グラフを引いて」「Graph Engineering で」と言われたとき、および次のうち2つ以上に当てはまるとき——改修件数が多い／並列化したい／設計書や正本ドキュメントとの整合が要る／複数ファイル・複数画面にまたがる／サブエージェントを並べたい／「一括で」「全部」「大量に」といった着手要求。単発・分岐なし・短時間で終わる仕事には使わない。
+description: Draw the execution graph before you start a large goal - nodes, edges, shared state, human gates, and where verification sits. Use when asked to "design this first", "draw the graph", "graph this out", "plan the parallel lanes", and whenever 2 or more of these hold, many changes to make, work you want to parallelize, alignment with a design doc or source-of-truth document, several files or several screens, subagents to run side by side, or an ask phrased as "all of them", "in one pass", "in bulk". Do not use it for a single, branch-free, short piece of work.
 ---
 
 # Graph Engineering
 
-## これは何をするスキルか
+## What this skill does
 
-着手前に **実行グラフを1枚書く**。ノード（仕事の単位）、エッジ、共有状態、人間が決める場所、検証の置き場所を明示してから実装に入る。
+Before you start, **draw one execution graph**. Name the nodes (units of work), the edges, the shared state, the places a human decides, and where verification sits — then implement.
 
-**このスキルはグラフ層だけを扱う。ノードの中身（実装と検証のループ）は下の委譲表へ渡す。** ループはグラフの中の1ノードにすぎない、という原則をそのまま構造にしている。
+**This skill covers the graph layer only. What lives inside a node — the implement-and-verify loop — goes to the delegation table below.** That is the principle *a loop is one node in a graph* turned directly into structure.
 
-グラフ設計にかかるのはたいてい10〜30分。それに対して、設計せずに並列で走らせたときの典型的な損失は、共有ファイルの衝突による全レーンのやり直し、判断待ちで止まった仕掛かり、そして「検証したつもり」で通ってしまった誤りである。**割に合う。**
+Designing the graph usually takes 10-30 minutes. Running parallel work without it costs you: every lane redone after a collision on a shared file, work-in-progress stalled waiting on a decision, and errors that passed because someone thought they had verified them. **The trade is worth it.**
 
-## まず：本当にグラフが要るか
+## First: do you actually need a graph
 
-これが一番大事な判断で、ここを飛ばすと過剰設計になる。
+This is the most important call, and skipping it is how you end up over-designing.
 
 > a loop is a single node in a graph. You don't graduate from loops to graphs.
 
-**迷ったらループのまま。2ノード目を要求する何かが現れるまで、1ノードで対応する。**
+**When in doubt, stay a loop. Handle it in one node until something demands a second one.**
 
-次の5つのうち **2つ以上**に当てはまるときだけグラフ化する:
+Draw a graph only when **2 or more** of these five hold:
 
-1. **専門性の分化** — 求められる判断の種類が違う（実装する頭と、規約に照らして落とす頭は別）
-2. **並列処理の需要** — 独立した同型タスクが複数あり、直列だと待ち時間が支配的になる
-3. **モデル・ツールの切り替え** — ノードによって適切なモデルやツールが変わる
-4. **監査可能な制御フロー** — 「なぜこの順で、誰が決めたか」を後から説明する必要がある
-5. **検証器の過負荷** — 単一のループが実装と検証を兼ねていて、自分の書いたものを自分で承認している
+1. **Split specialization** — the kinds of judgment differ (the head that implements is not the head that rejects against a convention)
+2. **Demand for parallelism** — several independent tasks of the same shape, where running them serially makes waiting dominate
+3. **Switching models or tools** — the right model or tool changes from node to node
+4. **Auditable control flow** — you will have to explain later why this order, and who decided
+5. **An overloaded verifier** — one loop is doing both implementation and verification, approving what it just wrote
 
-1つ以下ならグラフを書かず、**plumb の `playbooks/shaping-the-work.md`** に直行する。判断した結果は一行残す（「シグナル1つのみ、ループ続行」）。後で規模が変わったときに再判定できる。
+At one or fewer, do not draw a graph — go straight to **plumb's `playbooks/shaping-the-work.md`**. Leave one line recording the call ("one signal only, staying a loop"). When the size changes later, you can re-decide.
 
-ループのままで済む仕事にグラフを被せると、記述コストだけが増えて何も速くならない。動的に形が変わるワークフローも、グラフとして書くと逆に複雑になる。
+Wrapping a graph around work a loop would have handled adds description cost and speeds nothing up. Workflows whose shape changes as they run also get *more* complicated when written as a graph.
 
-## グラフ層の設計手順
+## Designing the graph layer
 
-順に埋める。埋まらない項目があるなら設計が足りていないサインで、そのまま着手すると必ずそこで止まる。
+Fill these in order. An item you cannot fill is a sign the design is not finished, and starting anyway means stalling exactly there.
 
-### 1. 終了状態を決める
+### 1. Decide the end state
 
-「何ができたら終わりか」を外から観測できる形で書く。「モックを更新する」は終了状態ではない。「P0 の14件が全て設計書の該当項番を満たし、正本に反映済み」が終了状態。
+Write "what has to exist for this to be over" so it is observable from outside. "Update the mocks" is not an end state. "All 14 P0 items satisfy their numbered clause in the design doc, and the source of truth reflects it" is.
 
-### 2. ノードを洗い出す
+### 2. List the nodes
 
-仕事を5〜10個に割る。多すぎると管理が破綻し、少なすぎるとグラフにする意味がない。
+Split the work into 5-10 pieces. More than that and management breaks down; fewer and there was no point drawing a graph.
 
-ここで最初にやるのが **ノードの束ね直し**。素朴なリスト（画面別、ファイル別、Issue別）は、たいていグラフのノードとしては間違っている。
+The first thing to do here is **regroup the nodes**. A naive list — by screen, by file, by issue — is usually the wrong set of graph nodes.
 
-- **同じ正本を参照する項目は1ノードに束ねる。** 別々の画面に立っている差分でも、根拠が同じ設計書の同じ節なら、別レーンで直すと矛盾が入る
-- **原因が1箇所なら1ノード。** 症状が3画面に散っていても、原因が共有ファイルの1箇所ならノードは1つ
-- 逆に、1つの項目に別種の判断が混じっているなら割る
+- **Bundle items that reference the same source of truth into one node.** Two diffs may stand on different screens, but if their grounds are the same clause of the same design doc, fixing them in separate lanes introduces a contradiction
+- **One cause, one node.** Symptoms scattered across three screens still make one node when the cause is one place in a shared file
+- Conversely, split an item that mixes two different kinds of judgment
 
-### 3. 共有資源を洗って barrier を置く ★
+### 3. Inventory the shared resources and place a barrier ★
 
-**並列化の前に必ずやる。ここを飛ばすのが最大の失敗パターン。**
+**Always do this before parallelizing. Skipping it is the single biggest failure pattern.**
 
-全ノードが触るファイル・テーブル・設定を列挙し、**2つ以上のノードが書き込む資源**を特定する。それらを触る作業は fan-out の前に直列で片付ける。
+List every file, table and setting any node touches, and mark the resources **two or more nodes write to**. Work that touches those gets cleared serially, before the fan-out.
 
-やり方は単純で、各ノードについて「どのファイルを書き換えるか」を書き出し、複数ノードに現れたファイルに印を付ける。印の付いたファイルを触るノードを全部集めて、それが barrier フェーズになる。
+The method is plain: for each node, write down which files it rewrites, then mark every file that appears under more than one node. Collect all the nodes that touch a marked file — that set is the barrier phase.
 
-barrier を置かずに並列で走らせると、コンフリクトの解決に、並列で稼いだ時間の何倍もかかる。しかも解決の過程で片方の意図が失われる。
+Run parallel without a barrier and resolving the conflicts costs several times what the parallelism bought you. Worse, one side's intent gets lost in the resolution.
 
-### 4. エッジを引く
+### 4. Draw the edges
 
-固定順序・条件分岐（Router）・並列・差し戻しを明示する。特に:
+Make fixed order, conditional branches (Router), parallelism and send-backs explicit. In particular:
 
-- **どのノードとどのノードが同時に決まらないといけないか**（片方だけ直すと不整合になる組）
-- **どのノードが他のノードの完了を待つか**（本物の依存だけ。「なんとなく先にやりたい」は依存ではない）
+- **Which nodes have to be decided together** (the pairs that go inconsistent if you fix only one)
+- **Which nodes wait on another node finishing** (real dependencies only; "I'd sort of rather do this first" is not one)
 
-### 5. 受け渡す状態（Edge Contract）を定義する ★
+### 5. Define the state you hand across (Edge Contract) ★
 
-ノード間で渡すのは **構造化データだけ**。会話履歴や「前のノードの出力全部」を渡さない。
+What passes between nodes is **structured data only**. Do not pass conversation history or "everything the previous node output".
 
 ```json
 {
   "node_id": "billing-cluster",
-  "claim": "A9-01 を単一プラン設計に是正した",
-  "evidence": [{"file": "billing.html", "line": 142, "spec": "08-プランシート §1.2"}],
+  "claim": "A9-01 corrected to the single-plan design",
+  "evidence": [{"file": "billing.html", "line": 142, "spec": "08-plan-sheet §1.2"}],
   "confidence": 0.9,
   "unresolved": []
 }
 ```
 
-下流の検証ノードが上流の全履歴を読む必要がなくなり、コンテキスト消費が下がる。同時に、渡ってくるものが決まっているので **受け取り側の挙動が決定論的になる**。曖昧な受け渡しは、下流でのハルシネーションの主要な発生源。
+A downstream verification node no longer has to read the whole upstream history, so context consumption drops. At the same time, because what arrives is fixed, **the receiving side behaves deterministically**. Vague handoffs are a leading source of hallucination downstream.
 
-各ノードには入力・出力・責務を書く（Node Contract）。「このノードは何を受け取り、何を返し、何をしないか」。
+Give every node its inputs, outputs and responsibility (Node Contract): what this node takes, what it returns, and what it does not do.
 
-### 6. AI とコードの境界を引く ★
+### 6. Draw the line between AI and code ★
 
-これを引かないと、コストと不確実性が同時に上がる。
+Leave this line undrawn and both cost and uncertainty go up.
 
-| AI に任せる | コードで書く |
+| Give to AI | Write in code |
 |---|---|
-| 意味の理解、優先順位付け、要約 | 配列の結合、重複削除、並べ替え |
-| 評価、仮説生成、矛盾の検出 | 型検証、条件分岐、件数集計、ファイル保存 |
+| Understanding meaning, ranking, summarizing | Concatenating arrays, deduplicating, sorting |
+| Evaluating, generating hypotheses, spotting contradictions | Type checks, conditionals, counting, saving files |
 
-「AI が判定し、コードが制御フローを決める」が基本形。分類そのものは AI にさせてよいが、その結果を受けて次に何を実行するかはコードで書く。そうしないと同じ入力で違う経路を通る。
+The basic form is "AI judges, code decides the control flow". Let AI do the classification itself, but write in code what runs next given that result. Otherwise the same input takes different paths.
 
-### 7. 人間の判断ゲート（Human Gate）を置く ★
+### 7. Place the human gates (Human Gate) ★
 
-責任を伴う判断は人間に残す。ただし置き方に重要なコツがある。
+Judgment that carries responsibility stays with a human. How you place the gate matters.
 
-**「全部のゲートを閉じてから着手」にしない。** 未決事項をまとめて1つの門にすると、1件の判断待ちで全部が止まる。実際には、未決の多くは最初のバッチをブロックしない。
+**Do not "close every gate before starting".** Collect the open questions into a single door and one pending decision stops everything. In practice most open questions do not block the first batch.
 
-やるべきことは、**未決事項 × 最初のバッチのノード**を突き合わせて、「本当に最初のバッチを止めている未決だけ」を抜き出すこと。これだけで着手が数日早まることが珍しくない。残りは後続バッチのゲートとして後ろに置く。
+What you do instead is cross **open questions × the nodes in the first batch** and pull out only the ones that genuinely block that batch. That alone routinely moves the start date days earlier. The rest go behind, as gates on later batches.
 
-### 8. 終了条件と失敗隔離を決める
+### 8. Decide the termination conditions and the failure isolation
 
-**終了条件は複合で持つ。** 回数だけだと収束前に切れるか、無限に回る。
+**Hold the termination condition as a compound.** Count alone either cuts off before convergence or runs forever.
 
-- 最大実行回数 / 最大トークン / 最大時間
-- 品質基準の到達
-- **新規発見がない**（loop-until-dry：2回連続で新しいものが出なければ終了。単純な件数上限では末尾を取りこぼす）
+- Max iterations / max tokens / max time
+- Reaching the quality bar
+- **No new findings** (loop-until-dry: stop when two consecutive rounds turn up nothing new; a plain count cap drops the tail)
 
-**失敗隔離** — 1ノードの失敗で全体を止めない。並列結果は落ちたものを除いて集計し、「有効な結果が N 件を下回ったら全体を失敗にする」という閾値を別に持つ。
+**Failure isolation** — one node failing does not stop the whole thing. Aggregate parallel results with the failures excluded, and hold a separate threshold: "fail the whole run if valid results fall below N".
 
-### 9. 記録と再開、そして正本への反映 ★
+### 9. Record, resume, and write back to the source of truth ★
 
-長く走る仕事は必ず途中で切れる。切れた場所から再開できるようにしておく。
+Long-running work always gets cut off partway. Make it resumable from where it stopped.
 
-そして最後に **結果を正本に落とす**。これを忘れると、グラフの実行結果がセッションと一緒に揮発する。ノードの完了時に、正本（設計書・チケット・台帳）の該当行へ状態と根拠を書き戻すところまでを、ノードの責務に含める。
+Then, at the end, **land the results in the source of truth**. Forget this and the graph's results evaporate with the session. Make it part of a node's responsibility to write status and grounds back to the matching line of the source of truth — the design doc, the ticket, the ledger — when the node completes.
 
-**正本は1つに保つ。** 進捗管理のために新しい台帳を作りたくなるが、二つ目の正本ができた時点で必ずズレる。既にある台帳に列を足すほうがよい。
+**Keep one source of truth.** The urge to create a new ledger for progress tracking is strong, and the moment a second source of truth exists it will drift. Add a column to the ledger that already exists.
 
-この規則は委譲先にも適用される（後述）。
+This rule applies to what you delegate to as well (see below).
 
-### 10. UI を変えたなら、画面を見せる（努力義務）★
+### 10. If you changed UI, show the screen (best effort) ★
 
-**フロントエンド・UI に触れたグラフは、PR に「どこがどう変わったか」のスクリーンショットを載せる。** 義務ではないが、載せない判断のほうに理由が要るくらいには寄せる。
+**A graph that touched frontend or UI puts screenshots of what changed where in the PR.** Not mandatory, but tilted far enough that the decision *not* to include them is the one that needs a reason.
 
-理由は、**UI の変更は差分を読んでも評価できない**から。「設定の中に埋もれていた機能を、目立つ場所に出した」のような変更は、その良し悪しが `+978 −466` からは一切分からない。画面を貼れば、レビューが 5 秒で終わる。
+The reason is that **UI changes cannot be evaluated by reading the diff**. A change like "took a feature buried in settings and put it somewhere visible" — `+978 −466` tells you nothing about whether it was good. Paste the screen and the review takes 5 seconds.
 
-グラフ設計時に決めるのは2点だけ。**どの検証ノードで撮るか**（実機を触るノードが既にあるならそこ。撮影専用ノードを足さない）、**変更前をどう確保するか**（先に撮る / `git archive` で戻す。実装後には存在しない）。
+At graph-design time you decide two things only. **Which verification node takes the shots** (the node that already drives the real thing, if there is one; do not add a node just for capture), and **how you secure the before state** (shoot it first, or restore with `git archive`; after implementation it no longer exists).
 
-何を撮るか、WebP 変換、プライベートリポジトリでの画像 URL の落とし穴は `references/ui-evidence.md`。**GitHub には PR 本文へ画像をアップロードする API が無い**ので、自動でやるなら経路が限られる。ここを知らずに着手すると最後で詰まる。
+What to capture, WebP conversion, and the image-URL trap in private repositories are in `references/ui-evidence.md`. **GitHub has no API for uploading an image into a PR body**, so automating it leaves few routes. Start without knowing this and you get stuck at the very end.
 
-## ノード層は委譲する
+## Delegate the node layer
 
-グラフ層の設計が終わったら、各ノードの中身は自分で書かない。
+Once the graph layer is designed, do not write the inside of each node yourself.
 
-| ノードの役割 | 委譲先 |
+| What the node does | Delegate to |
 |---|---|
-| 実装 | **plumb の `playbooks/writing-a-plan.md`** → **`playbooks/running-a-plan.md`**（小さいノードは直接実装してよい） |
-| 独立検証 | **REQUIRED SUB-SKILL: plumb の `playbooks/being-reviewed.md`**（頼む側の節） |
-| 差し戻しループ | SDD の fix loop（5ラウンド上限・裁定フロー付き） |
-| ノードへのモデル配置 | SDD の Model Selection に従う |
-| ブランチの締め | **plumb の `playbooks/closing-a-branch.md`** |
+| Implementation | **plumb's `playbooks/writing-a-plan.md`** -> **`playbooks/running-a-plan.md`** (a small node can be implemented directly) |
+| Independent verification | **REQUIRED SUB-SKILL: plumb's `playbooks/being-reviewed.md`** (the section for the side asking) |
+| Send-back loop | SDD's fix loop (5-round cap, with an arbitration flow) |
+| Which model goes on which node | SDD's Model Selection |
+| Closing out the branch | **plumb's `playbooks/closing-a-branch.md`** |
 
-検証について、委譲しても手放してはいけない原則が4つある。グラフ定義書の「検証」欄にこれを書いて渡す。
+Four principles about verification survive the delegation. Write them into the "Verification" field of the graph definition and hand them over.
 
-- **実装したエージェントに自分の仕事を検証させない。** 同じモデルの同じ文脈では盲点を共有するので、検証が循環論法になる
-- **反証志向** — 「これは正しいか」ではなく「これを否定できるか」を問う。迷ったら refuted に倒す
-- **視点の分散** — 失敗の仕方が複数あるなら、同じ検証を3回やるより、別の観点（正しさ／規約／再現性）を1つずつ当てるほうが拾える
-- **横断ルールは単一の検証ノードに集約する** — 禁止語、表記規約、エラー表示方針のような全体規約は、レーンごとに解釈させない
+- **Never let the agent that implemented it verify its own work.** The same model in the same context shares the blind spots, so the verification is circular
+- **Refutation-oriented** — ask "can I refute this", not "is this right". When in doubt, fall toward refuted
+- **Spread the viewpoints** — when there are several ways to fail, one pass each from a different angle (correctness / convention / reproducibility) catches more than the same check three times
+- **Concentrate cross-cutting rules in a single verification node** — banned words, style conventions, an error-display policy and other global rules must not be interpreted per lane
 
-**コストはノードよりコントローラ側に出る。** Model Tiering でノードを軽くしても、コントローラが手順書と調査結果を抱えたまま委譲すると、そちらの増分のほうが大きい。実測でコストの 99% がコントローラ側に出た例がある。ノードへ渡すのは Edge Contract（手順5）だけに保つこと。これは手順5 が効く二つ目の理由でもある。
+**Cost lands on the controller, not on the nodes.** Model Tiering can make nodes cheap, but a controller that delegates while still holding the runbook and the research results grows more than the nodes shrink. There is a measured case where 99% of the cost landed on the controller. Keep what you hand to a node down to the Edge Contract (step 5). That is the second reason step 5 pays.
 
-## グラフ内で他の型を使うときの制約
+## Constraints on using other playbooks inside a graph
 
-**1. ノードで `playbooks/shaping-the-work.md` を回さない。** グラフ定義書が spec に相当する。ノードごとに設計を引き直すと、グラフが決めたノード境界が崩れる。
+**1. Do not run `playbooks/shaping-the-work.md` in a node.** The graph definition is the spec. Redrawing the design per node collapses the node boundaries the graph set.
 
-**2. ノードで spec / plan ファイルを生成させない。** グラフ定義書と二重になる。**手順9「正本は1つに保つ」の直接の適用である。** 委譲先は既定で spec / plan を書いて commit しようとする（plumb 自身の `playbooks/writing-a-plan.md` も、既存資産の実装ループも）。ノードへ渡す文面で明示的に禁じる。
+**2. Do not let a node generate spec or plan files.** They duplicate the graph definition. **This is step 9's "keep one source of truth" applied directly.** What you delegate to will write and commit a spec or plan by default — plumb's own `playbooks/writing-a-plan.md` does, and so do existing implementation loops. Forbid it explicitly in the text you hand the node.
 
-**3. `isolation: 'worktree'` を無条件に使わない。** worktree には gitignore されたファイル（`.env` 等）が複製されない。docker compose に依存する検証ノードは worktree では動かない。並列でファイルを書き換えるノードにだけ使い、コンテナ起動を伴う検証は本体で行う。
+**3. Do not use `isolation: 'worktree'` unconditionally.** A worktree does not copy gitignored files (`.env` and the like). A verification node that depends on docker compose will not run in one. Use it only for nodes rewriting files in parallel, and run verification that starts containers in the main tree.
 
-## 出力：グラフ定義書
+## Output: the graph definition
 
-設計の結果は必ずファイルに残す。頭の中だけで進めると、着手後に必ず崩れる。
+Always leave the design in a file. Keep it in your head and it falls apart once you start.
 
 ```markdown
-# グラフ定義：<Goal 名>
+# Graph definition: <goal name>
 
-## 終了状態
-外から観測できる完了条件。
+## End state
+The completion condition, observable from outside.
 
-## グラフ化の判定
-該当シグナル：<番号と理由>。→ グラフ化する / ループのまま。
+## Graph or loop
+Signals that hold: <numbers and why>. -> Draw the graph / stay a loop.
 
-## ノード
-| ID | 責務 | 入力 | 出力 | 触るファイル | 委譲先 |
-|----|------|------|------|-------------|--------|
+## Nodes
+| ID | Responsibility | Input | Output | Files it touches | Delegate to |
+|----|----------------|-------|--------|------------------|-------------|
 
-## Barrier（直列で先に片付ける）
-共有資源と、それを触るノード。理由を一行。
+## Barrier (cleared serially, first)
+The shared resources and the nodes that touch them. One line of why.
 
 ## Human Gate
-| 未決事項 | 何をブロックするか | 期限 |
-|---------|-----------------|------|
-最初のバッチを止めるものだけを「先に決める」に分類する。
+| Open question | What it blocks | Due |
+|---------------|----------------|-----|
+Only what stops the first batch goes under "decide first".
 
-## 並列レーン
-束ね直した後のレーン。1レーン=1つの正本。
+## Parallel lanes
+The lanes after regrouping. One lane = one source of truth.
 
-## 検証
-各レーンの判定基準と出典。横断ルールは別立て。反証志向で書く。
+## Verification
+The bar and the grounds for each lane. Cross-cutting rules stand separately. Write it refutation-oriented.
 
-## 終了条件
-複合条件を列挙。
+## Termination conditions
+List the compound.
 
-## 正本への反映
-どこに何を書き戻すか。
+## Writing back to the source of truth
+What gets written back, and where.
 
-## 成果の見せ方（UI に触れたときのみ）
-撮る画面と、変更前をどう確保するか（先に撮る / git archive）。どの検証ノードで撮るか。
+## How the result is shown (only when UI was touched)
+Which screens to capture, and how the before state is secured (shoot first / git archive). Which verification node captures them.
 ```
 
-## 実行に移す
+## Putting it into execution
 
-グラフが小さい（3〜5ノード）なら、素直に順に実行するほうが速い。**グラフ設計の価値は実行手段に依らない。** 設計そのものが、衝突・判断待ち・検証漏れを事前に潰している。
+If the graph is small (3-5 nodes), running it straight through in order is faster. **The value of designing the graph does not depend on how you execute it.** The design itself has already killed the collisions, the stalls, and the missed verification.
 
-`Workflow` ツールで組む場合の書き方、長時間実行への耐性、再開、決定論の注意は `references/execution.md`。パターンの引き出しは `references/patterns.md`。実際に回した具体例は `references/example.md`。
+How to write it with the `Workflow` tool, how it survives a long run, resumption, and the determinism caveats are in `references/execution.md`. The stock of patterns is in `references/patterns.md`. A worked example that was actually run is in `references/example.md`.
 
-## 初回は必ず件数を絞る
+## Cap the count on the first run
 
-設計が正しくても、初回から全ノードを流してはいけない。**最初は上限を付けて一部だけ走らせ、検証ノードが本当に機能しているかを確認する。** 検証が素通りしていることに気付かないまま全件流すと、間違った成果物が大量に生産される。これが一番高くつく失敗。
+Even with a correct design, do not push every node through the first time. **Start with a cap, run part of it, and confirm the verification node is really working.** Push everything through without noticing that verification is passing things blind and you mass-produce wrong artifacts. That is the most expensive failure there is.
 
-## よくある失敗
+## How this breaks
 
-- **グラフを書かずに並列化した** → 共有ファイルで衝突。barrier 分析（手順3）を飛ばさない
-- **全部のゲートを閉じようとして止まった** → 手順7。最初のバッチを止める未決だけ抜く
-- **実装者に検証させた** → 独立検証を plumb の `playbooks/being-reviewed.md` に委譲する。同じエージェントに続けさせない
-- **リストをそのままノードにした** → 手順2。同じ正本を参照するものは束ねる
-- **ループで済む仕事をグラフにした** → 冒頭の判定。2シグナル未満なら `playbooks/shaping-the-work.md` へ直行
-- **ノードごとに spec を作って正本が二重化した** → 手順9。グラフ定義書が spec
-- **結果が揮発した** → 手順9。正本への書き戻しをノードの責務に含める
-- **UI を変えたのに PR が差分だけだった** → 手順10。特に「変更前」は撮り忘れると取り直しになる
+- **Parallelized without drawing the graph** -> collision on a shared file. Do not skip the barrier analysis (step 3)
+- **Stalled trying to close every gate** -> step 7. Pull out only the open questions that stop the first batch
+- **Let the implementer verify** -> delegate independent verification to plumb's `playbooks/being-reviewed.md`. Do not let the same agent carry on
+- **Turned the list straight into nodes** -> step 2. Bundle what references the same source of truth
+- **Made a graph out of work a loop would have handled** -> the call at the top. Under 2 signals, go straight to `playbooks/shaping-the-work.md`
+- **A spec per node, and the source of truth doubled** -> step 9. The graph definition is the spec
+- **The results evaporated** -> step 9. Make writing back to the source of truth part of a node's responsibility
+- **Changed UI and the PR was diff only** -> step 10. The "before" especially: forget to capture it and you are reshooting

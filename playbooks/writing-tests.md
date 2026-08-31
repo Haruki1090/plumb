@@ -1,94 +1,103 @@
-# テストを書く
+# Writing tests
 
-**赤を見ていないテストは、何も守っていない。**
+**A test you never watched fail protects nothing.**
 
-新しい振る舞いを足すとき、バグを直すとき、既存のテストを触るとき。
-**「何が通れば完成か」は spec、「どのテストをどう書くか」は plan**——
-この格の分けは SKILL.md と `playbooks/writing-a-plan.md` が正本で、ここには書き写さない
-（**principle-encode-lessons-in-structure**）。**この型が持つのは、テスト自体の中身。**
+When you add new behavior, when you fix a bug, when you touch an existing test.
+**"What has to pass for this to be done" is the spec; "which tests, written how" is the plan** —
+that split of rank is owned by SKILL.md and `playbooks/writing-a-plan.md` and is not copied
+here (**principle-encode-lessons-in-structure**). **What this playbook holds is the content of
+the test itself.**
 
-## 1. 先に落とす
+## 1. Make it fail first
 
-**実装より先に書き、落ちるところを見る**（**principle-prove-it-works**）。
+**Write it before the implementation and watch it fail** (**principle-prove-it-works**).
 
-見るのは「落ちた」ではなく**落ち方**。
+What you watch is not "it failed" but **how it failed**.
 
-- **期待した理由で落ちているか。**綴りの誤り・import の失敗・環境の不備で落ちたなら、
-  それは赤ではない。直して、落とし直す
-- **書いた直後に通ったなら、それは既にある振る舞いを写しただけ。**
-  そのテストは何も守っていない。**捨てて、書き直す**
+- **Is it failing for the reason you expected?** A typo, a failed import, a broken environment:
+  that is not red. Fix it and make it fail again
+- **If it passed the moment you wrote it, all you did was transcribe behavior that already
+  exists.** That test protects nothing. **Throw it away and write it again**
 
-**後から書いたテストは、必ず一度目で通る。**通ることは、落ちる能力の証明にならない。
-実装を先に書いてしまったなら、**テストを足す前に実装を消す**のが最短で、
-残したまま書くと、書いたコードの側から期待値を作ることになる。
+**A test written afterwards always passes on the first run.** Passing proves nothing about its
+ability to fail. If you already wrote the implementation, **deleting the implementation before
+you add the test** is the shortest path; leave it in place and you end up deriving the expected
+values from the code you wrote.
 
-## 2. 何が壊れたら落ちるかを、書く前に名指す
+## 2. Name what has to break for it to fail, before you write it
 
-本体を書く前に一文で言う。**「〜が〜になったら、このテストが落ちる」。**
-言えないテストは、通っても落ちても情報を持たない。
+Say it in one sentence before you write the body: **"if X becomes Y, this test fails."**
+A test you cannot say that about carries no information whether it passes or fails.
 
-- **その「〜」は欠陥か、決めごとか。**定数の値・文言・内部の形だけで落ちるテストは、
-  **意図した変更のたびに落ち、本物の欠陥のときは眠る。**
-  決めごとに依存する**振る舞い**のほうを見る
-- **期待値を、被験コードで作らない。**同じ関数が両辺を計算していれば、
-  中身が何であれ等しくなる。**手で書いた値か、手で確かめた材料を置く**
-- **文書やスクリプトは、本文を検索して確かめない。**走らせて、出力・副作用・終了コードを見る。
-  本文が本文であることは、何の保証でもない
-- **他人の道具の仕様をなぞらない。**確かめるのは自分が作った面の契約。
-  想定外の挙動に踏んだときだけ、**その前提を名指す**テストを一本置く
+- **Is that X a defect, or a convention?** A test that fails only on the value of a constant,
+  on wording, or on an internal shape **fails on every intentional change and sleeps through
+  the real defects.** Watch the **behavior** that depends on the convention instead
+- **Do not build the expected value out of the code under test.** If the same function computes
+  both sides, they are equal whatever is inside. **Put down a hand-written value, or material
+  you checked by hand**
+- **Do not check a document or a script by searching its text.** Run it and look at the output,
+  the side effects, the exit code. Text being text guarantees nothing
+- **Do not retrace someone else's tool's specification.** What you verify is the contract of
+  the surface you built. Only when you have stepped on unexpected behavior, put down one test
+  that **names that assumption**
 
-## 3. 守らないテストに名前を付けて、禁じる
+## 3. Name the tests that protect nothing, and forbid them
 
-| 形 | 何が起きているか |
+| Form | What is happening |
 |---|---|
-| **空振り** | 何も確かめていない。落ちるのは例外か構文誤りのときだけ |
-| **鏡** | 期待値を被験コードで作った。**定義上いつも通る** |
-| **写し** | 実装の内部構造をそのまま書いた。**壊れずに変えることができなくなる** |
-| **代役への確認** | 差し替えた側を確かめている。代役が居れば通り、外せば落ちる。本体は無関係 |
-| **緩めたテスト** | 通らないので期待を下げた。**下げた差分がそのまま守らない範囲** |
+| **The whiff** | Nothing is checked. It fails only on an exception or a syntax error |
+| **The mirror** | The expected value was built from the code under test. **It passes by definition** |
+| **The transcript** | The implementation's internal structure was written down as-is. **Now it cannot be changed without breaking** |
+| **The stand-in check** | It verifies the thing you swapped in. It passes while the stand-in is there and fails when you remove it. The real code is not involved |
+| **The loosened test** | It would not pass, so the expectation came down. **The distance it came down is exactly the range it no longer protects** |
 
-**緩めるのは、期待が間違っていると判定できたときだけ。**
-そのときは**なぜ間違っていたかを書く。**書けないなら、直すべきは実装のほう。
+**Loosen only when you have judged the expectation to be wrong.**
+When you do, **write down why it was wrong.** If you cannot write it, the implementation is
+what needs fixing.
 
-## 4. 本物を動かす
+## 4. Run the real thing
 
-**差し替えてよいのは、遅いものと外にあるものだけ。**
-それより内側は本物のまま通す。
+**The only things you may swap out are the slow ones and the ones outside.**
+Everything inside that line runs for real.
 
-- **差し替える前に、本物が何をしているかを数える。**書き込み、既定値の補完、
-  副作用。**それを丸ごと消すと、それに依存していた検査が黙って通る**
-- **返させる形は、実物と同じだけ持たせる。**読んでいる欄だけを持つ代役は、
-  読んでいない欄を後段が触った瞬間に嘘をつく。**テストは緑のまま、結合で落ちる**
-- **代役の準備が本体より長くなったら、代役をやめる。**本物を組んで通すほうが短く、強い
-- **テストのためだけの後始末を、製品側の型に生やさない。**呼ぶのがテストだけなら、
-  それはテスト側の道具
+- **Before you swap something out, count what the real one does**: the writes, the defaults it
+  fills in, the side effects. **Erase all of it and the checks that depended on it pass in
+  silence**
+- **Make what it returns carry as much as the real thing does.** A stand-in that holds only the
+  fields you read starts lying the moment a later stage touches a field you did not.
+  **The test stays green and it breaks in integration**
+- **When setting the stand-in up runs longer than the body, stop using one.** Standing the real
+  thing up is shorter and stronger
+- **Do not grow test-only teardown on a production type.** If only tests call it, it is a test
+  tool
 
-## 5. 落ちたときに、何が壊れたか分かるようにする
+## 5. Make it clear what broke when it fails
 
-**名前で振る舞いを言う。**「動く」「その1」は名前ではない。
-**名前に「と」が入ったら、二本に割る。**一本のテストが確かめるのは一つ。
+**Say the behavior in the name.** "works" and "case 1" are not names.
+**When "and" shows up in a name, split it in two.** One test verifies one thing.
 
-失敗の出力に、**期待した値と実際の値が両方出るか**を見る。
-出ないなら、後で読む人は落ちた事実しか受け取れない。
+Check that the failure output **shows both the expected and the actual value.**
+If it does not, whoever reads it later receives nothing but the fact that it failed.
 
-## 6. 終わる前に、壊してみる
+## 6. Break something before you finish
 
-**製品側を頭の中で一箇所壊し、どのテストが落ちるかを言う。**
-落ちるものが無いなら、そこは守られていない。
+**Break one place in the production code in your head and say which test fails.**
+If nothing fails, that place is not protected.
 
-- 定数や引数を別の値に
-- 分岐を逆に
-- 副作用や状態の更新を消す
-- 空・既定値をそのまま返す
-- 空・0・未認可・壊れた入力の検査を外す
+- Change a constant or an argument to another value
+- Invert a branch
+- Delete a side effect or a state update
+- Return empty or the default as-is
+- Remove the check on empty, zero, unauthorized, or malformed input
 
-**一つも落ちないなら、テストを足すか、あるテストが恒真かのどちらか。**
+**If nothing fails at all, either you add a test or one of them is a tautology.**
 
-## 数を増やさない
+## Do not grow the count
 
-**要らないテストは負債。**製品側の振る舞いを持たないもの——素の取り出し、素の受け渡し、
-人間向けの散文——には書かない。**被覆率のために書いたテストは、永久に維持費だけを取る。**
+**A test you do not need is a liability.** Do not write one for anything that carries no
+production behavior — a bare getter, a bare pass-through, prose written for humans.
+**A test written for the coverage number collects nothing but maintenance cost, forever.**
 
-**返すもの:** 書いたテストと、各々が捕まえる壊れ方を一文ずつ。
-**落ちるところを見た証拠**（赤のときの出力）と、通った後の出力。
-壊してみて落ちなかった箇所と、そこをどうしたか。
+**What you return:** the tests you wrote and, one sentence each, the breakage each one catches.
+**The evidence that you watched it fail** (the output while it was red) and the output after it
+passed. The places you broke that nothing caught, and what you did about them.

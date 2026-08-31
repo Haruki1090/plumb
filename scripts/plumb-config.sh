@@ -1,32 +1,34 @@
 #!/usr/bin/env bash
-# 利用者単位の設定を1箇所で解決する。リポジトリ単位の設定は plumb-path.sh の担当で、
-# こちらとは別物。混ぜると「自分の実行先の好み」が案件ごとに散る。
+# Resolve per-user configuration in one place. Per-repository configuration belongs to
+# plumb-path.sh and is a separate thing. Mix them and "which target I prefer" scatters across
+# every project.
 #
-#   plumb-config.sh <key> [既定値]
+#   plumb-config.sh <key> [default]
 #
-# 置き場は ~/.claude/plumb/config（PLUMB_CONFIG で差し替え可）。形式は key = value の平文。
+# It lives at ~/.claude/plumb/config (override with PLUMB_CONFIG). The format is plain key = value.
 #
 #   role.judge   = <command>
 #   role.bulk    = <command>
 #   pane.driver  = <command>
 #   stack.tool   = gh-stack
 #
-# **「設定していない」は異常ではない。**未設定でも exit 0 で既定値を返す。
-# ここで exit 1 にすると、呼ぶ側が全部 || true を書くことになり、本物の失敗が見えなくなる。
+# **"Not configured" is not an error.** Unset still exits 0 and returns the default.
+# Exit 1 here and every caller ends up writing || true, which hides the real failures.
 #
-# **空の値（`key = ` で右辺が無い）は「未設定」と同じ扱い。**別の意味を与えていない。
-# 4 つの鍵はどれも未設定 = 本線が代行するなので、空値に「明示的に無効」を割り当てる必要が無い。
+# **An empty value (`key = ` with nothing on the right) means the same as unset.** No separate
+# meaning is assigned to it. All four keys mean "the main session stands in" when unset, so an
+# empty value has no need to carry "explicitly disabled".
 set -uo pipefail
 
 key="${1:-}"
 def="${2:-}"
-[ -n "$key" ] || { echo "使い方: plumb-config.sh <key> [既定値]" >&2; exit 2; }
+[ -n "$key" ] || { echo "usage: plumb-config.sh <key> [default]" >&2; exit 2; }
 
 file="${PLUMB_CONFIG:-$HOME/.claude/plumb/config}"
 val=""
 if [ -f "$file" ]; then
-  # 鍵は正規表現ではなくリテラルとして照合する。sed のパターンに組み立てると、
-  # 鍵に [ や * が入ったときブラケット式として再解釈され、無関係な行に誤マッチする。
+  # Match the key as a literal, not as a regular expression. Assemble it into a sed pattern and a
+  # key holding [ or * gets reinterpreted as a bracket expression and matches an unrelated line.
   val=$(awk -v k="$key" '
     { line = $0; sub(/^[[:space:]]+/, "", line) }
     index(line, k) == 1 {
@@ -38,7 +40,7 @@ if [ -f "$file" ]; then
         exit
       }
     }' "$file")
-  # 末尾の空白を落とす（行頭は awk が既に落としている）
+  # Strip trailing whitespace (awk has already stripped the leading side)
   val="${val%"${val##*[![:space:]]}"}"
 fi
 

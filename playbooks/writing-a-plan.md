@@ -1,111 +1,127 @@
-# 計画を書く
+# Writing a plan
 
-**計画を実行するのは、この会話を一行も読んでいない者。**
+**The plan is executed by someone who has not read one line of this conversation.**
 
-承認された形を、他人が順に実行できる手順にする。
-**形を決め直す場所ではない**——揺れているなら `playbooks/shaping-the-work.md` へ戻る。
+Turn an approved shape into steps someone else can execute in order.
+**This is not where you re-decide the shape** — if it is still moving, go back to
+`playbooks/shaping-the-work.md`.
 
-置き場は `plumb-path plan --mkdir`。**spec と plan の格の違い、および終わった計画を
-凍結して落とす規律は SKILL.md が正本**で、ここには書き写さない
-（**principle-encode-lessons-in-structure**）。
+It goes where `plumb-path plan --mkdir` says. **The difference in rank between spec and plan,
+and the discipline of freezing and retiring a finished plan, are owned by SKILL.md** and are
+not copied here (**principle-encode-lessons-in-structure**).
 
-## 読み手を先に決める
+## Decide who reads it, first
 
-**実装役が読むのは、自分のタスク1つだけ。**本線の履歴も、隣のタスクも、spec 全文も
-開かない（**principle-guard-the-context-window**）。
-**「その辺は spec にある」は、この読み手には届かない。**
+**The implementer role reads exactly one task: its own.** It does not open the main session's
+history, the neighboring task, or the full spec
+(**principle-guard-the-context-window**).
+**"That part is in the spec" never reaches this reader.**
 
-腕はあるが、このコードベースもこの領域も知らない者を想定して書く。
-**一つのタスクだけを読んで、最後まで実行できるか**が唯一の合格条件。
+Write for someone competent who knows neither this codebase nor this domain.
+The only passing condition is **whether they can read one task alone and carry it to the end.**
 
-## 1. 先にファイルの地図を引く
+## 1. Draw the file map first
 
-タスクを切る前に、**作るファイル・触るファイルと、各々の責務**を並べる。
-**割り方はここで確定する。**後から割り直すと、切ったタスクが全部ずれる。
+Before you cut tasks, lay out **the files you will create, the files you will touch, and what
+each one is responsible for.**
+**The split is settled here.** Re-split later and every task you cut goes out of alignment.
 
-- 1ファイルに1つの責務（**principle-model-the-domain**）
-- **一緒に変わるものは一緒に置く。**技術の層ではなく、責務で割る
-- **既存の作法に従う。**大きなファイルで回っているリポジトリで、自分の回だけ割り直さない。
-  ただし**いま触るファイルが既に膨れているなら**、その分割は計画に入れてよい
+- One responsibility per file (**principle-model-the-domain**)
+- **What changes together lives together.** Split by responsibility, not by technical layer
+- **Follow the existing conventions.** In a repository running on large files, do not re-split
+  on your turn alone. **But if a file you are touching now is already bloated**, that split may
+  go in the plan
 
-## 2. タスクの大きさを、レビューの単位で決める
+## 2. Size a task by the unit of review
 
-タスクは**自前の検査を1周持ち、隣と独立に落とせる最小の単位**
-（**principle-sequence-verifiable-units**）。
+A task is **the smallest unit that carries one lap of its own checks and can fail independently
+of its neighbors** (**principle-sequence-verifiable-units**).
 
-- **足場・設定・文書は、それを必要とする成果物のタスクに畳む。**別立てにしない
-- **割るのは、片方だけを落として隣を通せるときだけ。**通せないなら、それは1つの仕事
-- 各タスクの末尾に、**単独で確かめられる成果物**が立つ
+- **Fold scaffolding, configuration and documentation into the task for the artifact that needs
+  them.** Do not stand them up separately
+- **Split only when one side can fail while the neighbor still passes.** If it cannot, it is
+  one job
+- Every task ends with **an artifact that can be checked on its own**
 
-## 3. 手順を、一つの動作まで刻む
+## 3. Break the steps down to single actions
 
-落ちるテストを書く／**落ちることを確かめる**／通す最小の実装／**通ることを確かめる**／コミット。
+Write the failing test / **watch it fail** / the smallest implementation that passes it /
+**watch it pass** / commit.
 
-**「確かめる」を独立した手順として立てる。**畳むと飛ばされる
-（**principle-gate-claims-on-evidence**）。
-**走らせるコマンドと、期待する出力を、そのまま書く。**「テストする」は手順ではない。
+**Stand "watch it" up as its own step.** Folded in, it gets skipped
+(**principle-gate-claims-on-evidence**).
+**Write the command you run and the output you expect, verbatim.** "Test it" is not a step.
 
-**計画に書くテストの中身は `playbooks/writing-tests.md` が正本。**
-ここで刻むのは順序で、**そのテストが何を守るかはあちら。**
+**What the tests in the plan actually contain is owned by `playbooks/writing-tests.md`.**
+What you break down here is the ordering; **what those tests protect belongs there.**
 
-## 4. 見出しに、実装役が要るものを全部載せる
+## 4. Put everything the implementer needs in the header
 
-計画の先頭:
+At the top of the plan:
 
-- **何を作るか**1文。**どう作るか**を数行。**spec のパス**
-  （計画は spec を根拠に論じるので、**spec は計画と一緒に旅する**）
-- **全体制約**——版の下限、依存の縛り、命名と文言の規約、動作環境。
-  **spec から値を逐語で写す。**散文にパスを二重に書かないという規律の**唯一の例外**で、
-  理由は**実装役が spec を開かないから**。ここを要約すると、値が丸まって届く
+- **What is being built**, one sentence. **How it is being built**, a few lines. **The spec
+  path** (the plan argues from the spec, so **the spec travels with the plan**)
+- **The global constraints** — minimum versions, dependency locks, naming and wording
+  conventions, the runtime environment. **Copy the values over from the spec verbatim.** This
+  is **the one exception** to the discipline of not writing a path down twice in prose, and the
+  reason is that **the implementer never opens the spec.** Summarize here and the values arrive
+  rounded off
 
-各タスク:
+Per task:
 
-- **触るファイル**を実在のパスで（作る／直す／テスト。直すなら行の範囲まで）
-- **受け取る面と、渡す面。関数名・引数・戻り値の型をそのまま書く。**
-  隣のタスクを読めない実装役が、隣が使う名前を知る経路はここしか無い
+- **The files you touch**, as paths that exist (create / edit / test; for an edit, down to the
+  line range)
+- **The surface you receive and the surface you hand on. Write the function names, arguments
+  and return types verbatim.** An implementer who cannot read the neighboring task has no other
+  route to the names the neighbor uses
 
-## 5. 穴を書かない
+## 5. Do not write holes
 
-**下は計画の欠陥であって、後で埋める場所ではない。**
+**What follows is a defect in the plan, not a place to fill in later.**
 
-- 「未定」「後で」「適切にエラー処理する」「必要なら検証を足す」「上のテストを書く」
-- **「タスク N と同じ」——同じものをもう一度書く。**タスクが順に読まれる保証は無い
-- **どこにも定義されていない型・関数・メソッドを指す**
-- コードを書く手順に、コードが無い
+- "TBD", "later", "handle errors appropriately", "add validation if needed", "write tests for
+  the above"
+- **"Same as task N" — write the same thing again.** Nothing guarantees the tasks are read in
+  order
+- **A reference to a type, function or method that is defined nowhere**
+- A step that writes code, with no code in it
 
-## 6. 自分で読み返す
+## 6. Re-read it yourself
 
-**spec を開いて、計画と突き合わせる。**
+**Open the spec and cross-check it against the plan.**
 
-- **spec の各要求に、対応するタスクを指せるか。**指せないものは、タスクを足す
-- 上の穴が残っていないか
-- **名前が揺れていないか。**3 で `clearLayers`、7 で `clearFullLayers` は欠陥。
-  **揺れた名前は、実装役どうしを繋がなくする**——互いを読めないので、誰も気付かない
+- **Can you point at a task for every requirement in the spec?** Where you cannot, add a task
+- Are any of the holes above still there?
+- **Are the names steady?** `clearLayers` in step 3 and `clearFullLayers` in step 7 is a defect.
+  **Names that move stop the implementers from connecting to each other** — they cannot read
+  each other, so nobody notices
 
-見つけたら、その場で直す。**読み返しを二周しない。**
+Fix what you find on the spot. **Do not re-read a second time.**
 
-## 7. 渡し方を選んでもらう
+## 7. Have the handoff chosen
 
-| 渡し方 | 何が起きるか |
+| Handoff | What happens |
 |---|---|
-| **本線が順に実行する** | 刻みごとに本線が自分で見る。遅いが、ずれが即座に出る |
-| **実装役に配る** | タスクごとに新しい役を立て、**差分は本線がレビューする** |
+| **The main session executes in order** | The main session sees every slice itself. Slow, but drift shows up immediately |
+| **Hand it out to implementer roles** | A new role per task, and **the main session reviews the diff** |
 
-どちらを選んでも、回すところからは `playbooks/running-a-plan.md`。
-**関門・台帳・周回の上限は、配っても配らなくても同じものが効く。**
+Either way, from the point where it runs, `playbooks/running-a-plan.md`.
+**The gate, the ledger and the cap on rounds apply the same whether you hand it out or not.**
 
-**夜を跨ぐなら `playbooks/autonomous-run.md`**——終了述語とチェックポイントはあちらが持つ。
-**計画ファイルを作ったことは、規律を外す理由にならない。**
+**If it runs overnight, `playbooks/autonomous-run.md`** — the termination predicate and the
+checkpoints belong there.
+**Having produced a plan file is not a reason to drop the discipline.**
 
-## 書かない場面
+## When not to write one
 
-| 場面 | 代わりに |
+| Situation | Instead |
 |---|---|
-| 形がまだ揺れている | `playbooks/shaping-the-work.md`。**下流から上流は直せない** |
-| 限定の段（変える流れが既に在り、形が数行で済んだ） | 計画を書かずに実装する。**計画が実装より長くなる** |
-| ノードが割れて並列にする | `plumb:graph`。**グラフ定義書が計画を兼ねる。二重に書かない** |
-| 振る舞いを変えない構造変更 | `playbooks/refactoring.md` が順序を持っている |
-| 落ちているものを直す | **先に再現させる**（**principle-fix-root-causes**）。設計から始めない。行き先は SKILL.md の「plumb が型を持たないもの」 |
+| The shape is still moving | `playbooks/shaping-the-work.md`. **You cannot repair upstream from downstream** |
+| The local tier (the flow you are changing exists, and the shape ran to a few lines) | Implement without a plan. **The plan would run longer than the implementation** |
+| The nodes split and go parallel | `plumb:graph`. **The graph definition doubles as the plan. Do not write it twice** |
+| A structural change that does not change behavior | `playbooks/refactoring.md` already carries the ordering |
+| Fixing something that is failing | **Get a repro first** (**principle-fix-root-causes**). Do not start from design. Go to "What plumb has no playbook for" in SKILL.md |
 
-**返すもの:** 計画のパス、タスクの本数と各々の成果物、spec の要求とタスクの対応表、
-選ばれた渡し方。**計画は使い捨てで、実行開始と同時に古くなる**と書き添える。
+**What you return:** the plan path, how many tasks and each one's artifact, the table mapping
+spec requirements to tasks, and the handoff that was chosen. Add the note that **the plan is
+disposable and goes stale the moment execution starts.**

@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: plumb が主張する環境が、いまも実在するかを見る。「plumb の健康診断」「ハーネスが壊れていないか」「doctor を回して」と言われたとき、および環境を変えた後・久しぶりに plumb を使うとき・バッチの終わりに使う。
+description: Check whether the environment plumb claims still exists on this machine. Use when asked to "run doctor", "check plumb's health", "is the harness broken", and after you change the environment, when you come back to plumb after a while, or at the end of a batch.
 ---
 
 # doctor
@@ -9,47 +9,47 @@ description: plumb が主張する環境が、いまも実在するかを見る�
 plumb-doctor
 ```
 
-**判断はスクリプトが持つ。この文書は、いつ回すかと、落ちたときに何を疑うかだけを持つ。**
-手順をここに書き写すと、片方だけが古くなる（**principle-encode-lessons-in-structure**）。
+**The script holds the judgment. This document holds only when to run it, and what to suspect when it fails.**
+Copy the steps here and one copy goes stale (**principle-encode-lessons-in-structure**).
 
-## なぜ要るのか
+## Why it is needed
 
-plumb は**環境について事実を主張する文書の束**である。
-どのコマンドが在るか、どのスキルが在るか、どのパスが在るか。
+plumb is **a bundle of documents that assert facts about the environment**:
+which command exists, which skill exists, which path exists.
 
-**その主張は、コードと違って壊れても何も言わない。**
-文書は指し先が消えても平気で残り、次に読んだ者を実在しない場所へ送る。
+**Unlike code, those assertions say nothing when they break.**
+A document happily survives the disappearance of what it points at, and sends the next reader somewhere that is not there.
 
-実際に、2026-08-29 の 1 セッションで 2 件出た。
+Two of them turned up in a single session on 2026-08-29.
 
 ```
-~/.<道具>-worktrees/    繰り越しメモが名指していたが、存在しないパスだった
-pr-review スキル        agent 6 体が「pr-review スキルの N 段から呼ばれる」と
-                        名乗っていたが、そのスキルは退避されていて現役に無かった
+~/.<tool>-worktrees/    a carry-over note named it; the path did not exist
+the pr-review skill     six agents introduced themselves as "called from stage N of the
+                        pr-review skill", but that skill had been moved aside and was not live
 ```
 
-**どちらも grep でも lint でも出ない。**「在るはずのものが無い」は、
-在ることを確かめに行かないと分からない。だから道具にした（**principle-build-the-lever**）。
+**Neither shows up under grep or lint.** "Something that should be there is not"
+is only knowable by going and checking that it is. So it became a tool (**principle-build-the-lever**).
 
-## いつ回すか
+## When to run it
 
-- **バッチの終わり。**終了条件の一部として。
-- **環境を変えた後。**スキルを足した・消した・退避した、拡張を入れた、CLI を入れ替えた。
-- **久しぶりに plumb を使うとき。**前回から何が動いたか分からないとき。
-- **`plumb` の索引が指す先を辿って、無かったとき。**その 1 件だけを直さず、まず全体を見る。
+- **At the end of a batch.** As part of the termination condition.
+- **After you change the environment.** A skill added, removed or moved aside; an extension installed; a CLI swapped.
+- **When you come back to plumb after a while.** When you do not know what moved since last time.
+- **When you followed a pointer out of the `plumb` index and it was not there.** Do not fix that one item; look at the whole first.
 
-## 落ちたときの読み方
+## Reading a failure
 
-| 落ちた場所 | 疑うもの |
+| Where it failed | What to suspect |
 |---|---|
-| 内側（横断ルール） | plumb 自身の編集。`plumb-check` を直接走らせて内容を見る |
-| 内側（スクリプトの振る舞い） | selftest.sh 自体の前提が壊れている可能性がある。`plumb-selftest` を直接走らせて内容を見る |
-| 実行先 | PATH と拡張のインストール。`docs/role-map.md` の前提が崩れている |
-| 同梱 agent | `agents/` の 1 体が消えている・リネームされている。`skills/pr-review/SKILL.md` が名指す名前と `agents/` の実体を突き合わせる |
-| agent の呼び出し元（あなたの私物） | 上と同じ原因が、あなた自身の `~/.claude/agents/` 側に出ている。スキルを戻すか、agent の description を直すか |
-| パス | `docs/path-map.md` の主張が古い。**実測してから表を直す。推測で書き換えない** |
-| 読み込み | 新しいセッションで `claude plugin list` を確認する。`claude plugin disable plumb` で切り戻せる |
+| Inside (cross-cutting rules) | an edit to plumb itself. Run `plumb-check` directly and read what it says |
+| Inside (script behavior) | selftest.sh's own premises may be broken. Run `plumb-selftest` directly and read what it says |
+| Routing targets | PATH and the extension install. The premises of `docs/role-map.md` have collapsed |
+| Bundled agents | one of `agents/` was deleted or renamed. Cross-check the names `skills/pr-review/SKILL.md` calls against what is actually in `agents/` |
+| The agents on your side (your own copy) | the same cause, showing up on your own `~/.claude/agents/` side. Either put the skill back, or fix the agent's description |
+| Paths | `docs/path-map.md`'s claim is out of date. **Measure first, then fix the table. Do not rewrite it from a guess** |
+| Loading | check `claude plugin list` in a new session. `claude plugin disable plumb` rolls it back |
 
-**落ちた項目を握り潰さない。**doctor を通すために期待値を緩めるのは、
-検証器を殺すのと同じ（**principle-prove-it-works**）。
-直せないなら、`docs/` に「いま壊れている」と書いて残す。
+**Do not bury a failing item.** Loosening the expectation to get doctor to pass is
+killing the verifier (**principle-prove-it-works**).
+If you cannot fix it, write "this is broken right now" into `docs/` and leave it there.

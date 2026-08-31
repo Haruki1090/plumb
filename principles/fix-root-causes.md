@@ -1,51 +1,52 @@
 ---
 name: principle-fix-root-causes
 origin: plumb
-description: "落ちているもの・おかしいものに手を入れるときに適用する。先に再現を手に入れ、症状ではなく原因に当てる。ガードで黙らせない。原因まで届かないまま回避するなら、届かなかったことを残す。"
+description: "Apply when you touch anything that is failing or behaving wrong. Get a repro first and fix the cause, not the symptom; do not silence it with a guard. If you work around it without reaching the cause, record that you never reached it."
 ---
 
 # Fix Root Causes
 
-**症状を根本原因まで辿るという判断を持つのがこの原則。**
-辿るための手順は `playbooks/fixing-a-bug.md` が持っている。
+**This principle owns the decision to trace a symptom back to its root cause.**
+The steps for tracing it live in `playbooks/fixing-a-bug.md`.
 
-**なぜ:** 症状が消えた瞬間に、報酬だけが先に来る。しかも
-**「直った」と「隠れた」は、消えた症状の側からは区別できない。**
-nil チェックを足せば落ちなくなり、リトライを足せば失敗が見えなくなる。
-どちらも観測を潰しているだけなのに、見た目は修正と同じ形をしている。
-**だから「症状で満足しない」という気構えでは守れない。判定を外から掛ける。**
+**Why this is hard to keep.** The reward arrives the instant the symptom disappears, and
+**from the symptom's side, "fixed" and "hidden" cannot be told apart.** Add a nil check and
+it stops crashing; add a retry and the failure stops being visible. Both only destroy the
+observation, yet both have the same shape as a fix. **So resolving not to settle for the
+symptom will not hold. Apply the test from outside.**
 
-## 先に再現を持つ
+## Get a repro first
 
-**再現が無いと、直ったことの反証ができない。**
-消えたのか、たまたま出なかったのかを、後から分ける手段が残らない。
+**Without a repro, there is nothing to refute the claim that it is fixed.**
+Nothing is left that tells "it is gone" apart from "it happened not to show this time".
 
-再現とは、**同じ入力で同じ結果が返るもの**——落ちるテスト、短いスクリプト、
-決まった手順で必ず出る終了コード。**手で触って一度出た、は再現ではない。**
-再現しないなら材料が足りない。回数・負荷・環境を揃えるほうが、推測で直すより速い。
+A repro is **something that returns the same result for the same input**: a failing test, a
+short script, an exit code that comes back every time you follow a fixed procedure.
+**Hitting it once by hand is not a repro.** If it does not reproduce, you are short of
+material. Lining up the repetitions, the load and the environment is faster than fixing by
+guess.
 
-## 原因に届いたかを判定する
+## How to tell you reached the cause
 
-「なぜ」を、**それ以上遡ると設計判断になる**ところまで送る。届いた印は二つ。
+Push "why" back until **one more step would make it a design decision**. Two marks say you
+got there.
 
-1. **その原因から、観測した症状が全部説明できる。**説明できない残りがあるなら、まだ手前にいる
-2. **原因を直せば、症状の側を触らなくても消える。**症状の側も触る必要があるなら、当てていない
+1. **That cause explains every symptom you observed.** Any remainder it does not explain means you are still short of it
+2. **Fixing the cause makes the symptom go away without touching the symptom side.** If you have to touch the symptom side too, you did not hit the cause
 
-**回避策を入れるかどうかは、この判定の後。**
-「なぜこれで消えるのか」を段落で書かないと正当化できない回避策は、
-**コードのほうが間違っている印。**注釈を足して済ませない。
+**Whether to put in a workaround comes after that test.** A workaround you cannot justify
+without writing a paragraph on why it makes the symptom go away is **the mark of code that is
+itself wrong.** Do not settle for adding a comment.
 
-## 一件は事例、そこで止めない
+## One case is one case. Do not stop there
 
-- **同じ形を探す。**一箇所を直したら、同じ書き方が他に何箇所あるかを機械で数える。
-  一件だけ直して閉じると、残りが次のバグとして戻ってくる
-- **走り直しで直るなら、コードではなく状態を疑う。**
-  コードは実行のたびに変わらない。変わるのは設定・キャッシュ・ロックファイル・保存された状態。
-  **消したら直った、は「状態が壊れうる」という発見であって、修正ではない**
-- **詰まったら計測に戻る。**推測を積むより、ログを足して実際の値を見るほうが安い
+- **Go looking for the same shape.** Once you fix one site, count by machine how many other places are written the same way. Fix the one and close it out, and the rest come back as the next bug
+- **If a re-run fixes it, suspect state, not code.** Code does not change between runs. What changes is configuration, caches, lockfiles, stored state. **"I deleted it and it worked" is the discovery that state can break, not a fix**
+- **When you get stuck, go back to measuring.** Adding a log and looking at the actual value is cheaper than stacking guesses
 
-**原因が自分の管理の外にある**（上流の不具合、変えられない環境）なら、そこで止めてよい。
-**ただし、どこまで辿ってどこで止めたかを残す。**残さない回避は症状隠しと見分けがつかない。
+**When the cause is outside what you control** (an upstream defect, an environment you cannot
+change), stopping there is allowed. **But record how far you traced it and where you stopped.**
+A workaround with no record cannot be told apart from hiding the symptom.
 
-**再現と修正後の検査をどう見るかは prove-it-works、
-同じ穴を二度塞がない仕組みは encode-lessons-in-structure。**
+**How to read the repro and the checks after the fix is prove-it-works. The mechanism that
+keeps you from plugging the same hole twice is encode-lessons-in-structure.**

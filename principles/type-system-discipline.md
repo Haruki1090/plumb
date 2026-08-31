@@ -1,52 +1,65 @@
 ---
 name: principle-type-system-discipline
 origin: plumb
-description: "型を設計するとき、関数のシグネチャを見るとき、型のある言語で書くときに適用する。不正な状態を作れない形にし、意味の違う値を取り違えられなくし、外から来たものは境界でパースし、コンパイラに嘘をつかず、分岐の網羅を検査器に持たせ、形の正本は一つにする。"
+description: "Make invalid states unrepresentable: brand your types so values with different meanings cannot be swapped, parse external data at the boundary, do not lie to the compiler, let the checker exhaust your variants, and derive a shape from its one source of truth. Use when designing types, reading a function signature, or when asked \"should this be a union\", \"is this cast safe\", or \"how strict should these types be\"."
 ---
 
 # Type system discipline
 
-**型検査器は、毎回ただで走る唯一のレビュアー。**
-人のレビューは見落とすし、疲れるし、次の担当者には効かない。
-**型に証明させたことだけが、来月も効いている。**
+**The type checker is the only reviewer that runs for free, every time.**
+Human review misses things, gets tired, and does nothing for whoever picks the code up
+next. **Only what you made the types prove is still working next month.**
 
-**なぜ守れないか:** 緩い型は、書いた本人には一度も痛くない。
-代償は「この組み合わせは起きるのか」という問いの形で、**後から読む人と、落ちた本番に回る。**
-書いた時点では常に「今は問題ない」が真になる。だから自制では守れず、**印で捕まえる。**
+**Why this is hard to keep.** A loose type never once hurts the person who wrote it. The
+bill arrives as the question "can this combination actually occur", and **it is charged to
+whoever reads the code later and to the production system that fell over.** At the moment
+of writing, "this is fine as it stands" is always true. Self-restraint will not hold this.
+**Catch it by the signs.**
 
-## 印と、その直し方
+## The signs, and what each one needs
 
-- **フィールドの組み合わせに、有効と無効がある。**
-  承認済みと差し戻しを別々の真偽値で持てば、両方立った状態が作れる。
-  **作れない形にする**——状態を1つの値として持ち、そこから両方を導く
-- **制約を後から掛けている。**検査で絞るのではなく、**構成で作る。**
-  重み付きの候補は「候補と重みの対の列」であって、
-  「候補の列と重みの列、長さが揃っているという約束」ではない
-- **意味の違う値が、同じ素の型で並んでいる。**取り違えても通る引数は、いつか取り違える。
-  素の型に名前を付けて別物にし、**作る所で1回検証したら以後は信じる**
-- **外から来たものを、そのまま内側の型として扱っている。**外はパースするまで型が無い。
-  検査の置き場は **principle-boundary-discipline**
-- **キャストや「ここは絶対に来ない」の断言がある。**それは検査器に嘘をついた記録。
-  証明できないなら、証明する（検証・絞り込み・形の作り直し）か、
-  **危険が残っていることを認める。**握り潰した1行は、後で書く事故報告の原因欄
-- **バリアントを増やしてもコンパイルが落ちない。**
-  網羅は人の注意ではなく検査器の仕事。落ちない書き方なら、次の担当者は気付けない
-- **同じ形が2箇所で手書きされている。**形の正本が別に在るなら、そこから導く
-  （**principle-encode-lessons-in-structure**）。手で写した形は必ずずれる
+- **The combinations of fields split into valid and invalid.** Hold "approved" and "sent
+  back" as two separate booleans and a state with both set is constructible. **Make that
+  state unconstructible**: hold one value for the state and derive both from it
+- **You are imposing the constraint after the fact.** Do not narrow it with a check;
+  **build it so it holds by construction.** A weighted candidate set is a sequence of
+  candidate-and-weight pairs, not "a sequence of candidates and a sequence of weights, plus
+  a promise that the lengths match"
+- **Values with different meanings sit side by side in the same bare type.** Arguments you
+  can swap and still compile get swapped eventually. Give the bare type a name of its own,
+  and **validate once where it is constructed, then trust it from there**
+- **Something from outside is being handled as an inside type as it arrived.** Outside has
+  no type until you parse it. Where those checks live belongs to
+  **principle-boundary-discipline**
+- **There is a cast, or an assertion that this case can never arrive.** That is a written
+  record of lying to the checker. If you cannot prove it, either prove it (validate,
+  narrow, reshape the type) or **admit the danger is still there.** The line you swallowed
+  is the cause field of an incident report someone writes later
+- **Adding a variant does not break the compile.** Exhaustiveness is the checker's work,
+  not human attention. Written so it does not break, the next person has no way to notice
+- **The same shape is hand-written in two places.** If the source of truth for the shape is
+  somewhere else, derive it from there (**principle-encode-lessons-in-structure**). A shape
+  copied by hand always drifts
 
-## 強くしすぎない
+## Do not make it stronger than it needs to be
 
-**型を強くするのは、実行時にしか答えの無い場所が現れたときだけ。**
-そこに出た検査や断言を型へ押し上げ、**そこで止める。**
-何も落ちないのに精密にした型は、再利用と儀式の負担だけを増やす。
-台帳の件数は空でも 0 なので普通の列を取る。最新の1件を返す操作は空に答えが無いので、
-空でない列を要求する。**この差だけが、型を強くする理由になる。**
+**Strengthen a type only when a place shows up whose answer exists only at runtime.** Lift
+the check or the assertion that appeared there into the type, and **stop right there.** A
+type made precise while nothing was failing buys nothing but friction in reuse and
+ceremony at the call site. The number of entries in a ledger is 0 when it is empty, so take
+an ordinary sequence. An operation that returns the most recent entry has no answer when
+the ledger is empty, so require a non-empty one. **That difference is the entire reason to
+strengthen a type.**
 
-## 判定
+## How to tell afterwards
 
-- **この欄の組み合わせがいつ有効かを、コメントで説明したくなったか**——形が緩い
-- **この強制変換は、どの境界から来た値か**——遡って、そこで検証する
-- **来月バリアントを1つ足したとき、次の担当者は直す場所を教えてもらえるか**
-- **いま強くしようとしている型は、何を落ちなくするのか**——答えられないなら戻す
+- **Did you want to explain in a comment when this combination of fields is valid?** —
+  the shape is loose
+- **Which boundary did the value inside this coercion come from?** — trace it back and
+  validate it there
+- **When someone adds a variant next month, will the next person be told where to fix it?**
+- **What does the type you are about to strengthen stop from failing?** — if you cannot
+  answer, put it back
 
-言語ごとに道具の名前は違う。**この原則が見るのは名前ではなく、検査器に何を証明させたか。**
+The names of the tools differ per language. **What this principle looks at is not the name;
+it is what you made the checker prove.**

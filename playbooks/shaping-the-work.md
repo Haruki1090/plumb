@@ -1,144 +1,155 @@
-# 形を決める
+# Shaping the work
 
-**形を持つのは持ち主。この型が持つのは、どこで止まるかの線だけ。**
+**The owner holds the shape. All this playbook holds is the line where you stop.**
 
-「〜を作りたい」「〜を足して」「〜できるようにして」——**まだ何を作るかが決まっていない**
-ところから入る仕事。決まっているなら、この型は要らない。
+"I want to build X", "add X", "make it possible to X" — work that starts from a point where
+**what to build is still open**. If it is already settled, you do not need this playbook.
 
-## 止まる線を先に引く
+## Draw the stopping line first
 
-plumb は **principle-never-block-on-the-human** を持っている。取り消せる作業で人を待たない。
-この型は門を持つ。**正面から衝突して見えるが、していない。**
+plumb holds **principle-never-block-on-the-human**: do not make a person wait on reversible
+work. This playbook holds a gate. **It looks like a head-on collision. It is not.**
 
-線はその原則の中に書いてある——**「何を作るか」は持ち主のもの、「どう作るか」は止めない。**
+The line is written inside that principle: **"what to build" belongs to the owner; "how to
+build it" does not stop.**
 
-| | 何が入るか | どうするか |
+| | What goes in it | What you do |
 |---|---|---|
-| **形**（止まる） | 何を作るか。どの案を採るか。どこまでを範囲にするか。既存の何を壊してよいか | 渡して、答えを待つ |
-| **手**（止まらない） | ファイルの割り方。名前。テストの書き方。順序。どの API を使うか。刻み方 | 決めて進み、差分で見せる |
+| **The shape** (stops) | What to build. Which option to take. Where the scope ends. What existing behavior may break | Hand it over and wait for an answer |
+| **The method** (does not stop) | How to split the files. Names. How the tests are written. Ordering. Which API to use. How to slice the commits | Decide, move, and show it in the diff |
 
-**分けている基準は「取り消しの値段」。**手を間違えても差分1本で戻せる。
-形を間違えると、**それに乗って作ったものが全部捨てになる。**
-「取り消せるから進んでよい」が成り立つのは手の側だけで、形の側では前提が崩れている。
+**The line between them is the price of undoing it.** Get the method wrong and one diff takes
+it back. Get the shape wrong and **everything built on top of it is thrown away.** "It is
+reversible, so go ahead" holds only on the method side; on the shape side, the premise has
+already broken.
 
-### 門は1回だけ
+### The gate opens once
 
-**節ごとに頷きを取らない。**持ち主は非同期で見ている。往復1回が高い資源で、
-5回に割ると5回分の待ちが積む。**形が固まるまでこちらで回し、固まったものを1度だけ渡す。**
+**Do not collect a nod per section.** The owner is reading asynchronously. One round trip is an
+expensive resource, and splitting it into five stacks up five waits. **Turn the crank yourself
+until the shape is solid, then hand the solid thing over once.**
 
-### 止まっている間、手は止めない
+### While it is stopped, the method keeps moving
 
-渡したあとに全部を凍らせない。**分岐に依存しない作業は進める**——
-どの案でも要る足場、読む必要のあるコード、再現できる環境。
-待たせるのは**選択に依存する側だけ**（`plumb:decision-brief`「判断を渡したあと、
-待たずに実装を進める」の裏返し。あちらは依存する側を進めるなと言っている）。
+Do not freeze everything after you hand it over. **Work that does not depend on the branch
+keeps moving**: the scaffolding every option needs, the code you have to read, an environment
+that reproduces. What waits is **only the side that depends on the choice** (the mirror image
+of `plumb:decision-brief`'s "keep implementing after you hand the decision over, do not wait" —
+that one says do not advance the dependent side).
 
-### 門が既に通っているとき
+### When the gate has already been passed
 
-**持ち主が形まで書いて降ろしてきた要求に、もう一度門を立てない。**
-「この関数にこの引数を足して」は形が決まっている。この型を通さず、手に入る。
-承認済みの spec が形を持っているときも同じ。**二度訊くのは、渡されたものを読まなかった印。**
+**Do not raise a second gate against a request the owner handed down with the shape already
+written.** "Add this argument to this function" has its shape settled. It skips this playbook
+and goes straight to the method. The same holds when an approved spec carries the shape.
+**Asking twice is the mark of not having read what you were given.**
 
-## 1. どの重さで扱うかを、最初に言う
+## 1. Say up front which weight you are treating it at
 
-**言ってから始める。**持ち主が違うと思ったら、そこで直せる。
+**Say it before you start.** If the owner disagrees, that is where it gets corrected.
 
-| 段 | 何か | 作る文書 |
+| Tier | What it is | Document produced |
 |---|---|---|
-| **探り** | 「できるか」を確かめる仕事。**成果は答えであって、コードではない** | 無し |
-| **限定** | **変える流れが、既にこのリポジトリに在って読める**。1ファイル、1つのフラグ、1本の口 | 無し（形は数行） |
-| **構造** | 新しい部品、境界が動く、他が依存している面が変わる | spec |
+| **Probe** | Work that establishes "can this be done". **The output is an answer, not code** | none |
+| **Local** | **The flow you are changing already exists in this repository and can be read.** One file, one flag, one entry point | none (the shape runs to a few lines) |
+| **Structural** | A new component, a boundary moves, a surface others depend on changes | spec |
 
-**限定かどうかを決めるのはリポジトリで、あなたの慣れではない。**
-「この種類のアプリは知っている」は限定の根拠にならない。
-**変えるべき流れがまだ無いなら、それは構造。**
+**The repository decides whether it is local, not your familiarity.**
+"I know this kind of app" is not grounds for local.
+**If the flow you should be changing does not exist yet, it is structural.**
 
-迷ったら**重いほうを採る。**段は**上がるだけ**——途中で隠れていた複雑さが出たら、
-止めて、そう言って、上げ直す。**下げるのは、どの時点でもしない。**
+When in doubt, **take the heavier one.** Tiers **only go up** — when hidden complexity surfaces
+mid-way, stop, say so, and re-tier. **You never go down, at any point.**
 
-## 2. 文脈を、訊く前に読む
+## 2. Read the context before you ask
 
-既存の構造、直近の変更、正本のドキュメント。**すでに読めば分かることを問いにしない。**
+The existing structure, the recent changes, the source-of-truth documents. **Do not turn what
+reading would already answer into a question.**
 
-ここで規模も測る。**独立した部分系が複数あるなら、細部を詰める前に割る。**
-1枚に収まらないものを1枚に押し込むと、後段の全部がずれる。
-割ったら、最初の1つだけをこの型に通す。残りは残りで一周する。
+Measure the size here too. **If there are several independent subsystems, split before you
+work out the details.** Force something that does not fit on one page onto one page and
+everything downstream is skewed. Once split, put only the first piece through this playbook.
+The rest get their own lap.
 
-## 3. 訊く
+## 3. Ask
 
-**1通に1問。**まとめて投げると、返ってくるのは最初の1問への答えだけになる。
-選ばせる形にできるなら、そうする。
+**One question per message.** Send them in a batch and what comes back is the answer to the
+first one only. If you can put it as a choice, do that.
 
-訊く対象は**目的・制約・何をもって成功か**。実装の都合は訊かない、こちらが決める。
+Ask about **the goal, the constraints, and what counts as success**. Do not ask about
+implementation convenience — that is yours to decide.
 
-## 4. 案を作って、自分で潰す
+## 4. Build options and knock them down yourself
 
-**2〜3本作って比べる**（**principle-exhaust-the-design-space**）。
-足りない機能を削る側に倒す。**要求されていないものは、どの案からも落とす。**
+**Build two or three and compare them** (**principle-exhaust-the-design-space**).
+Lean toward cutting features that are missing. **Drop anything nobody asked for from every
+option.**
 
-**走らせれば自分で答えが出る分岐は、訊かずに買う。**
-どの配置か、どの間合いか、どの手触りか——`playbooks/prototype.md` で捨てる実装を作り、
-観察して決める。**これは never-block をそのまま適用できる場所。**
-訊くのは、走らせても答えが出ないもの（何を作るか、誰のためか、どこまでか）だけ。
+**A branch you can answer by running it, you buy instead of asking.**
+Which arrangement, which timing, which feel — build a disposable implementation with
+`playbooks/prototype.md`, watch it, and decide. **This is where never-block applies
+directly.** You ask only about what running it cannot answer: what to build, who it is for,
+where it ends.
 
-## 5. 渡す
+## 5. Hand it over
 
-**候補が2つ以上あって、選び方で作るものが変わるなら `plumb:decision-brief`。**
-決めるのはこの型、見せ方はあちら。
+**When there are two or more candidates and the choice changes what gets built, use
+`plumb:decision-brief`.** This playbook decides; that one presents.
 
-**実質1本しか無いなら、選択肢の体を装わない。**そう報告して、進む。
-「どちらでもよい」を渡すのは、判断ではなく作業を渡すこと。
+**When there is really only one, do not dress it up as a choice.** Report that and move.
+Handing over a "either is fine" hands over the work, not the decision.
 
-## 6. 構造の段だけ、spec を書く
+## 6. Write a spec, in the structural tier only
 
-置き場は `plumb-path spec --mkdir`。
-**spec が何を持つか（終了状態・受け入れ条件・なぜこの手か・却下した案）と、
-plan との格の違いは SKILL.md が正本**で、ここには書き写さない
-（**principle-encode-lessons-in-structure**）。
+It goes where `plumb-path spec --mkdir` says.
+**What a spec carries (end state, acceptance criteria, why this approach, what you rejected)
+and how it differs in rank from a plan is owned by SKILL.md** and is not copied here
+(**principle-encode-lessons-in-structure**).
 
-書いたら、**間を置かずに自分で読み返す。**
+Once written, **re-read it yourself immediately.**
 
-- 埋まっていない場所（「後で」「未定」）が残っていないか
-- 節どうしが矛盾していないか
-- **二通りに読める要求が無いか。**あるなら片方に決めて、決めたと書く
-- 1つの計画に収まる範囲か
+- Are there unfilled spots left ("later", "TBD")?
+- Do any two sections contradict each other?
+- **Is there a requirement that reads two ways?** If so, pick one and write that you picked it
+- Does the scope fit inside one plan?
 
-直したら進む。読み返しを繰り返さない。
+Fix and move. Do not loop on re-reading.
 
-そのうえで**持ち主に読ませる。**spec は正本で、承認の対象。
-**ここが最後の門**で、通ったら形の話は終わる。
+Then **put it in front of the owner.** The spec is the source of truth and it is what gets
+approved. **This is the last gate**, and once it passes, the conversation about shape is over.
 
-## 7. 出口
+## 7. Exits
 
-| 段 | 次 |
+| Tier | Next |
 |---|---|
-| 探り | 推奨を返して終わり。**作ったものは捨てると書く** |
-| 限定 | そのまま実装に入る。**計画は書かない**——計画のほうが実装より長くなる |
-| 構造 | `playbooks/writing-a-plan.md` |
-| 構造で、ノードが割れて並列化するなら | `plumb:graph`。**グラフ定義書が計画を兼ねるので、計画を別に書かない** |
+| Probe | Return the recommendation and stop. **Write that what you built is thrown away** |
+| Local | Go straight to implementation. **Do not write a plan** — the plan would run longer than the implementation |
+| Structural | `playbooks/writing-a-plan.md` |
+| Structural, where the nodes split and parallelize | `plumb:graph`. **The graph definition doubles as the plan, so do not write a separate one** |
 
-## 近い型との線
+## The line against neighboring playbooks
 
-| 型 | どちらを使うか |
+| Playbook | Which one to use |
 |---|---|
-| `playbooks/investigation.md` | **出力が説明・推奨で終わり、コードを変えないならあちら。**調べた結果として作ることになったら、勢いで実装に滑らず、この型に入り直す |
-| `playbooks/prototype.md` | **形の候補を、捨てる実装で買う道具。**この型の 4 の中で使う。単独では形を決めない |
-| `plumb:decision-brief` | **形を渡すときの見せ方。**この型の 5 で呼ぶ。どこで止まるかはこちら、どう見せるかはあちら |
-| `plumb:graph` | **ノードが5〜10に割れて、グラフ化のシグナルが2つ以上ならあちら。**グラフ定義書が spec を兼ねる。この型は、そこへ入る前に形を1つに決めるところまで |
-| `playbooks/refactoring.md` | **振る舞いを変えないなら、形はもう決まっている。**この型を通さない。掃除の途中で設計をやり直したくなったら、名前を変えてここへ来る |
+| `playbooks/investigation.md` | **If the output ends at an explanation or a recommendation and no code changes, use that one.** If the investigation turns into building something, do not slide into implementation on momentum — re-enter through this playbook |
+| `playbooks/prototype.md` | **A tool for buying a shape candidate with a disposable implementation.** Used inside step 4 here. It does not settle a shape on its own |
+| `plumb:decision-brief` | **How you present a shape when you hand it over.** Called from step 5 here. Where you stop is this playbook's; how it looks is that one's |
+| `plumb:graph` | **If the nodes split into five to ten and two or more graph signals are present, use that one.** The graph definition doubles as the spec. This playbook only takes you as far as settling on one shape before you go there |
+| `playbooks/refactoring.md` | **If the behavior does not change, the shape is already settled.** Do not run it through this playbook. If you find yourself wanting to redesign mid-cleanup, change the name and come here |
 
-## よくある崩れ方
+## How this breaks
 
-| 崩れ | 直し方 |
+| Failure | What to do |
 |---|---|
-| 「単純すぎるので設計は要らない」 | 単純なら**形が短くなる**だけ。渡す回数は減らない |
-| 「限定」と名付けて spec を省く | **省くためにラベルを取りに行った**時点が、迷っている証拠。重いほうへ |
-| 形を出したのと同じ返答で作り始めた | 門は形の長さではなく**返事**。出したら止まる |
-| 慣れている種類だから限定にした | 限定はリポジトリが決める。**読める流れが無いなら構造** |
-| 探りで作ったものが良かったので残した | 残すのは**別の要求**。段を決め直す |
-| 膨らんだが、もうすぐ終わるので続けた | 膨らみは段を上げる。**止めて、そう言う** |
-| 分岐を全部持ち主に訊いた | 走らせて分かるものは 4 で買う。**訊くのは走らせても分からないものだけ** |
-| 形が固まる前に計画を書き始めた | 計画は形の下流。**揺れているものを手順にすると、手順ごと捨てになる** |
+| "It is too simple to need design" | Simple only makes **the shape shorter**. It does not reduce the number of handoffs |
+| Labeling it "local" to skip the spec | **Going looking for the label in order to skip** is itself the evidence you are unsure. Take the heavier one |
+| Started building in the same reply that handed the shape over | The gate is the **answer**, not the length of the shape. Once you hand it over, you stop |
+| Called it local because the domain is familiar | The repository decides local. **No readable flow means structural** |
+| Kept what the probe built because it turned out good | Keeping it is **a different request**. Re-tier it |
+| It grew, but you kept going because it was nearly done | Growth raises the tier. **Stop and say so** |
+| Asked the owner about every branch | Buy what running it answers, in step 4. **Ask only about what running it cannot answer** |
+| Started writing the plan before the shape was solid | The plan is downstream of the shape. **Turn something unsettled into steps and the steps get thrown away with it** |
 
-**返すもの:** 選んだ段とその根拠、訊いた問いと返ってきた答え、比べた案と落とした理由、
-持ち主が選んだ形、spec のパス（構造の段のみ）、次に入る型。
+**What you return:** the tier you chose and why, the questions you asked and the answers that
+came back, the options you compared and why you dropped the rest, the shape the owner chose,
+the spec path (structural tier only), and the playbook you enter next.

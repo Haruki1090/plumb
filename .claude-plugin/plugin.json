@@ -2,7 +2,7 @@
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "plumb",
   "version": "0.5.0",
-  "description": "Claude Code のハーネス。原則を名前で呼べる索引、判定役を別のモデルファミリーへ出す規律、可視スキップ（省略はできるが黙ってはできない）、自分の主張が実在するか検査するハーネス。PR レビュー（反証役 6 agent 同梱）・実行グラフ設計・分岐のある判断を渡す decision-brief まで同梱する。",
+  "description": "A harness for Claude Code: an index of principles you call by name, judgment routed to a different model family, visible skip (skipping is allowed but never silent), and a harness that checks whether its own claims still exist. Ships adversarial PR review with six bundled agents, execution-graph design, and decision-brief for handing a branching decision back to the owner.",
   "author": {
     "name": "Haruki1090"
   },

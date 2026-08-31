@@ -1,22 +1,23 @@
-# 役割の実行先
+# Where roles run
 
-**実行先はこの文書ではなく `~/.claude/plumb/config` が決める。**
-散文にコマンド名を書かない。書くと、そのツールを持っていない人にとって文書が嘘になる。
+**`~/.claude/plumb/config` decides where a role runs, not this document.**
+Do not write a command name in prose. Write one and the document turns into a lie for anyone
+who does not have that tool.
 
-| 役割 | 鍵 | 未設定のとき |
+| Role | Key | When unset |
 |---|---|---|
-| 本線 | —（いま動いている Claude Code） | — |
-| 実装役 | —（`Task`。`model` を書かない） | — |
-| 探索役 | —（`Task`。差分を出さない） | — |
-| 判定役 | `role.judge` | **本線が代行する。**別ファミリーの目が入らないことを、そう言って進める |
-| 量産役 | `role.bulk` | 本線が順に処理する |
-| ペインの駆動 | `pane.driver` | 前面で実行する |
-| スタックの操作 | `stack.tool` | `playbooks/landing-a-stack.md` の降格経路に落ちる |
+| Main session | — (the Claude Code you are running in) | — |
+| Implementer role | — (`Task`. Do not write `model`) | — |
+| Explorer role | — (`Task`. Produces no diff) | — |
+| Judge role | `role.judge` | **The main session stands in.** Say out loud that no other family's eyes are on it, and go on |
+| Bulk role | `role.bulk` | The main session works through it in order |
+| Driving a pane | `pane.driver` | Run it in the foreground |
+| Stack operations | `stack.tool` | Drops to "Land it with bare gh" in `playbooks/landing-a-stack.md` |
 
-問い合わせ方:
+How to ask:
 
     plumb-config role.judge ""
 
-**未設定は異常ではない。**空を返して exit 0 する。
-判定役が未設定でも、**判定役の todo の行は消えない**（**可視スキップ**）。
-`skip: role.judge 未設定` と書いて残す。
+**Unset is not a fault.** It returns empty and exits 0.
+Even with the judge role unset, **the todo line for the judge role does not disappear**
+(**visible skip**). Leave it there reading `skip: role.judge unset`.

@@ -1,40 +1,49 @@
 ---
 name: principle-subtract-before-you-add
 origin: plumb
-description: "追加・リファクタ・書き換えの順序を決めるときに適用する。まず不要な重荷、冗長なバリデータ、スタブ参照を取り除き、単純になった土台の上に積み上げる。"
+description: "Strip the dead weight, the redundant validators and the stub references first, then build on the base that got simpler. Use when deciding the order of an addition, a refactor or a rewrite, or when asked \"where do I start\", \"should I clean this up first\", or \"can we just add it on top\"."
 ---
 
 # Subtract Before You Add
 
-**先に消す。簡単になった土台の上に建てる。**
-出す差分そのものを小さく保つのは **principle-laziness-protocol**、
-旧 API を実際に畳む手口は **principle-migrate-callers-then-delete-legacy-apis**。
-この原則が持つのは**順序**——引き算を、足し算より前に置くこと。
+**Delete first. Build on the base that got simpler.**
+Keeping the diff you ship small belongs to **principle-laziness-protocol**; the actual
+method for folding away an old API belongs to
+**principle-migrate-callers-then-delete-legacy-apis**. What this principle owns is **the
+order**: subtraction goes before addition.
 
-**なぜ守れないか:** 消しても、動くものは増えない。**引き算は進捗として計上されない。**
-足せば新しい振る舞いが見え、報告に書けて、レビューでも評価される。
-そのうえ**消す窓は時間とともに閉じる**——後回しにした死んだ重さは、
-次に足したコードから参照され、参照された瞬間に「消す」が「移行する」に変わる。
-だから「気付いたら消す」では遅い。**足す作業の前に、消す作業を置く。**
+**Why this is hard to keep.** Deleting adds nothing that runs. **Subtraction never gets
+counted as progress.** Add, and there is new behavior to see, to write into the report, to
+be credited for in review. On top of that, **the window for deleting closes with time** —
+dead weight you put off gets referenced by the next code you add, and the moment it is
+referenced, "delete" turns into "migrate". "Delete it when I notice it" is already too
+late. **Put the deleting in front of the adding.**
 
-## 順序
+## The order
 
-1. **死んだ重さを消す。**呼ばれていないもの、届かない分岐、参照だけ残った孤児
-2. **仕様が要求していない守りを落とす。**投機的なバリデータ、パーサ、ガード。
-   **仕様の外の機能は、それを守る検証を引き連れてくる**——保存、起動時の再試行、
-   スキーマの移行は、それぞれ入力を守る仕掛けを要求する。機能ごと落とせば、守りも一緒に落ちる
-3. **中身の無い参照を消す。**リンク先に新しいことが何も書いていないなら、
-   置き換えではなく削除。**空の踏み台は、次の読み手に一往復させるだけ**
-4. **観測された使われ方に形を合わせる。**推測した例外的な使い方のために広げない
-5. **そこから建てる**
+1. **Delete the dead weight.** What nobody calls, branches nothing reaches, orphans that
+   only a reference keeps alive
+2. **Drop the defenses the spec never asked for.** Speculative validators, parsers, guards.
+   **A feature outside the spec drags in the verification that protects it** — persistence,
+   retry on startup and schema migration each demand their own machinery for guarding
+   input. Drop the feature and the defenses go with it
+3. **Delete references with nothing inside them.** If the link target says nothing new,
+   delete it rather than replace it. **An empty stepping stone costs the next reader one
+   round trip and gives back nothing**
+4. **Fit the shape to the usage you have observed.** Do not widen it for an exceptional use
+   you imagined
+5. **Build from there**
 
-## 引く対象の見つけ方
+## How to find what to subtract
 
-- **同じことを二度言っている文章。**指示、テンプレート、説明。
-  片方を消して意味が変わらないなら、それは冗長であって強調ではない
-- **片側しか通らない切り替え。**設定で分岐しているが、一方しか使われていないもの
-- **発明された機構。**既にある道具で足りるのに、新しい台帳・新しい置き場を作っていないか。
-  plumb では `plumb-decision-log` と `plumb-path` で足りる場面がほとんど
+- **Prose that says the same thing twice.** Instructions, templates, explanations. If
+  deleting one of them changes no meaning, that is redundancy, not emphasis
+- **A switch where only one side is ever taken.** Configuration that branches, with one
+  branch nobody uses
+- **Invented machinery.** Are you building a new ledger or a new place to put things where
+  the tools that already exist would do? In plumb, `plumb-decision-log` and `plumb-path`
+  cover almost every such case
 
-**残す判定:** 消そうとして手が止まったら、**それを使っている場所を実際に示す。**
-示せないなら消す。「たぶん使われている」は参照ではない。
+**The test for keeping something:** if your hand stops on the way to deleting it, **show
+the actual place that uses it.** If you cannot show one, delete it. "It is probably used
+somewhere" is not a reference.

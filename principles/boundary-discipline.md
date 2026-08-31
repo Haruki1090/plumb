@@ -1,46 +1,48 @@
 ---
 name: principle-boundary-discipline
 origin: plumb
-description: "検証・エラー処理・枠組みとの接続を書くときに適用する。ガードは外から入る地点に集める。内側では型を信じ、同じ値を二度検査しない。ロジックは枠組みに依存しない純関数に置く。"
+description: "Apply when writing validation, error handling, or the layer that binds to a framework. Concentrate guards at the point where data enters from outside; inside, trust the types and never check the same value twice. Keep the logic in pure functions that know nothing about the framework."
 ---
 
 # Boundary discipline
 
-**検査は、外から入る地点に集める。内側では信じる。**
-この原則が決めるのは**ガードの置き場所**であって、何が原因かの特定ではない
-（それは **principle-fix-root-causes**）。
+**Concentrate the checks at the point where things enter from outside. Inside, trust them.**
+This principle decides **where guards go**, not what caused a failure (that is
+**principle-fix-root-causes**).
 
-**なぜ守れないか:** 落ちた場所に検査を足すのが、いつでも一番安い。
-入口まで遡るには経路の調査が要り、直したことの証明も遠くなる。
-だから防御は**落ちた場所に溜まり、入口は薄いまま**になる。
-しかも**撒いた検査は消せない。**誰が何のために置いたか分からない検査を消す判断は、
-置く判断より高くつく。**片道の変更だと知って置く。**
+**Why this is hard to keep.** Adding a check where it crashed is always the cheapest move.
+Tracing back to the entry point means investigating the path, and the proof that you fixed
+anything moves further away. So the defenses **pile up where the crash was, and the entry
+point stays thin**. And **a check you scatter can never be taken out**: deciding to delete a
+check when nobody knows who put it there or what for costs more than deciding to add it.
+**Add one knowing it is a one-way change.**
 
-## 境界とは何か
+## What counts as the boundary
 
-**プロセスの外から来たもの全部。**引数、環境変数、設定ファイル、ネットワークの応答、
-外部 API の返り値、保存済みのデータ、別プロセスの出力、人が打った値。
-**自分が書いたコードが渡してきた値は、境界ではない。**
+**Everything that came from outside the process.** Arguments, environment variables, config
+files, network responses, return values from an external API, stored data, the output of
+another process, whatever a person typed.
+**A value handed to you by code you wrote is not a boundary.**
 
-## 規則
+## The rules
 
-- **入口で1回だけ検証し、生の入力を内側の型に変える。**以後は検証し直さない
-- **内側は型を信じる。**入口が検証済みなら、呼び出し鎖の途中の nil 検査は余分
-- **越えるときに表現を変える。**外の都合の形（転送・保存・枠組みの型）を内側に持ち込まず、
-  内側の型も公開面に出さない。**出すのはドメインの概念**
-- **ロジックは枠組みを知らない純関数に置く。**枠組みとの接続層は薄く、機械的に
+- **Validate once at the entry point and turn the raw input into an inside type.** Do not validate it again after that
+- **Inside, trust the types.** If the entry point validated, a nil check partway down the call chain is surplus
+- **Change the representation as it crosses.** Do not carry shapes that exist for the outside world (wire formats, storage formats, framework types) inward, and do not put the inside types on your public surface. **What you expose is a domain concept**
+- **Put the logic in pure functions that know nothing about the framework.** Keep the layer that binds to the framework thin and mechanical
 
-## 判定
+## How to tell
 
-- **この値は、いまシステムの外から来たか。**違うなら、その検査は余分
-- **この検査を消したとき、どのテストが落ちるか。**名指せないなら、根拠が無いまま置いている
-- **同じ値の検査が、呼び出し鎖の何段に在るか。**2段以上あるなら境界が決まっていない
-- **枠組みの型を引数に取っている関数はどれか。**取っているなら、そこにロジックが漏れている
+- **Did this value just come from outside the system?** If not, the check is surplus
+- **Which test fails if you delete this check?** If you cannot name one, it is sitting there with nothing behind it
+- **How many levels of the call chain check the same value?** Two or more, and the boundary was never decided
+- **Which functions take a framework type as a parameter?** Wherever one does, logic has leaked into the binding layer
 
-## 全層に撒かない
+## Do not scatter checks through every layer
 
-**「念のため全部の層で検査する」は、この原則の逆。**
-入口が緩いまま内側を厚くしても不正な値は入り続け、
-**入口を締める理由だけが見えなくなる。**
-バグを踏んだときに足すのは、通り道のガードではなく、
-**その値を通した入口の検査と、再現を固定した回帰テスト。**
+**"Check at every layer, just in case" is the reverse of this principle.**
+Thickening the inside while the entry point stays loose lets bad values keep coming in, and
+**the only thing that disappears is the visible reason to tighten the entry point.**
+When you hit a bug, what you add is not a guard along the path:
+**it is a check at the entry point that let the value through, and a regression test that
+pins the repro.**

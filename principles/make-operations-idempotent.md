@@ -1,41 +1,42 @@
 ---
 name: principle-make-operations-idempotent
 origin: plumb
-description: "クラッシュ・再起動・再投入の中で走る操作、起動処理、繰り返し回るループを設計するときに適用する。前回が途中で終わっていても、同じ終状態に収束させる。"
+description: "Apply when designing operations that run across crashes, restarts and resubmissions, startup paths, and loops that run again and again. Converge on the same end state even when the previous run stopped partway."
 ---
 
 # Make operations idempotent
 
-**同じ操作を2回走らせて、終状態が同じになること。**
-1回目が途中で死んでいても、同じであること。
+**Run the same operation twice and the end state is the same.**
+The same even when the first run died partway.
 
-**なぜ守れないか:** 手で試すときは、必ず**きれいな状態から1回**しか走らせない。
-途中で死んだ状態を作るのは面倒なので、誰も試さない。
-だから**冪等でない操作は、書いた時点では常に正しく見える。**
-壊れるのは長く走る run の中、再投入の後、そして人がいない時間。
+**Why this is hard to keep.** When you try it by hand you always run it **once, from a clean
+state.** Manufacturing a state where a run died partway is a nuisance, so nobody tries it.
+That is why **an operation that is not idempotent always looks correct at the moment it is
+written.** It breaks inside a long run, after a resubmission, and during the hours when
+nobody is watching.
 
-## 収束であって、飛ばすことではない
+## Converge, do not skip
 
-**「既に在るなら何もしない」は冪等ではない。**
-中身が古いまま残っている場合を直せない。
-**あるべき形を宣言し、現状との差を埋める。**有無ではなく、内容で判定する。
+**"If it already exists, do nothing" is not idempotent.**
+It cannot repair the case where the thing is there and stale.
+**Declare the shape it should have and close the gap against what is there now.**
+Judge on content, not on presence.
 
-- **残骸の判定は内容と持ち主で行う。**作られた順番や時刻で決めない
-- **死んだ持ち主のロックは、次の起動が外せる。**外せないロックは、
-  一度落ちたら人を呼ぶまで止まる
-- **やり直しは入力から作り直す。**前回の途中生成物を拾って続けない
+- **Identify residue by content and owner.** Not by the order or the time they were created
+- **A lock whose owner is dead has to be removable by the next startup.** A lock that cannot be removed stops everything, once it falls over, until a person is called
+- **A retry rebuilds from the input.** Do not pick up half-built artifacts from the last run and carry on
 
-## 判定
+## How to tell
 
-1. **2回続けて走らせる。**終状態が同じか（言葉ではなく実際に走らせて見る——
-   **principle-gate-claims-on-evidence**）
-2. **書き込みの直後で殺す。**各書き込み点について、次の起動が回復するか
-3. **その回復が「それまでに何が残っていたか」に依存していないか**
+1. **Run it twice in a row.** Is the end state the same (run it rather than saying so — **principle-gate-claims-on-evidence**)
+2. **Kill it immediately after a write.** For every write point, does the next startup recover
+3. **Does that recovery depend on what happened to be left behind**
 
-3 が「依存する」なら、その操作には**現状を読んで差を埋める段**が足りていない。
+If the answer to 3 is that it does, the operation is missing **a step that reads the current
+state and closes the gap.**
 
-## 隣の原則との境界
+## The border with the neighboring principle
 
-**これは1人の書き手が2回走る話。**2人が同時に書く話は
-**principle-separate-before-serializing-shared-state** が持つ。
-冪等にしても、同時に走る2人は直らない。
+**This is one writer running twice.** Two writers writing at once belong to
+**principle-separate-before-serializing-shared-state**.
+Making an operation idempotent does not fix two of them running at the same time.

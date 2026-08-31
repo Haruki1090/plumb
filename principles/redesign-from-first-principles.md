@@ -1,43 +1,50 @@
 ---
 name: principle-redesign-from-first-principles
 origin: plumb
-description: "新しい要件を既存の設計に組み込むときに適用する。後付けするのではなく、その要件が初日から根本の前提だったかのように設計をやり直す。"
+description: "Design a new requirement as though it had been a premise since day one, instead of bolting it onto the existing shape. Use when a new requirement lands on a design that already exists, or when asked \"can we just add a flag for this\", \"where do I hook this in\", or \"is this worth restructuring\"."
 ---
 
 # Redesign From First Principles
 
-**新しい要件が来たら、初日からそれが在った設計に作り直す。**既存の形に貼り付けない。
-着手前に何を先に決めるかは **principle-foundational-thinking**、
-呼び出し元の移行と旧 API の削除を同じ波でやる手口は
-**principle-migrate-callers-then-delete-legacy-apis**。
-この原則が持つのは**要件が刺さった瞬間の扱い**——足すのか、作り直すのか。
+**When a new requirement arrives, rebuild the design as though it had been there from day
+one.** Do not paste it onto the existing shape. What you settle before you start belongs to
+**principle-foundational-thinking**; migrating the callers and deleting the old API in one
+wave belongs to **principle-migrate-callers-then-delete-legacy-apis**. What this principle
+owns is **the moment the requirement lands**: do you add, or do you rebuild.
 
-**なぜ守れないか:** 後付けは常に小さく見える。差分が小さく、既存の振る舞いに触らず、
-レビューも通りやすい。**破綻が出るのは次の要件のとき**なので、後付けした本人は費用を見ない。
-**安全に見える選択と、安全な選択が逆を向いている。**だから毎回、判定を明示的に通す。
+**Why this is hard to keep.** Bolting it on always looks smaller. The diff is small, it
+touches no existing behavior, and it passes review more easily. **The breakdown shows up at
+the next requirement**, so whoever bolted it on never sees the cost. **The choice that looks
+safe and the choice that is safe point in opposite directions.** So run the test out loud,
+every time.
 
-## 判定
+## The test
 
-**「今日ゼロから、この要件を知った状態で書くなら、この形になるか。」**
-ならないなら、**ならない差だけを列挙する。**それが作り直す範囲。
+**"Writing this from zero today, knowing this requirement, would it come out in this
+shape?"** If it would not, **list only the differences.** That list is the scope of the
+rebuild.
 
-もう一つ、後から効く読み方がある。
-**その要件だけが特別扱いされている痕跡が、コードから読み取れるか。**
-後から足された引数、要件名の付いたフラグ、例外的な経路。読み取れるなら貼り付けている。
-**初日から在った要件は、特別扱いの跡を残さない。**
+There is a second reading, one that works after the fact. **Can you see a trace in the code
+of this one requirement being treated specially?** An argument appended at the end, a flag
+named after the requirement, an exceptional path. If you can see it, you pasted it on.
+**A requirement that was there from day one leaves no trace of special treatment.**
 
-## 作り直しの範囲
+## The scope of the rebuild
 
-- **影響するファイルを全部読んでから形を決める。**1 ファイルずつ直すと、
-  最初に開いたファイルの都合が全体の形になる
-- **参照を全部追う。**型、ドキュメント、例、根拠を書いた節。
-  **要件の由来を説明している文章が古いまま残ると、次の読み手が古い前提で設計する**
-- **形は全体で決め、出すのは小さく順に**（**principle-sequence-verifiable-units**）。
-  全体で決めることと、一気に出すことは別
+- **Read every affected file before you decide the shape.** Fix them one file at a time and
+  the shape of the whole ends up set by whatever the first file you opened happened to need
+- **Follow every reference.** Types, documentation, examples, the section that wrote down
+  the rationale. **A passage explaining where the requirement came from, left stale, makes
+  the next reader design on the old premise**
+- **Decide the shape as a whole; ship it small and in order**
+  (**principle-sequence-verifiable-units**). Deciding as a whole and shipping all at once
+  are not the same thing
 
-## 貼り付けを選ぶとき
+## When you choose to paste it on
 
-- 要件が既存の形の内側に素直に収まる。**収まると言い切れるなら、収まっている**
-- 作り直しの範囲が、その要件の価値を超える。
-  **そのときは、貼り付けたことを記録する**——次に同じ場所へ要件が来たら、そこが作り直しの起点。
-  記録しないと、二つ目の後付けは一つ目を前提にして、もう戻れなくなる
+- The requirement sits inside the existing shape without strain. **If you can say outright
+  that it fits, it fits**
+- The scope of the rebuild exceeds the value of the requirement. **Then record that you
+  pasted it on** — when the next requirement arrives at the same place, that record is the
+  starting point of the rebuild. Without it, the second bolt-on builds on the first, and
+  there is no way back

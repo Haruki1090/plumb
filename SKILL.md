@@ -1,214 +1,219 @@
 ---
 name: plumb
-description: plumb の入口。原則を名前で呼べる索引を持ち、非自明な仕事に規律を当てる。「plumb で」「原則に沿って」「鉛直を出してから」と言われたとき、および rigor が要る仕事に使う。
+description: The entry point to plumb - an index of named principles that puts discipline on non-trivial work. Use when asked to "use plumb", "follow the principles", "get a plumb line on this first", or whenever a task needs real rigor.
 ---
 
 # plumb
 
-## 使い方
+## How to use this
 
-非自明な仕事を始めるとき、**最初の todo は「下の原則索引を読む」**にする。
-索引で当たった原則は、**その本文を全文読んでから**適用する。
+When you start non-trivial work, **make your first todo "read the principle index below"**.
+When the index points you at a principle, **read that principle in full before applying it**.
 
-**適用した原則は、返答の中で「その原則が変えた具体的な判断」と一緒に名指しする。**
-判断の伴わない引用は、葉を読まなかった証拠として扱う。
+**When you apply a principle, name it in your reply alongside the specific decision it changed.**
+A citation with no decision attached is treated as evidence you never read the leaf.
 
-## 実行先
+## Where roles run
 
-役割ごとの実行先は `docs/role-map.md` が正本。本文にモデル名を書かない。
+`docs/role-map.md` is the source of truth for where each role runs. Do not write a model name
+in the body text.
 
-| 役割 | 実行先 |
+| Role | Where it runs |
 |---|---|
-| 本線 | いま動いている Claude Code |
-| 実装役 | `Task`（`model` を書かない）。差分を出し、本線がレビューする |
-| 探索役 | `Task`（`model` を書かない）。差分を出さない |
-| 判定役 | `role.judge`（未設定なら本線が代行し、そう言う） |
-| 量産役 | `role.bulk`（未設定なら本線が順に処理する） |
+| Main session | the Claude Code session you are in |
+| Implementer role | `Task` (do not set `model`). Produces a diff; the main session reviews it |
+| Explorer role | `Task` (do not set `model`). Produces no diff |
+| Judge role | `role.judge` (unset: the main session stands in, and says so) |
+| Bulk role | `role.bulk` (unset: the main session works through it in order) |
 
-**非自明な仕事では、判定役の todo を必ず立てる。**やるかどうかを決める前に、まず行を作る。
+**Non-trivial work must open a todo line for the judge role.** Open the line before you decide
+whether to run it.
 
-その行は次のどちらかでしか閉じられない。
+That line closes exactly two ways:
 
-- 実行する
-- `skip: <理由>` を付けて残す
+- it runs
+- it stays, carrying `skip: <reason>`
 
-**行を作らずに済ませることはできない。**消すこともできない。省略はできるが、黙ってはできない。
-判定役の行が無い todo リストは、それ自体が規律違反の印になる。
+**You cannot get away without opening the line.** You cannot delete it either. Skipping is
+allowed; skipping silently is not. A todo list with no judge line is itself the mark of a
+breach of discipline.
 
-## 型の索引
+## The playbook index
 
-仕事の形が下のどれかなら、**その型を全文読んでから始める**。
-型は原則を名指す。名指された原則は葉のスキルを全文読む。
+If your work has one of the shapes below, **read that playbook in full before you start**.
+Playbooks name principles. A named principle means you read the leaf in full.
 
-### 調べる（コードを変えない）
+### Investigate (changes no code)
 
-| 仕事 | 型 |
+| Job | Playbook |
 |---|---|
-| どう動くか・なぜこうか・本当に大丈夫か・どちらを採るか | `playbooks/investigation.md` |
-| 生きたプロセスが漏れる・回り続ける・遅い | `playbooks/runtime-forensics.md` |
-| 落ちてきた profile / trace / spindump / heapsnapshot を読む | `playbooks/trace-forensics.md` |
+| How does this work, why is it this way, is it really safe, which of the two do we take | `playbooks/investigation.md` |
+| A live process leaks, spins, or runs slow | `playbooks/runtime-forensics.md` |
+| Read a profile / trace / spindump / heapsnapshot someone handed you | `playbooks/trace-forensics.md` |
 
-### 変える
+### Change
 
-| 仕事 | 型 |
+| Job | Playbook |
 |---|---|
-| **バグを直す**（落ちる・たまに落ちる・直したはずが戻った） | `playbooks/fixing-a-bug.md` |
-| 遅いのを一発直す | `playbooks/perf-issue.md` |
-| 一つの指標を継続的に押し下げる | `playbooks/hillclimb.md` |
-| 振る舞いを変えずに構造を変える | `playbooks/refactoring.md` |
-| **これから作るものの形を決める**（何を作るかがまだ決まっていない） | `playbooks/shaping-the-work.md` |
-| **承認された形を、他人が実行できる手順にする** | `playbooks/writing-a-plan.md` |
-| **その手順を、タスク単位で着地させる** | `playbooks/running-a-plan.md` |
-| テストを書く・既存のテストを直す | `playbooks/writing-tests.md` |
-| 設計判断を、捨てる実装で買う | `playbooks/prototype.md` |
-| 独立した仕事を、並列の役に配る | `playbooks/fan-out.md` |
+| **Fix a bug** (it crashes, it is flaky, it came back after you fixed it) | `playbooks/fixing-a-bug.md` |
+| Fix one slow thing, once | `playbooks/perf-issue.md` |
+| Push one metric down, continuously | `playbooks/hillclimb.md` |
+| Change the structure without changing the behavior | `playbooks/refactoring.md` |
+| **Decide the shape of something you have not built yet** (what to build is still open) | `playbooks/shaping-the-work.md` |
+| **Turn an approved shape into steps someone else can execute** | `playbooks/writing-a-plan.md` |
+| **Land those steps, one task at a time** | `playbooks/running-a-plan.md` |
+| Write tests, or repair existing ones | `playbooks/writing-tests.md` |
+| Buy a design decision with an implementation you throw away | `playbooks/prototype.md` |
+| Hand independent work out to parallel roles | `playbooks/fan-out.md` |
 
-### 出す
+### Ship
 
-| 仕事 | 型 |
+| Job | Playbook |
 |---|---|
-| **ブランチを締める**（merge / PR / 残す のどれにするか決める） | `playbooks/closing-a-branch.md` |
-| PR を出す | `playbooks/opening-a-pr.md` |
-| 緑にして落とす | `playbooks/landing-a-stack.md` |
+| **Close out a branch** (decide between merge / PR / leave it) | `playbooks/closing-a-branch.md` |
+| Open a PR | `playbooks/opening-a-pr.md` |
+| Get it green and land it | `playbooks/landing-a-stack.md` |
 
-### 続ける
+### Keep going
 
-| 仕事 | 型 |
+| Job | Playbook |
 |---|---|
-| 寝ている間も走らせ続ける・終わるまで回す | `playbooks/autonomous-run.md` |
-| 安全に中断する・圧縮が近い | `playbooks/pause-safely.md` |
-| 他のセッションの続きを引き継ぐ | `playbooks/session-pickup.md` |
-| 隔離した作業場を作る | `playbooks/worktree-setup.md` |
-| worktree とディスクを掃除する | `playbooks/worktree-cleanup.md` |
+| Keep it running overnight; run until it is done | `playbooks/autonomous-run.md` |
+| Stop safely; compaction is close | `playbooks/pause-safely.md` |
+| Pick up where another session left off | `playbooks/session-pickup.md` |
+| Set up an isolated workspace | `playbooks/worktree-setup.md` |
+| Clean up worktrees and disk | `playbooks/worktree-cleanup.md` |
 
-### 見る・保つ
+### Look, and hold the line
 
-| 仕事 | 型 |
+| Job | Playbook |
 |---|---|
-| PR をレビューする（承認する側として） | `plumb:pr-review` |
-| **レビューを頼み、返ってきた指摘に応じる**（著者として） | `playbooks/being-reviewed.md` |
-| そのレビューに別ファミリーの軸を足す | `plumb:interrogate` |
-| plumb が主張する環境がまだ実在するか見る | `plumb:doctor` |
+| Review a PR (as the one who approves it) | `plumb:pr-review` |
+| **Ask for review and answer what comes back** (as the author) | `playbooks/being-reviewed.md` |
+| Add a different model family's axis to that review | `plumb:interrogate` |
+| Check whether the environment plumb claims still exists | `plumb:doctor` |
 
-### 決める・設計する
+### Decide, and design
 
-| 仕事 | 型 |
+| Job | Playbook |
 |---|---|
-| 実行グラフを引く（5シグナル中2つ以上） | `plumb:graph` |
-| **分岐のある判断を持ち主に返す**（選択肢が2つ以上あり、選び方で作るものが変わる） | `plumb:decision-brief` |
+| Draw the execution graph (2 or more of the 5 signals) | `plumb:graph` |
+| **Hand a branching decision back to the owner** (2+ options, and the choice changes what gets built) | `plumb:decision-brief` |
 
-### plumb が型を持たないもの
+### What plumb has no playbook for
 
-**形を決める・計画を書く・計画を回す・バグを直す・テストを書く**は、
-すべて plumb 自身の型になった。**上の「変える」節から入る。**
-外部のプラグインへ転送する行は、もう一つも無い。
+**Shaping the work, writing the plan, running the plan, fixing a bug and writing tests are
+all plumb's own playbooks now.** Enter through the "Change" section above. Not one line in
+this router forwards to an outside plugin any more.
 
-| 仕事 | どこへ |
+| Job | Where |
 |---|---|
-| **スキルを書く・直す** | Claude Code の skill 作成の作法 → `claude plugin validate` → `plumb:doctor` |
-| 誰に投げるか | `docs/role-map.md` |
-| ペイン・他エージェントの制御 | `pane.driver` が指すもの（未設定なら前面で実行する） |
-| 起こし方の機構（いつ起きるか） | `/loop` と `ScheduleWakeup`。**規律は `playbooks/autonomous-run.md`** |
+| **Write or repair a skill** | Claude Code's skill-authoring conventions -> `claude plugin validate` -> `plumb:doctor` |
+| Who to hand it to | `docs/role-map.md` |
+| Driving panes and other agents | whatever `pane.driver` points at (unset: run it in the foreground) |
+| The wake-up mechanism (when you wake) | `/loop` and `ScheduleWakeup`. **The discipline lives in `playbooks/autonomous-run.md`** |
 
-移植しなかった原本の型と、その理由は `docs/scope.md`。
+Which upstream playbooks were not ported, and why, is in `docs/scope.md`.
 
-## 成果物の置き場
+## Where the artifacts go
 
-**パスを組み立てない。道具に訊く。**
+**Do not assemble paths. Ask the tool.**
 
-`plumb-*` は `bin/` の薄いラッパで、インストール時に Claude Code が全プラグインの
-`bin/` を PATH に足すので、素の名前でどこからでも呼べる。
+`plumb-*` are thin wrappers in `bin/`. Claude Code puts every plugin's `bin/` on PATH at
+install time, so you can call them by bare name from anywhere.
 
 ```bash
-plumb-path spec      # 承認された設計
-plumb-path plan      # 実行中の計画
-plumb-path history   # 終わった計画
-plumb-path run       # 台帳・決定ログ・ブリーフ
-plumb-path spec --mkdir   # 無ければ作る
+plumb-path spec      # approved designs
+plumb-path plan      # plans being executed
+plumb-path history   # finished plans
+plumb-path run       # ledgers, decision logs, briefs
+plumb-path spec --mkdir   # create it if it is missing
 ```
 
-既定は `<リポジトリ直下>/.plumb/`。`PLUMB_ROOT` か `.plumb/config` の `root=` で変えられる。
-**散文にパスを書くと、片方だけ古くなる**（**principle-encode-lessons-in-structure**）。
+The default is `<repo root>/.plumb/`. Override it with `PLUMB_ROOT`, or with `root=` in
+`.plumb/config`. **Spell a path out in prose and one of the two copies goes stale**
+(**principle-encode-lessons-in-structure**).
 
-### spec と plan は格が違う
+### spec and plan are not the same rank
 
-| | 何か | 寿命 |
+| | What it is | Lifetime |
 |---|---|---|
-| **spec** | 終了状態・受け入れ条件・なぜこの手か・却下した案 | **正本。**承認の対象で、変更には再承認が要る。追跡する |
-| **plan** | ファイル・シグネチャ・**テストコード**・コミットの刻み方 | **使い捨て。**実行開始と同時に古くなる。追跡するが、終わったら落とす |
+| **spec** | End state, acceptance criteria, why this approach, what you rejected | **The source of truth.** It is what gets approved; changing it needs re-approval. Tracked |
+| **plan** | Files, signatures, **test code**, how to slice the commits | **Disposable.** Stale the moment execution starts. Tracked, but retired when it is done |
 
-**「何が通れば完成か」は spec。「どのテストをどう書くか」は plan。**
-同じテストの話でも、判定基準と実装は別の文書に置く。
+**"What has to pass for this to be done" is the spec. "Which tests, written how" is the plan.**
+Same tests, two documents: the bar for judging goes in one, the implementation in the other.
 
-`run/` は追跡しない（`.plumb/.gitignore`）。台帳と決定ログは作業の跡であって正本ではない。
-**逆に specs と plans は必ず追跡する。**working tree と一緒に消える正本は正本ではない。
+`run/` is not tracked (`.plumb/.gitignore`). Ledgers and decision logs are traces of the work,
+not the source of truth. **Conversely, specs and plans are always tracked.** A source of truth
+that disappears with the working tree is not a source of truth.
 
-### 終わった plan は凍結して落とす
+### Retire a finished plan by freezing it
 
-**完了した plan を `plans/` に残さない。**バッチ1で、Task 1 の時点で凍結された
-`docs/plan.md` が現行と 18 行ずれたまま「これをタスク順に実行せよ」というヘッダを掲げて残り、
-**後から来た者がそれを実行すれば、その日の修正が全部巻き戻る**状態になっていた。
+**Do not leave a completed plan in `plans/`.** In batch 1, a `docs/plan.md` frozen back at
+Task 1 sat 18 lines out of date, still flying a header that said "execute these in order" —
+and **anyone who came along and executed it would have rolled back every fix from that day**.
 
-`history/` へ移し、先頭にこれを置く。
+Move it to `history/` and put this at the top:
 
 ```markdown
-> **これは履歴。実行しない。**
-> 現在の正本は <正本のパス>。**この文書と食い違ったら、正本が正しい。**
-> 現在の正本に同期させない——同期させると、二重の正本が復活する。
+> **This is history. Do not execute it.**
+> The current source of truth is <path>. **If this document disagrees with it, the source of
+> truth wins.** Do not sync this back up — syncing it revives the second source of truth.
 ```
 
-**危険を止めているのはディレクトリ名ではなく、このヘッダ。**移すだけで済ませない。
+**What stops the damage is the header, not the directory name.** Moving it is not enough.
 
-### 既存の `docs/superpowers/`
+### An existing `docs/superpowers/`
 
-`superpowers` を使ってきたリポジトリには `docs/superpowers/specs|plans` が残っている。
-**一括では移さない。**リポジトリごとに判断する。
-移していないリポジトリでは、**古いものは `docs/superpowers/` にある**ことを前提に探す。
+Repositories that have used `superpowers` still carry `docs/superpowers/specs|plans`.
+**Do not migrate them wholesale.** Decide per repository. In a repository you have not
+migrated, **assume the old material is under `docs/superpowers/`** when you go looking.
 
-## 原則索引
+## The principle index
 
-**原則はスキルではない。**`principles/<名前>.md` に素の文書として置いてある
-（`principle-prove-it-works` なら `principles/prove-it-works.md`）。
+**Principles are not skills.** They live in `principles/<name>.md` as plain documents
+(`principle-prove-it-works` is `principles/prove-it-works.md`).
 
-スキルにしていないのは、**単独で発火させないため**。フラグで止めると、
-索引から開く経路まで一緒に塞がる（2026-08-29 に実際そうなっていた）。
-**構造で止めれば、入口はここだけになり、しかも開ける。**
+They are not skills so that **they cannot fire on their own**. Stopping them with a flag also
+seals the path that opens them from this index — which is exactly what had happened on
+2026-08-29. **Stop them with structure instead: this index is the only way in, and it opens.**
 
-適用する原則は Read で全文読む。要約で済ませない。
+Read the full text of a principle you are applying. A summary is not enough.
 
-### 中核
+### Core
 
-- **principle-laziness-protocol** — 削除と最小の変更に倒す。リファクタ時、抽象を足したくなったとき
-- **principle-foundational-thinking** — ロジックの前に中核の型とデータ構造を決める
-- **principle-redesign-from-first-principles** — 新しい要件を、初日からの前提だったかのように設計し直す
-- **principle-subtract-before-you-add** — 先に死んだ重さを取り除き、簡単になった土台の上に建てる
-- **principle-minimize-reader-load** — 問いと答えの間の層と、読み手が頭に持つ隠れ状態を数える
-- **principle-outcome-oriented-execution** — 移行は目標の設計に収束させる。使い捨ての互換層を残さない
-- **principle-experience-first** — 実装の都合より使う人の体験を採る
-- **principle-exhaust-the-design-space** — 前例のない判断では 2〜3 個の競合案を作って比べる
-- **principle-build-the-lever** — 手でやらず、やる道具・証明する道具を作る。道具がレビュアーの再実行できる成果物になる
+- **principle-laziness-protocol** — Lean toward deleting and toward the smallest change. When refactoring; when you feel the urge to add an abstraction
+- **principle-foundational-thinking** — Settle the core types and data structures before the logic
+- **principle-redesign-from-first-principles** — Design a new requirement as though it had been a premise since day one
+- **principle-subtract-before-you-add** — Strip the dead weight first, then build on the base that got simpler
+- **principle-minimize-reader-load** — Count the layers between question and answer, and the hidden state the reader has to carry
+- **principle-outcome-oriented-execution** — Converge a migration on the target design. Do not leave a disposable compatibility layer behind
+- **principle-experience-first** — Take the experience of the person using it over what is convenient to implement
+- **principle-exhaust-the-design-space** — On a decision with no precedent, build 2-3 competing options and compare them
+- **principle-build-the-lever** — Do not do it by hand. Build the tool that does it and the tool that proves it. The tool becomes an artifact the reviewer can re-run
 
-### アーキテクチャ
+### Architecture
 
-- **principle-model-the-domain** — 散らばった条件分岐ではなく、構造にドメインを表す
-- **principle-boundary-discipline** — ガードは境界に集める。内側の型は信じる
-- **principle-type-system-discipline** — 不正な状態を表現不能にする。ブランド型を付け、境界で外部データをパースし、コンパイラに嘘をつかず、バリアントを網羅し、正典スキーマから導出する
-- **principle-make-operations-idempotent** — 途中まで走った後でも同じ終状態に収束させる
-- **principle-migrate-callers-then-delete-legacy-apis** — 呼び出し側の移行と旧 API の削除を同じ波でやる
-- **principle-separate-before-serializing-shared-state** — 共有をまず消す。直列化は本物の不変条件があるときだけ
+- **principle-model-the-domain** — Express the domain in structure, not in conditionals scattered around
+- **principle-boundary-discipline** — Concentrate guards at the boundary. Trust the types inside
+- **principle-type-system-discipline** — Make invalid states unrepresentable: brand your types, parse external data at the boundary, do not lie to the compiler, exhaust your variants, derive from the canonical schema
+- **principle-make-operations-idempotent** — Converge on the same end state even after a half-finished run
+- **principle-migrate-callers-then-delete-legacy-apis** — Migrate the callers and delete the old API in the same wave
+- **principle-separate-before-serializing-shared-state** — Remove the sharing first. Serialize only when there is a real invariant
 
-### 検証
+### Verification
 
-- **principle-prove-it-works** — 実物で検証する。代理指標や「ビルドが通った」で済ませない
-- **principle-fix-root-causes** — 症状を根本原因まで辿る。先に再現させる
-- **principle-sequence-verifiable-units** — 各単位を検証してから次へ進む。順序自体がレビュアーへの証明になる
-- **principle-gate-claims-on-evidence** — 「終わった」と書く直前に関門を置く。走らせていないなら主張しない
+- **principle-prove-it-works** — Verify against the real thing. Do not settle for a proxy or for "the build passed"
+- **principle-fix-root-causes** — Trace a symptom to its root cause. Reproduce it first
+- **principle-sequence-verifiable-units** — Verify each unit before you move to the next. The ordering is itself your proof to the reviewer
+- **principle-gate-claims-on-evidence** — Put a gate immediately before you write "done". If you did not run it, do not claim it
 
-### 委譲
+### Delegation
 
-- **principle-guard-the-context-window** — 大きな出力・長いファイル・繰り返しの読み・fan-out の計画で文脈が埋まるとき。かさばるものはサブエージェントに回し、本線には要約だけを置く
-- **principle-never-block-on-the-human** — 元に戻せる作業は進めて、結果を見せて直してもらう
+- **principle-guard-the-context-window** — When large output, long files, repeat reads, or a fan-out plan are about to fill the context. Push the bulky work to a subagent and keep only the summary in the main session
+- **principle-never-block-on-the-human** — Push reversible work forward, then show the result and let them correct it
 
-### メタ
+### Meta
 
-- **principle-encode-lessons-in-structure** — 同じ指示を 2 度書いていたら、文章ではなく lint や検査やスクリプトにする
+- **principle-encode-lessons-in-structure** — If you have written the same instruction twice, make it a lint, a check, or a script instead of prose

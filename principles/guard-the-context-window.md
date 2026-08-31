@@ -1,47 +1,52 @@
 ---
 name: principle-guard-the-context-window
 origin: plumb
-description: "本線に何かを載せる直前に適用する。大きな出力、長いファイル、繰り返しの読み、fan-out の計画。かさばるものは配って本線には要約と指し先だけを置く。捨てる操作は無いので、判断は入れる前にしかできない。"
+description: "Apply just before you load anything into the main session: large output, long files, repeat reads, a fan-out plan. Push the bulky work to a subagent and keep only the summary and a pointer in the main session. Nothing takes context back out, so the decision can only be made before it goes in."
 ---
 
 # Guard the Context Window
 
-**本線の文脈は減らない。**一度入れたものを後から出す操作は無い。
-だから守れるのは**入れる前の一点だけ**で、埋まってから畳むのは常に手遅れ。
+**The main session's context never shrinks.** No operation takes back what you already put
+in. So the only place you can hold the line is **the point before it goes in**; folding
+things away once it is full is always too late.
 
-**なぜ:** 埋まったことは症状として出ない。出るのは推論の質の低下で、
-**低下した側からは低下が見えない。**「そろそろ危ない」という感覚は当てにならず、
-気づいたときには判断の材料そのものが薄くなっている。
-**入れる／入れないを、量ではなく用途で先に決める。**
+**Why this is hard to keep.** Being full does not show up as a symptom. What shows up is
+degraded reasoning, and **from inside the degradation, the degradation is invisible.** The
+sense that you are "getting close" is not reliable, and by the time you notice, the material
+you would judge with has already thinned. **Decide what goes in by what it is for, not by how
+big it is.**
 
-## 入れてよいのは、この後もう一度参照するもの
+## What belongs in it is what you will read again
 
-一度読んで終わるものは本線に置かない。**置き場は二つ。**
+Anything you read once and are done with does not go in the main session.
+**There are two places for it.**
 
-- **配る。**かさばる読み・長い出力・広い探索・手数の多い編集は、役を立てて渡す。
-  返させるのは**ファイルの指し先と、判断が変わる事実だけ**。生データを返させない
-- **ファイルに置いて、パスを持つ。**本線には道順だけが残る
+- **Fan it out.** Bulky reading, long output, broad exploration, edits with many steps: stand up a role and hand it over. What comes back is **a pointer to a file and the facts that change a decision**, nothing else. Do not let raw data come back
+- **Put it in a file and hold the path.** What stays in the main session is the way there
 
-差分そのもの、trace の全文、長い時系列、計画ファイルの全体——
-**貼らずに、削った結果か指し先を置く。**
+The diff itself, a whole trace, a long timeline, an entire plan file:
+**do not paste them. Put down what survived the cutting, or a pointer to it.**
 
-## 渡すものもファイルにする
+## What you hand over goes in a file too
 
-**長い依頼文を返答の本文に書くと、渡す側の文脈から先に食われる。**
-依頼書・ブリーフ・材料はファイルに書き、**パスだけを渡す。**
-渡す範囲も切る。隣の仕事まで読める文書を渡すと、読んだ側が隣を始める。
+**Write a long request into the body of your reply and it eats the sender's context first.**
+Put the request, the brief and the material in a file and **hand over the path alone.**
+Cut the range you hand over as well: give someone a document that also covers the
+neighboring job and they will start on the neighboring job.
 
-## 逃がす値段も勘定に入れる
+## Count the price of moving it out
 
-**配るのは無料ではない。**渡す文面を書く時間、戻ってきたものを読む時間、
-統合の手間が乗る。**小さいもの、互いに強く絡むものは本線で刻んだほうが安い。**
-毎回使う定型や参照は、**逆に手元に置く**——読みに行く回数のほうが高くつく。
+**Fanning out is not free.** It adds the time to write the handoff, the time to read what
+comes back, and the work of integrating it. **Small things, and things tangled tightly
+together, are cheaper cut into slices in the main session.** Boilerplate and references you
+use every time go the other way — **keep those at hand.** Going out to read them again and
+again costs more.
 
-## 判定
+## How to tell
 
-いま本線に載っているもののうち、**この後もう一度参照するものを数えられるか。**
-数えて残りが多いなら、載せ方が間違っている。次に同じものを載せる前に、
-**指し先に置き換えられないかを一度問う。**
+Of everything loaded into the main session right now, **can you count the parts you will
+refer to again?** Count them, and if a lot is left over, you are loading it wrong. Before you
+load the same kind of thing next time, **ask once whether a pointer would do instead.**
 
-**誰に配るか・どう配るかは `playbooks/fan-out.md`。**この原則が持つのは、
-本線に載せるかどうかの判断だけ。
+**Who you fan out to, and how, is `playbooks/fan-out.md`.** This principle owns only the
+decision of whether it goes into the main session.

@@ -1,73 +1,80 @@
-# 走らせ続ける
+# Keep it running
 
-**終了条件を持つのはあなた。何をもって終わりかを決めて、止まらずにそこまで駆る。**
+**You hold the termination predicate. Decide what counts as done, and drive there without stopping.**
 
-「寝るけど続けて」「終わるまで回して」「X になるまで」。
+"I'm going to bed, keep going." "Run it until it's finished." "Until X."
 
-**この型が持つのは「長く走る」という性質であって、仕事の中身ではない。**
-だから他の型と排他ではなく、**重ねて使う**。
+**What this playbook holds is the property of *running long*, not the substance of the work.**
+So it is not exclusive with the other playbooks. You **stack it on top of them**.
 
-| 中身 | 型 | 夜を跨ぐなら |
+| Substance | Playbook | If it crosses a night |
 |---|---|---|
-| 計画をタスク単位で実行する | `playbooks/running-a-plan.md` | **終了述語とチェックポイントはこちらが持つ** |
-| 一つの測れる指標を押し下げ続ける | `playbooks/hillclimb.md` | 同上。停止条件は hillclimb が上書きする |
-| どれでもない長い仕事 | **この型だけ** | |
+| Execute a plan task by task | `playbooks/running-a-plan.md` | **The termination predicate and the checkpoints live here** |
+| Keep pushing one measurable number down | `playbooks/hillclimb.md` | Same. The stopping condition from hillclimb overrides |
+| A long job that is neither | **This playbook alone** | |
 
-**「計画ファイルを作ったから `running-a-plan` へ」で降りられない。**あちらが持つのは
-タスク1つを配って関門に通す規律で、**夜を跨ぐ規律は持っていない。**
-**成果物を1つ作っただけで、この型の規律が外れる読み方をしない。**
+**"I made a plan file, so I move to `running-a-plan`" is not a way out.** What that one holds
+is the discipline of handing out a single task and putting it through a gate; **it holds no
+discipline for crossing a night.**
+**Do not read producing one artifact as releasing you from this playbook.**
 
-起こし方の機構は `/loop` と `ScheduleWakeup` が持っている。**この型が持つのは規律のほう。**
+The wake-up mechanism belongs to `/loop` and `ScheduleWakeup`. **What this playbook holds is the
+discipline.**
 
-1. **最初の反復の前に、終了述語を検査可能な形で書く。**
-   「テストが緑」「再現が直った」「N 件全部着地した」「差分がゼロ」。
-   **曖昧な目標は止まらない。述語があるから止まれる。**
-2. 起こし方を決める。**待つ対象があるなら、それを見張る**（CI、マージ、ref の前進）。
-   長い時間ベースの心拍を予備に置く。対象が無いなら、
-   **結果を見に行く価値が出る間隔**で固定の心拍にする。`/loop` と `ScheduleWakeup` の領分。
-3. **各反復は、根拠が正当化する最小の変更だけ。**述語に照らして検証し、
-   前進したならコミット、しなかったなら**変更を全部取り消す**。
-   **「効くかもしれない」は仮説であって修正ではない。**相乗りさせない。
-   単位ごとに検証してから次へ（**principle-sequence-verifiable-units**）。
-4. **途中で見つけたものは、あなたが片付ける。**壊れた道具、隣接するバグ、
-   不安定な検証器、レビューの雑音、取り残された追従。**人間に積まない**
-   （**principle-never-block-on-the-human**）。本筋から外れる修正は別の変更に分ける。
+1. **Before the first iteration, write the termination predicate in a checkable form.**
+   "The tests are green." "The repro is fixed." "All N of them landed." "The diff is zero."
+   **A vague goal never stops. You can stop because there is a predicate.**
+2. Decide how you wake. **If there is something to wait on, watch it** (CI, a merge, a ref moving
+   forward). Put a long time-based heartbeat behind it as backup. If there is nothing to watch,
+   use a fixed heartbeat at **the interval that makes going to look worth it**.
+   That is `/loop` and `ScheduleWakeup`'s territory.
+3. **Each iteration makes only the smallest change the evidence justifies.** Verify it against the
+   predicate; commit if it moved forward, and **revert every change** if it did not.
+   **"This might work" is a hypothesis, not a fix.** Do not let it ride along.
+   Verify each unit before you go to the next (**principle-sequence-verifiable-units**).
+4. **Whatever you find on the way, you clear it yourself.** A broken tool, an adjacent bug,
+   a flaky verifier, review noise, a follow-up nobody picked up. **Do not stack it on the human**
+   (**principle-never-block-on-the-human**). Split a fix that strays from the main thread of the work into its own change.
 
-   **上げるのは3つだけ。**不可逆な操作。どの実験でも決められない製品・好みの判断。
-   本物の行き止まり。**それ以外は決めて、記録して、進む。**
-   述語を主動力に保ち、寄り道のたびにそこへ戻る。
-5. **反復ごとにチェックポイントを残す。**
+   **Only three things go up.** An irreversible operation. A product or taste call no experiment can
+   settle. A real dead end. **Decide everything else, record it, and move.**
+   Keep the predicate as the main drive and return to it after every detour.
+5. **Leave a checkpoint every iteration.**
 
    ```bash
-   # 最初の反復より先に作る。述語もここに書き込む
-   plumb-decision-log <ログ> --header 反復 やったこと なぜ 根拠 述語が動いたか
-   plumb-decision-log <ログ> 0 "述語を固定" "<述語の全文>" "-" "-"
-   plumb-decision-log <ログ> 1 "<やったこと>" "<なぜ>" "<根拠>" yes
+   # create it before the first iteration. the predicate goes in here too
+   plumb-decision-log <log> --header iteration did why evidence predicate-moved
+   plumb-decision-log <log> 0 "fix the predicate" "<the predicate in full>" "-" "-"
+   plumb-decision-log <log> 1 "<what you did>" "<why>" "<evidence>" yes
    ```
 
-   **後から作ると、その時点までの反復が存在しなかったことになる。**
-   **反復 1 つにつき必ず 1 行。**0 行目は述語、停止するときも 1 行足す。
-   反復を飛ばしたなら、**飛ばした反復の行に理由を書く**。行を作らずに飛ばさない。
-   **跡の無い run は、監査もできないし再開もできない。**
-   文脈の圧縮が近いと判断したら、`playbooks/pause-safely.md` の手順 4 を実行してから続ける。
-6. **述語を満たしたら止める。停滞は停止ではない。**
-   数回続けて落ちたら、手を変えて押し越す。
-   **勝利宣言のために述語を緩めない。**
+   **Create it afterwards and the iterations up to that point never existed.**
+   **Exactly one line per iteration.** Line 0 is the predicate, and stopping adds one more line.
+   If you skipped an iteration, **write the reason on that iteration's line**. Do not skip without
+   making the line. **A run with no trace can neither be audited nor resumed.**
+   When you judge that context compaction is close, run step 4 of `playbooks/pause-safely.md`
+   and then continue.
+6. **Stop when the predicate is met. Stalled is not stopped.**
+   If it fails several times running, change the method and push through.
+   **Do not loosen the predicate to declare victory.**
 
-   未達で止めるなら、`playbooks/hillclimb.md` と同じ **4 つ**を通す。
+   Stopping short of it goes through the same **four** as `playbooks/hillclimb.md`.
 
-   - **下限。**hillclimb は試行回数で持つが、こちらは単一指標が無いので
-     **「述語のどの部分が、何回の反復で、どこまで動いたか」**を下限にする。
-     **一度も動いていないなら、止まる資格が無い。**
-   - **残っている案を全部書き出す。**各案に、決定ログの既存行を指すか、機構の理由を付ける。
-     「たぶん効かない」は理由ではない。
-   - **判定役に通す**（`docs/role-map.md`）。自分で決めた述語を、自分の判断だけで下ろさない。
-   - **未達で止めた行を決定ログに残す。**述語・到達点・残案・止めた理由。
+   - **A floor.** hillclimb holds it as a number of attempts; here there is no single metric, so
+     the floor is **which part of the predicate moved, over how many iterations, and how far**.
+     **If nothing ever moved, you have not earned the right to stop.**
+   - **Write out every option still standing.** Give each one either a pointer to an existing line
+     in the decision log or a mechanical reason. "Probably won't work" is not a reason.
+   - **Put it through the judge role** (`docs/role-map.md`). Do not take down a predicate you set
+     yourself on your own judgment alone.
+   - **Leave the line in the decision log that says you stopped short.** The predicate, how far you
+     got, what is left, why you stopped.
 
-   **4 つ全部が揃わない停止は、述語を書き換えずに述語を無効化することになる。**
-   「もう案が無い気がする」は停止の理由ではない。
-   本物の行き止まりなら、回り続けずにそう言う。
+   **A stop missing any of the four invalidates the predicate without rewriting it.**
+   "I feel like I'm out of ideas" is not a reason to stop.
+   If it is a real dead end, say so instead of circling.
 
-**返すもの:** 終了述語、**決定ログのパス**、回した反復数（**ログに同じ番号の行があること**）、
-着地したもの、取り消したもの、述語の最終状態。
-**ログのパスを出せない run は、完了として受け取らない。**
+**What you return:** the termination predicate, **the path to the decision log**, how many
+iterations you ran (**and the log holds a line with each of those numbers**), what landed,
+what you reverted, the final state of the predicate.
+**A run that cannot produce the log path is not accepted as complete.**

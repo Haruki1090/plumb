@@ -1,50 +1,49 @@
 ---
 name: principle-experience-first
 origin: plumb
-description: "プロダクト、UX、機能スコープのトレードオフが出てきたときに適用する。実装の都合より使う人の体験を採る。数を絞ってでも磨き込んだ機能を、粗い機能を多く出すことより優先する。"
+description: "Apply when a product, UX, or feature-scope trade-off comes up. Take the experience of the person using it over what is convenient to implement, and ship fewer polished features rather than many rough ones."
 ---
 
 # Experience First
 
-**実装の都合と、使う人の体験がぶつかったら、体験を採る。**
-案を複数作って比べる手続きは **principle-exhaust-the-design-space**、
-コードを読む人が払う負荷は **principle-minimize-reader-load**。
-この原則が持つのは**裁き方**——都合と体験が正面衝突したときに、どちらを落とすか。
+**When what is convenient to implement collides with the experience of the person using it,
+take the experience.** The procedure for building several options and comparing them is
+**principle-exhaust-the-design-space**; the load paid by whoever reads the code is
+**principle-minimize-reader-load**. This principle owns **how to rule**: which side you drop
+when convenience and experience meet head on.
 
-**掛ける場面:** 何を作るかとスコープを決めるところ。
-`playbooks/shaping-the-work.md` で削る側に倒すとき、`playbooks/prototype.md` で案を選ぶとき。
-**実装が始まってからでは、裁く材料がもう消えている**——
-そこに在るのは動いているコードと、それを直す費用だけになる。
+**When to apply it.** Where you decide what to build and how far it goes: leaning toward
+cutting in `playbooks/shaping-the-work.md`, picking an option in `playbooks/prototype.md`.
+**Once implementation has started, what you would have ruled on is already gone** — all that
+is left is working code and the cost of changing it.
 
-**なぜ守れないか:** 非対称が二つある。
-**一つ目**——実装の都合は自分に見え、使う人の不便は自分に見えない。
-**二つ目**——実装の都合は作業時間として測れるが、体験の劣化は測れない。
-測れるものと測れないものを並べれば、毎回測れるほうが勝つ。
-だから都度考えるのではなく、**衝突したときに倒す向きを先に決めておく。**
+**Why this is hard to keep.** There are two asymmetries. **The first**: what is convenient
+to implement is visible to you, and the friction the user hits is not. **The second**:
+convenience is measurable as hours of work, and a degraded experience is not. Put something
+measurable next to something unmeasurable and the measurable one wins every time. So do not
+weigh it case by case: **decide which way you fall before the collision.**
 
-## 使う人は誰か
+## Who the person using it is
 
-**その仕事の出力を受け取る人**が使う人。座る席が違うだけで、扱いは同じ。
+**Whoever receives the output of this work** is the person using it. They sit in a different
+seat; they get treated the same.
 
-- 画面なら、その画面を触る人
-- ライブラリや内部 API なら、それを import する同僚
-- この型やスクリプトなら、次にそれを回す人
-- **次にこのコードを保守する人も使う人**——ただしその席の負荷を数えるのは
-  **principle-minimize-reader-load** で、ここではない
+- For a screen, whoever touches that screen
+- For a library or an internal API, the colleague who imports it
+- For this playbook or this script, whoever runs it next
+- **Whoever maintains this code next is also a person using it** — but counting the load on that seat is **principle-minimize-reader-load**, not this principle
 
-**影響を語るときは、その席から語る。**「実装が複雑になる」ではなく、
-「使う人に何が起きるか」で書く。
+**When you state the impact, state it from that seat.** Not "this makes the implementation
+complex" but what happens to the person using it.
 
-## 裁き方
+## How to rule
 
-- **数を絞って磨く。**粗い機能が 10 個より、仕上がった機能が 3 個
-- **機能・設定・選択肢は、席を勝ち取ったものだけ残す。**
-  「あっても困らない」は勝ち取っていない
-- **手触りの分岐は、訊く前に作って観察する。**捨てる前提の実装で答えが出るなら、
-  それが一番安い決め方（`playbooks/prototype.md`）
-- **細部を落とさない。**遷移、揃え、間隔、応答、失敗したときの表示。
-  **失敗時の表示は、一番よく見られる画面のことがある**
+- **Narrow the count and polish.** Three finished features beat ten rough ones
+- **Keep only the features, settings and options that won their seat.** "It does no harm to have it" did not win one
+- **When the fork is about how something feels, build it and watch before you ask.** If an implementation you plan to throw away settles it, that is the cheapest way to decide (`playbooks/prototype.md`)
+- **Do not drop the details.** Transitions, alignment, spacing, responsiveness, what shows when it fails. **The failure state is sometimes the screen people see most**
 
-**土台を先に敷くのは、体験を出すため。**何を先に決めるかを答えるのが
-**principle-foundational-thinking** で、**何に向かって決めるか**を答えるのがこの原則。
-土台の都合が行き先を決め始めたら、順序が目的にすり替わっている。
+**You lay the foundation first in order to deliver the experience.** What you settle first is
+answered by **principle-foundational-thinking**; **what you settle it toward** is answered
+here. Once the convenience of the foundation starts choosing the destination, the ordering
+has replaced the goal.

@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# 「単独では通るのに、まとめると落ちる」ときの汚染源を一件ずつ切り分ける。
+# Isolate the polluter, one at a time, when each case passes alone but the set fails together.
 #
-#   isolate-pollution.sh <残骸の判定コマンド> <一件を走らせるコマンド> <対象>...
+#   isolate-pollution.sh <command that detects the residue> <command that runs one case> <target>...
 #
-# 判定コマンドは、残骸が在るとき 0 を返すこと（`test -e .git` など）。
-# 走らせるコマンドは末尾に対象を1つ足して実行される。
+# The detecting command returns 0 when the residue is present (`test -e .git`, say).
+# The running command is executed with one target appended to it.
 #
-# 例:
+# Examples:
 #   isolate-pollution.sh 'test -e .git' 'npm test' src/a.test.ts src/b.test.ts
 #   isolate-pollution.sh 'ls /tmp/lock* >/dev/null 2>&1' 'pytest -q' tests/*.py
 #
-# 走らせる前から残骸が在ると、最初の一件が犯人に見える。先に落として確かめる。
+# Residue that was already there makes the first case look guilty. Fail on it first and check.
 set -uo pipefail
 
 [ "$#" -ge 3 ] || {
-  printf 'usage: isolate-pollution.sh <残骸の判定> <一件を走らせるコマンド> <対象>...\n' >&2
+  printf 'usage: isolate-pollution.sh <residue check> <command that runs one case> <target>...\n' >&2
   exit 2
 }
 check="$1"; runner="$2"; shift 2
@@ -22,7 +22,7 @@ check="$1"; runner="$2"; shift 2
 polluted() { eval "$check" >/dev/null 2>&1; }
 
 if polluted; then
-  printf '残骸が最初から在る。消してから走らせ直す: %s\n' "$check" >&2
+  printf 'the residue is there before anything ran. Clear it and start again: %s\n' "$check" >&2
   exit 2
 fi
 
@@ -32,12 +32,12 @@ for target in "$@"; do
   printf '[%d/%d] %s\n' "$i" "$total" "$target"
   eval "$runner \"\$target\"" >/dev/null 2>&1
   if polluted; then
-    printf '\n汚染源: %s\n' "$target"
-    printf '判定に当たった: %s\n' "$check"
+    printf '\npolluter: %s\n' "$target"
+    printf 'the check that fired: %s\n' "$check"
     exit 1
   fi
 done
 
-printf '\n%d 件を単独で走らせたが、残骸は出なかった。\n' "$total"
-printf '順序か並列でだけ出る可能性がある。走らせ方を疑う。\n'
+printf '\nran %d cases alone and no residue appeared.\n' "$total"
+printf 'it may only appear under a particular order or in parallel. Suspect how you run them.\n'
 exit 0

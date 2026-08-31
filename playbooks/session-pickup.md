@@ -1,32 +1,37 @@
-# 引き継ぐ
+# Picking up a session
 
-**再開点を持つのはあなた。前任の跡を読む。やり直さない。**
+**You hold the resume point. Read the previous session's traces. Do not redo them.**
 
-「これを引き継いで」「この会話を再開して」「このトランスクリプトから続けて」
-「X が止まったところから」、あるいは押されたブランチを継ぐとき。
+"Pick this up", "resume this conversation", "carry on from this transcript", "from where X
+stopped", or inheriting a pushed branch.
 
-**引き継ぎは相続である。**前任は既にコードを読み、再現を走らせ、設計を選ぶ費用を払っている。
-やり直すと、その偏りの検査も失われるし、文脈も燃える。**再導出したくなるのを堪えて、読む。**
+**A pickup is an inheritance.** The previous session already paid to read the code, run the
+repro, and choose the design. Redoing it burns the context and throws away the check on that
+bias as well. **Resist the pull to re-derive it. Read it.**
 
-1. 前任の跡を見つける。トランスクリプト、押されたブランチ、`wip:` コミット、再開メモ。
-   トランスクリプトの置き場は `docs/path-map.md` が正本。
-   **`~/.claude/projects/*/` を glob しない。**他プロジェクトの私的な会話を読むことになる。
-   スラッグを確定してから開く。長いトランスクリプトの解析は探索役に投げ、
-   本線には縮めた時系列だけを置く（**principle-guard-the-context-window**）。
-2. 運用状態を組み直す。ブランチと worktree、既に着地したもの（`git log`、base との `git diff`）、
-   開いている todo、下された判断。**前任の跡は権威ある入力。**再導出したくなる偏りに抗う。
-3. 済みと未済を差分する。出荷済みと計画を突き合わせ、再開点を名指す。
-   **前任の再現を走らせ直さない。済んだ仕事をやり直さない。**
-   「念のため一から確かめます」は、権威ある跡を信用していない印。
-4. **回す前に、相続した主張を実物で検証する**（**principle-prove-it-works**）。
-   **前任の自己申告が通っていることは証明ではない。**
-   これは手順 3 の「前任の再現をやり直すな」と衝突しない——
-   **やり直さないのは前任が既に示した過程であって、いま成立しているかの確認は別。**
-   同じコマンドを 1 回走らせるのが最短なら、それでよい。
-   探索を一からやり直すことだけが禁じられている。
-5. 残りを対応する型へ回して、判定を選ぶ。実行を続ける／完成した推奨を出す／
-   前任の結論を追認あるいは覆す／失敗した run を検死する。
-   **この型はここで終わる。**先は回した型が持ち、こちらは割り込まない。
+1. Find the previous session's traces: the transcript, the pushed branch, a `wip:` commit, a
+   resume note. `docs/path-map.md` is the source of truth for where transcripts live.
+   **Do not glob `~/.claude/projects/*/`** — that reads private conversations from other
+   projects. Pin the slug down first, then open it. Hand analysis of a long transcript to the
+   explorer role and keep only the shortened timeline in the main session
+   (**principle-guard-the-context-window**).
+2. Rebuild the operational state: the branch and the worktree, what already landed (`git log`,
+   `git diff` against base), the open todos, the decisions that were made. **The previous
+   session's traces are authoritative input.** Fight the pull to re-derive them.
+3. Diff done against not done. Cross-check what shipped against the plan and name the resume
+   point. **Do not re-run the previous session's repro. Do not redo finished work.**
+   "Let me verify it from scratch, just in case" is the mark of not trusting an authoritative
+   trace.
+4. **Before you run anything, verify the claims you inherited against the real thing**
+   (**principle-prove-it-works**). **A self-report from the previous session passing is not a
+   proof.** This does not conflict with step 3's "do not redo the repro" — **what you do not
+   redo is the process the previous session already showed; whether it holds right now is a
+   separate question.** If running the same command once is the shortest path, run it. Only
+   redoing the exploration from zero is forbidden.
+5. Route the remainder to the matching playbook and pick the verdict: keep executing, return a
+   finished recommendation, uphold or overturn the previous session's conclusion, or run a
+   post-mortem on a failed run. **This playbook ends here.** What comes next belongs to the
+   playbook you routed to, and you do not interrupt it.
 
-**返すもの:** 前任がどこで止まったか、相続したものとやり直したもの（理想はやり直し無し）、
-再開点、結果。
+**What you return:** where the previous session stopped, what you inherited and what you redid
+(ideally nothing), the resume point, and the result.

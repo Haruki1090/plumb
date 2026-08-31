@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# plumb 横断ルール検証。レーンごとに解釈させず、ここに集約する。
-# 使い方: scripts/check-harness.sh [plugin-root]
+# plumb cross-cutting rule check. Collected here so no lane has to interpret them on its own.
+# Usage: scripts/check-harness.sh [plugin-root]
 set -uo pipefail
 
 root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -12,223 +12,266 @@ fail=0
 
 note() { printf '  %-4s %s\n' "$1" "$2"; }
 check() {
-  if [ "$2" -eq "$3" ]; then note "ok" "$1（$2）"; else note "NG" "$1（期待 $3 / 実測 $2）"; fail=1; fi
+  if [ "$2" -eq "$3" ]; then note "ok" "$1 ($2)"; else note "NG" "$1 (expected $3 / measured $2)"; fail=1; fi
 }
-# targets  = frontmatter を持つファイル（ルートの SKILL.md と skills/ 配下）
-# bodies   = エージェントが読む本文すべて（targets + playbooks）。禁止語はこちらに効かせる
-# docs/ と .git/ はどちらの対象でもない
+# targets  = files that carry frontmatter (the root SKILL.md and everything under skills/)
+# bodies   = every body text an agent reads (targets + playbooks). Banned words apply here
+# docs/ and .git/ belong to neither set
 targets() {
   find "$SKILLS_DIR" -name 'SKILL.md' 2>/dev/null
   [ -f "$ROOT_SKILL" ] && printf '%s\n' "$ROOT_SKILL"
 }
 playbooks() { find "$PB_DIR" -name '*.md' 2>/dev/null; }
 principles() { find "$PR_DIR" -name '*.md' 2>/dev/null; }
-# agents_md / skill_refs / skill_scripts: 2026-08-30 に bodies() の穴として実測。
-# 同梱 agent（agents/*.md）・スキルの補助資料（skills/*/references/*.md）・
-# スキル同梱スクリプト（skills/*/scripts/*.{sh,mjs,ts,py}）はエージェントが実際に読む／
-# 実行する本文だが、targets（frontmatter 必須のファイルのみ）にも playbooks/principles にも
-# 入らず、禁止語チェックなどの走査から漏れていた（I-1 の model: opus 固定が好例）。
-# frontmatter 必須ルール（3・4）は targets() 直参照のままなので、ここを広げても壊れない。
+# agents_md / skill_refs / skill_scripts: measured on 2026-08-30 as holes in bodies().
+# Bundled agents (agents/*.md), a skill's supporting material (skills/*/references/*.md) and
+# a skill's bundled scripts (skills/*/scripts/*.{sh,mjs,ts,py}) are body text an agent actually
+# reads or executes, yet none of them landed in targets (files required to carry frontmatter),
+# in playbooks or in principles, so scans like the banned-word check never saw them
+# (I-1's pinned `model: opus` is the clean example).
+# The frontmatter rules (3 and 4) still reference targets() directly, so widening here breaks nothing.
 agents_md() { find "$root/agents" -name '*.md' 2>/dev/null; }
 skill_refs() { find "$SKILLS_DIR" -path '*/references/*.md' 2>/dev/null; }
 skill_scripts() { find "$SKILLS_DIR" -path '*/scripts/*' \( -name '*.sh' -o -name '*.mjs' -o -name '*.ts' -o -name '*.py' \) 2>/dev/null; }
 bodies() { targets; playbooks; principles; agents_md; skill_refs; skill_scripts; }
-# docs() と readme() はルール 11（bin/ 参照の実在）専用。bodies() には足さない——
-# 既存ルール（禁止語チェックなど）の走査対象を広げると別の検査が壊れる。
+# docs_md() and readme() exist for rule 11 alone (bin/ references resolve). Do not add them to
+# bodies() — widening what the existing rules scan breaks a different check.
 docs_md() { find "$root/docs" -name '*.md' 2>/dev/null; }
 readme() { [ -f "$root/README.md" ] && printf '%s\n' "$root/README.md"; }
 bin_ref_sources() { bodies; docs_md; readme; }
 
 echo "plumb harness check: $root"
 
-# 0. 走査件数を必ず出す。0 件のまま「通過」するのを見逃さないため
+# 0. Always print how many files were scanned, so a run that passes on 0 files cannot slip through
 scanned=$(targets | wc -l | tr -d ' ')
 pbs=$(playbooks | wc -l | tr -d ' ')
 prs=$(principles | wc -l | tr -d ' ')
 ags=$(agents_md | wc -l | tr -d ' ')
 refs=$(skill_refs | wc -l | tr -d ' ')
 scs=$(skill_scripts | wc -l | tr -d ' ')
-note "--" "走査した SKILL.md: ${scanned} 件 / プレイブック: ${pbs} 件 / 原則: ${prs} 件 / agent: ${ags} 件 / references: ${refs} 件 / スキル同梱スクリプト: ${scs} 件"
+note "--" "scanned SKILL.md: ${scanned} / playbooks: ${pbs} / principles: ${prs} / agents: ${ags} / references: ${refs} / skill-bundled scripts: ${scs}"
 
-# 1. 本文にモデル slug が無い
+# 1. No model slug in the body text
 slug=0
 while IFS= read -r f; do
   grep -qIE 'grok-[0-9]|gpt-[0-9]+(\.[0-9]+)?[a-z]*(-[a-z0-9.]+)*|claude-(opus|sonnet|haiku|fable)(-[0-9]+)+|claude-[0-9]+(-[0-9]+)*-(opus|sonnet|haiku|fable)|(^|[^A-Za-z0-9])o[0-9]+-[a-z]+|gemini-[0-9]+(\.[0-9]+)?-[a-z]+(-[a-z]+)*' "$f" \
-    && { slug=$((slug+1)); note "NG" "モデル slug: ${f#$root/}"; }
+    && { slug=$((slug+1)); note "NG" "model slug: ${f#$root/}"; }
 done < <(bodies)
-check "モデル slug を含むファイル" "$slug" 0
+check "files containing a model slug" "$slug" 0
 
-# 2. 本文に .cursor が無い
+# 2. No .cursor in the body text
 cur=0
 while IFS= read -r f; do
   grep -qI '\.cursor' "$f" && { cur=$((cur+1)); note "NG" ".cursor: ${f#$root/}"; }
 done < <(bodies)
-check ".cursor を含むファイル" "$cur" 0
+check "files containing .cursor" "$cur" 0
 
-# 3. frontmatter に name と description がある
+# 3. Frontmatter carries name and description
 missing=0
 while IFS= read -r f; do
-  head -20 "$f" | grep -q '^name:' || { missing=$((missing+1)); note "NG" "name 欠落: ${f#$root/}"; }
-  head -20 "$f" | grep -q '^description:' || { missing=$((missing+1)); note "NG" "description 欠落: ${f#$root/}"; }
+  head -20 "$f" | grep -q '^name:' || { missing=$((missing+1)); note "NG" "name missing: ${f#$root/}"; }
+  head -20 "$f" | grep -q '^description:' || { missing=$((missing+1)); note "NG" "description missing: ${f#$root/}"; }
 done < <(targets)
-check "frontmatter 欠落" "$missing" 0
+check "frontmatter missing a key" "$missing" 0
 
-# 4. 雛形の TODO が残っていない
+# 4. No leftover template TODO
 todo=0
 while IFS= read -r f; do
-  head -20 "$f" | grep -q 'TODO' && { todo=$((todo+1)); note "NG" "TODO が残っている: ${f#$root/}"; }
+  head -20 "$f" | grep -q 'TODO' && { todo=$((todo+1)); note "NG" "TODO left behind: ${f#$root/}"; }
 done < <(targets)
-check "TODO が残る frontmatter" "$todo" 0
+check "frontmatter with a leftover TODO" "$todo" 0
 
-# 5. 入口はモデルから開けること。原則はスキルではないこと
-#    2026-08-29: disable-model-invocation をルータに当てたため、ハーネス全体が到達不能だった。
-#    Skill ツールは「他の手段での代替」まで禁じるので、Read での迂回もできない。
+# 5. The entry point must be openable by the model. Principles must not be skills.
+#    2026-08-29: disable-model-invocation was set on the router, and the whole harness became
+#    unreachable. The Skill tool forbids "reaching it by other means" too, so Read is no detour.
 dead=0
 while IFS= read -r f; do
-  grep -q '^disable-model-invocation' "$f" && { dead=$((dead+1)); note "NG" "スキルではないのに設定が残る: ${f#$root/}"; }
+  grep -q '^disable-model-invocation' "$f" && { dead=$((dead+1)); note "NG" "not a skill, yet the setting is still there: ${f#$root/}"; }
 done < <(principles; playbooks)
-check "死んだ設定が残る本文" "$dead" 0
+check "body text carrying a dead setting" "$dead" 0
 
 blocked=0
 while IFS= read -r f; do
-  grep -q '^disable-model-invocation: *true' "$f" && { blocked=$((blocked+1)); note "NG" "モデルから開けない: ${f#$root/}"; }
+  grep -q '^disable-model-invocation: *true' "$f" && { blocked=$((blocked+1)); note "NG" "the model cannot open it: ${f#$root/}"; }
 done < <(targets)
-check "モデルから開けないスキル" "$blocked" 0
+check "skills the model cannot open" "$blocked" 0
 
-# 6. 原則の description が日本語化されている（非 ASCII を 1 文字以上含む）
-nojp=0
+# 6. Every principle carries a written description, and no body text is left un-migrated.
+#     This rule used to assert the opposite: a principle's description had to hold a non-ASCII
+#     character, which was how "somebody wrote this for plumb" was checked while plumb was
+#     written in Japanese. The English cutover killed that proxy — every description is ASCII
+#     now, so the old rule would fail all 22 files while proving nothing.
+#     What is worth checking survives the language change and splits in two:
+#       a. principles/ is the only place a description is required and rule 3 does not reach it
+#          (rule 3 walks targets(), which is frontmatter-bearing files only). An empty or
+#          placeholder description is invisible to every other rule, so it is checked here.
+#          The length floor is a floor, not a style rule: it catches a description that restates
+#          the file name and stops.
+#       b. A stray CJK character anywhere in the body text means a file the cutover missed.
+#          That is exactly the failure the old rule was shaped to catch, pointed the other way.
+DESC_MIN=60
+thin=0
 while IFS= read -r f; do
   desc=$(grep -m1 '^description:' "$f" || true)
-  printf '%s' "$desc" | LC_ALL=C grep -qE '[^ -~]' || { nojp=$((nojp+1)); note "NG" "description が未翻訳: ${f#$root/}"; }
+  if [ -z "$desc" ]; then
+    thin=$((thin+1)); note "NG" "no description: ${f#$root/}"
+  elif [ "${#desc}" -lt "$DESC_MIN" ]; then
+    thin=$((thin+1)); note "NG" "description too thin to be written for plumb (${#desc} < $DESC_MIN chars): ${f#$root/}"
+  fi
 done < <(principles)
-check "description が未翻訳の原則" "$nojp" 0
+check "principles with a missing or placeholder description" "$thin" 0
 
-# 7. この環境に無い機械への依存が本文に残っていない
-#    原本は Graphite / Cursor cloud / Bugbot / cursor-team-kit を前提にしている。
-#    書き直しで消し忘れると、実行できない手順を指示する文書になる
+#     Matched as raw bytes rather than with grep -P, which BSD grep does not have. Under
+#     LC_ALL=C the lead byte of a UTF-8 sequence is enough: \xe3-\xe9 covers U+3000-U+9FFF
+#     (CJK punctuation, kana, and the CJK ideographs), and \xef followed by \xbc or \xbd
+#     covers the fullwidth forms. \xe2 is deliberately left out: em dashes and curly quotes
+#     live there and are wanted.
+cjk=0
+while IFS= read -r f; do
+  LC_ALL=C grep -qE $'[\xe3-\xe9]|\xef[\xbc\xbd]' "$f" \
+    && { cjk=$((cjk+1)); note "NG" "Japanese text left in the body: ${f#$root/}"; }
+done < <(bodies)
+check "body files still holding Japanese" "$cjk" 0
+
+# 7. No dependency on machinery this environment does not have
+#    Upstream assumes Graphite / Cursor cloud / Bugbot / cursor-team-kit. Forget to strip one
+#    while rewriting and the document instructs steps nobody here can run
 ext=0
 while IFS= read -r f; do
   hit=$(grep -oIE 'cursor-team-kit|Bugbot|control-ui|control-cli|/deslop|/no-comments|poteto|`gt`|gt submit|gt restack|gt track|gt sync|gt merge' "$f" | sort -u | tr '\n' ' ')
-  [ -n "$hit" ] && { ext=$((ext+1)); note "NG" "無い機械への依存 [${hit%% }]: ${f#$root/}"; }
+  [ -n "$hit" ] && { ext=$((ext+1)); note "NG" "depends on absent machinery [${hit%% }]: ${f#$root/}"; }
 done < <(bodies)
-check "この環境に無い機械を指す本文" "$ext" 0
+check "body text naming machinery this environment lacks" "$ext" 0
 
-# 7b. 本文が名指すスクリプトが実在する
-#     「在るはずのものが無い」は grep でも lint でも出ない。2026-08-29 に 2 回踏んだ。
-#     $(bodies) を素通しで grep の引数展開に渡すと、root にスペースが入るファイル名で
-#     単語分割され、grep が「存在しないファイル」を渡されて黙って 0 件（誤って ok）になる。
-#     1 ファイルずつ read で回し、パスをクオートしたまま grep に渡す。
-#     2026-08-30: 抽出パターンが `scripts/...` にしか当たらず、`plumb/scripts/...` の
-#     ように誤った接頭辞が付いた参照は「scripts/...」部分だけが切り出されて実在判定に
-#     通ってしまっていた（本文の誤りを見逃す）。接頭辞の英数字/./-/ を丸ごと含めて
-#     切り出し、書かれた文字列そのものが root から解決できるかを見る。
-#     `scripts/foo.sh` のように接頭辞が無い素の相対参照はそのまま抽出されるので、
-#     本文がスクリプトを「名前として述べる」箇所（bare な `scripts/...`）は影響を受けない。
+# 7b. Every script the body text names actually exists
+#     "the thing that should be there is missing" shows up in neither grep nor a lint. Stepped
+#     on it twice on 2026-08-29.
+#     Passing $(bodies) straight into grep's argument expansion word-splits any filename whose
+#     root contains a space; grep is then handed a nonexistent file and silently returns 0 hits
+#     (a false ok). Loop one file at a time with read and hand grep the quoted path.
+#     2026-08-30: the extraction pattern only matched `scripts/...`, so a reference carrying a
+#     wrong prefix — `plumb/scripts/...` — had just its `scripts/...` part carved out and passed
+#     the existence test (the error in the body text went unseen). Capture the whole
+#     alphanumeric/./-/ prefix and test whether the string as written resolves from root.
+#     A bare relative reference like `scripts/foo.sh` is still extracted as-is, so passages that
+#     name a script as a name (bare `scripts/...`) are unaffected.
 miss=0
 while IFS= read -r ref; do
-  [ -f "$root/$ref" ] || { miss=$((miss+1)); note "NG" "本文が指すスクリプトが無い: $ref"; }
+  [ -f "$root/$ref" ] || { miss=$((miss+1)); note "NG" "the body text names a script that does not exist: $ref"; }
 done < <(
   while IFS= read -r f; do
     grep -ohE '[A-Za-z0-9._/-]*scripts/[a-z0-9._/-]+\.(sh|mjs|ts|py)' "$f" 2>/dev/null
   done < <(bodies) | sort -u
 )
-check "実体の無いスクリプト参照" "$miss" 0
+check "script references with nothing behind them" "$miss" 0
 
-# 8. プレイブックとルータの索引が一致している（片方だけ足すと索引が嘘になる）
+# 8. The playbooks and the router's index agree (add to one side only and the index is a lie)
 orphan=0; dangling=0
 while IFS= read -r f; do
-  grep -q "playbooks/$(basename "$f")" "$ROOT_SKILL" || { orphan=$((orphan+1)); note "NG" "索引に載っていない: playbooks/$(basename "$f")"; }
+  grep -q "playbooks/$(basename "$f")" "$ROOT_SKILL" || { orphan=$((orphan+1)); note "NG" "not in the index: playbooks/$(basename "$f")"; }
 done < <(playbooks)
 while IFS= read -r name; do
-  [ -f "$PB_DIR/$name" ] || { dangling=$((dangling+1)); note "NG" "索引が指す実体が無い: playbooks/$name"; }
+  [ -f "$PB_DIR/$name" ] || { dangling=$((dangling+1)); note "NG" "the index points at nothing: playbooks/$name"; }
 done < <(grep -oE 'playbooks/[a-z0-9-]+\.md' "$ROOT_SKILL" | sed 's|playbooks/||' | sort -u)
 while IFS= read -r f; do
   n=$(basename "$f" .md)
-  grep -q "principle-$n" "$ROOT_SKILL" || { orphan=$((orphan+1)); note "NG" "索引に載っていない: principles/$n.md"; }
+  grep -q "principle-$n" "$ROOT_SKILL" || { orphan=$((orphan+1)); note "NG" "not in the index: principles/$n.md"; }
 done < <(principles)
 while IFS= read -r name; do
-  [ -f "$PR_DIR/$name.md" ] || { dangling=$((dangling+1)); note "NG" "索引が指す原則が無い: principles/$name.md"; }
+  [ -f "$PR_DIR/$name.md" ] || { dangling=$((dangling+1)); note "NG" "the index points at a principle that does not exist: principles/$name.md"; }
 done < <(grep -oE '\*\*principle-[a-z-]+\*\*' "$ROOT_SKILL" | sed -E 's/\*\*principle-([a-z-]+)\*\*/\1/' | sort -u)
-check "索引に載っていない実体" "$orphan" 0
-check "実体の無い索引行" "$dangling" 0
+check "files missing from the index" "$orphan" 0
+check "index lines with nothing behind them" "$dangling" 0
 
-# 9. 公開できない固有名が残っていない
-#    照合トークンはリポジトリの外に置く。ここにリテラルで書くと、消そうとしている
-#    固有名そのものを公開物に載せることになる。
-#    一覧が無ければ検査しない。ただし黙って通さず -- で出す（可視スキップ）。
-# 走査の対象は「公開されるもの」= git が追跡しているもの。パスの許可リストにすると、
-# 追跡対象が増えたときに穴が空く（2026-08-30、.plumb/plans が除外の内側にいて素通りした）。
+# 9. No unpublishable proper nouns left behind
+#    The tokens to match against live outside the repository. Writing them here as literals
+#    would put the very names we are removing into the published artifact.
+#    With no list, do not run the check. Do not pass silently either: report it with -- (a visible skip).
+# What gets scanned is "what gets published" = what git tracks. An allowlist of paths leaves a
+# hole the moment something new is tracked (2026-08-30: .plumb/plans sat inside the exclusion
+# and walked straight through).
 everything() { git -C "$root" ls-files -z 2>/dev/null | tr '\0' '\n' | sed "s|^|$root/|"; }
 tokens="${PLUMB_PRIVATE_TOKENS:-$HOME/.claude/plumb/private-tokens.txt}"
 if [ ! -f "$tokens" ]; then
-  note "--" "固有名の検査: トークン一覧が無いので省略（${tokens/#$HOME/~}）"
+  note "--" "proper-noun check: skipped, no token list (${tokens/#$HOME/~})"
 else
   priv=0
   while IFS= read -r f; do
     [ -f "$f" ] || continue
-    # git@github.com と noreply は個人の識別子ではなくインフラの表記なので除く
+    # git@github.com and noreply are infrastructure notation, not a person's identifier. Drop them
     hit=$(grep -oIEf "$tokens" "$f" 2>/dev/null \
           | grep -vxE 'git@github\.com|[a-z0-9-]+@users\.noreply\.github\.com' \
           | sort -u | tr '\n' ' ')
-    [ -n "$hit" ] && { priv=$((priv+1)); note "NG" "公開できない固有名 [${hit%% }]: ${f#$root/}"; }
+    [ -n "$hit" ] && { priv=$((priv+1)); note "NG" "unpublishable proper noun [${hit%% }]: ${f#$root/}"; }
   done < <(everything)
-  check "公開できない固有名を含むファイル" "$priv" 0
+  check "files containing an unpublishable proper noun" "$priv" 0
 fi
 
-# 10. 本文が実行先の道具を直接名指していない
-#     名指すと、その道具を持っていない人にとって文書が嘘になる。実行先は
-#     `~/.claude/plumb/config` が決め、本文は鍵（pane.driver など）を指す。
-#     走査は bodies() だけ。docs/path-map.md は「どの道具がどこに worktree を置くか」の
-#     事実であって命令ではなく、scripts/ はテスト値と doctor が見る外部スキル名なので対象外。
+# 10. The body text does not name a routing target directly
+#     Name one and the document becomes a lie for anyone who does not have that tool. Where a
+#     role runs is decided by `~/.claude/plumb/config`; the body names the key (pane.driver and
+#     the rest).
+#     Scan bodies() only. docs/path-map.md states which tool puts worktrees where — a fact, not an
+#     instruction — and scripts/ holds test values plus the external skill names doctor looks at.
 tool=0
 while IFS= read -r f; do
   hit=$(grep -oIE 'herdr|cursor-agent|codex' "$f" | sort -u | tr '\n' ' ')
-  [ -n "$hit" ] && { tool=$((tool+1)); note "NG" "実行先を直接名指している [${hit%% }]: ${f#$root/}"; }
+  [ -n "$hit" ] && { tool=$((tool+1)); note "NG" "names a routing target directly [${hit%% }]: ${f#$root/}"; }
 done < <(bodies)
-check "実行先を名指す本文" "$tool" 0
+check "body text naming a routing target" "$tool" 0
 
-# 11. 本文が名指す plumb-* コマンドが bin/ に実在する
-#     7b と同じ形。プラグインルートを指す変数は SKILL.md でしか展開されないため、
-#     本文は bin/ のコマンド名を素で呼ぶ約束にした。名指した先が無いと exit 127 になる。
-#     走査は bodies() だけでなく README.md と docs/ も含む——README がコマンド名を
-#     持つ以上、そこだけ機械の外に置くのは筋が悪い（bodies() 自体は既存ルールが
-#     使うので広げない。bin_ref_sources() をこのルール専用に別で持つ）。
+# 11. Every plumb-* command the body text names exists in bin/
+#     Same shape as 7b. The variable pointing at the plugin root only expands inside SKILL.md, so
+#     the convention is that the body calls the bin/ command by bare name. Name one that is not
+#     there and you get exit 127.
+#     Scan more than bodies(): README.md and docs/ too — once the README carries command names,
+#     leaving just that file outside the machine is indefensible (do not widen bodies() itself;
+#     the existing rules use it. bin_ref_sources() is held separately for this rule alone).
 BIN_DIR="$root/bin"
 nobin=0
 while IFS= read -r cmd; do
-  [ -f "$BIN_DIR/$cmd" ] || { nobin=$((nobin+1)); note "NG" "本文が指す plumb-* コマンドが無い: bin/$cmd"; }
+  [ -f "$BIN_DIR/$cmd" ] || { nobin=$((nobin+1)); note "NG" "the body text names a plumb-* command that does not exist: bin/$cmd"; }
 done < <(
   while IFS= read -r f; do
-    grep -ohE '\bplumb-[a-z-]+\b' "$f" 2>/dev/null
-  done < <(bin_ref_sources) | sort -u
+    # Take one following character with the name so a filename is distinguishable from a
+    # command. 2026-08-31: `assets/plumb-banner.png` in README.md was being read as a command
+    # and rule 11 had been failing on main ever since the banner landed. A bare `\bplumb-[a-z-]+\b`
+    # cannot tell `plumb-banner.png` from `plumb-doctor`, and it cannot simply drop every match
+    # containing a dot either: `plumb-doctor.` at the end of a sentence is a real reference.
+    # So: match an optional extension, drop the ones that are files, strip a sentence period.
+    grep -ohE 'plumb-[a-z-]+\.?[a-z]{0,4}' "$f" 2>/dev/null
+  done < <(bin_ref_sources) \
+    | grep -vE '\.(png|jpe?g|svg|gif|sh|mjs|ts|py|json|md|txt|ya?ml|lock)$' \
+    | sed 's/\.$//' | sort -u
 )
-check "実体の無い plumb-* コマンド参照" "$nobin" 0
+check "plumb-* command references with nothing behind them" "$nobin" 0
 
-# 12. 同梱 agent の frontmatter が model を固定していない
-#     SKILL.md「本文にモデル名を書かない」・docs/role-map.md「model を書かない」との
-#     規律に、同梱物自身（agents/*.md）が違反していないかを見る。2026-08-30 に
-#     agents/*.md 6 体が `model: opus` を固定していたのを実測——bodies() の穴（旧）で
-#     ルール 1（モデル slug）は通っていた。slug 検査は "claude-opus-..." 形の固有 slug
-#     しか拾わないため、frontmatter の `model: opus` はここで別途見る。
+# 12. No bundled agent pins a model in its frontmatter
+#     SKILL.md says "do not write a model name in the body text" and docs/role-map.md says "do not
+#     write model". This checks that the bundled material itself (agents/*.md) does not break that
+#     discipline. Measured on 2026-08-30: all 6 agents/*.md pinned `model: opus` — and rule 1
+#     (model slug) passed them, through the old hole in bodies(). The slug check only catches
+#     specific slugs shaped like "claude-opus-...", so frontmatter's `model: opus` is caught here.
 pinned=0
 while IFS= read -r f; do
-  head -20 "$f" | grep -q '^model:' && { pinned=$((pinned+1)); note "NG" "model を固定している agent: ${f#$root/}"; }
+  head -20 "$f" | grep -q '^model:' && { pinned=$((pinned+1)); note "NG" "agent pinning a model: ${f#$root/}"; }
 done < <(agents_md)
-check "model を固定する agent frontmatter" "$pinned" 0
+check "agent frontmatter pinning a model" "$pinned" 0
 
-# 13. NOTICE が主張する原則の本数が、実体と一致している
-#     2026-08-30: 原則を 1 本書き下ろしたのに NOTICE の「21 本すべてが逐語複製」が
-#     残り、「principles/ の中身は全部 pstack の複製」と読める嘘になった。人が足すたびに
-#     NOTICE を直す運用は必ず破れる（**principle-encode-lessons-in-structure**）。
-#     逐語一致そのものは上流を取りに行かないと判定できず、ネットワークに出る検査は
-#     オフラインで落ちて使われなくなる。そこで**由来を各ファイルの frontmatter に持たせ**、
-#     NOTICE はその集計だけを主張する形にした。書き下ろした原則は `origin: plumb` を持つ。
-#     本数の食い違いは、どちら側を足し忘れても発火する:
-#       - 印を付けずに追加 → 逐語の実測が増えて NOTICE と食い違う
-#       - 印を付けて追加   → 総数が増えて NOTICE と食い違う
+# 13. The number of principles NOTICE claims matches what is actually there
+#     2026-08-30: one principle had been rewritten from scratch, but NOTICE still said "all 21 are
+#     reproduced verbatim" — which reads as "everything in principles/ is a copy of pstack", a lie.
+#     Fixing NOTICE by hand every time someone adds a principle is a habit that always breaks
+#     (**principle-encode-lessons-in-structure**). Verbatim identity itself cannot be judged
+#     without fetching upstream, and a check that goes to the network fails offline and stops
+#     being used. So **provenance lives in each file's frontmatter** and NOTICE only claims the
+#     tally. A rewritten principle carries `origin: plumb`.
+#     A mismatch fires whichever side you forget:
+#       - added without the marker -> the verbatim count rises and disagrees with NOTICE
+#       - added with the marker    -> the total rises and disagrees with NOTICE
 NOTICE_F="$root/NOTICE"
 if [ ! -f "$NOTICE_F" ]; then
-  note "NG" "NOTICE が無い"; fail=1
+  note "NG" "NOTICE is missing"; fail=1
 else
   authored=0
   while IFS= read -r f; do
@@ -238,39 +281,39 @@ else
   n_total=$(grep -oE 'principles/ holds [0-9]+ files' "$NOTICE_F" | grep -oE '[0-9]+' | head -1)
   n_verb=$(grep -oE '[0-9]+ are reproduced verbatim' "$NOTICE_F" | grep -oE '[0-9]+' | head -1)
   if [ -z "$n_total" ] || [ -z "$n_verb" ]; then
-    note "NG" "NOTICE から原則の本数を読めない（'principles/ holds N files' と 'N are reproduced verbatim' が要る）"
+    note "NG" "cannot read the principle counts out of NOTICE ('principles/ holds N files' and 'N are reproduced verbatim' are required)"
     fail=1
   elif [ "$n_total" -ne "$prs" ] || [ "$n_verb" -ne "$verbatim_actual" ]; then
-    note "NG" "NOTICE の本数が実体と違う（NOTICE: 総数 ${n_total} / 逐語 ${n_verb}、実体: 総数 ${prs} / 逐語 ${verbatim_actual}・書き下ろし ${authored}）"
+    note "NG" "NOTICE's counts disagree with reality (NOTICE: total ${n_total} / verbatim ${n_verb}; actual: total ${prs} / verbatim ${verbatim_actual}, authored ${authored})"
     fail=1
   else
-    note "ok" "NOTICE の原則の本数（総数 ${prs} / 逐語 ${n_verb} / 書き下ろし ${authored}）"
+    note "ok" "NOTICE's principle counts (total ${prs} / verbatim ${n_verb} / authored ${authored})"
   fi
 fi
 
-# 14. README が主張する本数が実体と合っているか。
-#     2026-08-30 に実測: README は「the 13 playbooks」と書いていたが実体は 19 本、
-#     「Twenty-one principles」と書いていたが実体は 22 本だった。**plumb が README で
-#     「documentation rots silently」を防ぐと主張しているまさにその形で、README 自身が
-#     腐っていた。**NOTICE はルール 13 が守っているのに README は誰も見ていなかった
-#     （**principle-encode-lessons-in-structure**）。
-#     綴り字（"Twenty-one"）だと機械が読めないので、README 側は数字で書く規約にする。
+# 14. The counts the README claims match what is actually there.
+#     Measured on 2026-08-30: the README said "the 13 playbooks" against 19 real ones, and
+#     "Twenty-one principles" against 22. **The README was rotting in exactly the shape it claims
+#     plumb prevents — "documentation rots silently".** NOTICE is held by rule 13; nobody was
+#     watching the README (**principle-encode-lessons-in-structure**).
+#     Spelled-out numbers ("Twenty-one") cannot be read by a machine, so the convention is that
+#     the README writes them as digits.
 README_F="$root/README.md"
 if [ ! -f "$README_F" ]; then
-  note "NG" "README.md が無い"; fail=1
+  note "NG" "README.md is missing"; fail=1
 else
   r_pb=$(grep -oE '[0-9]+ playbooks' "$README_F" | grep -oE '[0-9]+' | head -1)
   r_pr=$(grep -oE '[0-9]+ principles' "$README_F" | grep -oE '[0-9]+' | head -1)
   if [ -z "$r_pb" ] || [ -z "$r_pr" ]; then
-    note "NG" "README から本数を読めない（'N playbooks' と 'N principles' を数字で書く）"
+    note "NG" "cannot read the counts out of the README ('N playbooks' and 'N principles', in digits)"
     fail=1
   elif [ "$r_pb" -ne "$pbs" ] || [ "$r_pr" -ne "$prs" ]; then
-    note "NG" "README の本数が実体と違う（README: プレイブック ${r_pb} / 原則 ${r_pr}、実体: ${pbs} / ${prs}）"
+    note "NG" "the README's counts disagree with reality (README: playbooks ${r_pb} / principles ${r_pr}; actual: ${pbs} / ${prs})"
     fail=1
   else
-    note "ok" "README の本数（プレイブック ${pbs} / 原則 ${prs}）"
+    note "ok" "the README's counts (playbooks ${pbs} / principles ${prs})"
   fi
 fi
 
-if [ $fail -eq 0 ]; then echo "  → 通過（SKILL.md ${scanned} 件 / プレイブック ${pbs} 件 / 原則 ${prs} 件 / agent ${ags} 件）"; else echo "  → 失敗"; fi
+if [ $fail -eq 0 ]; then echo "  → passed (SKILL.md ${scanned} / playbooks ${pbs} / principles ${prs} / agents ${ags})"; else echo "  → failed"; fi
 exit $fail

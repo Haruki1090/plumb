@@ -1,309 +1,329 @@
 ---
 name: pr-review
-description: 大きな PR・不可逆な変更に対して、承認権を持つ側としてレビューするスキル。GitHub の PR URL（https://github.com/<owner>/<repo>/pull/<n>）を渡されただけでも発火する。本文の主張と差分の事実を突き合わせ、反証役と再現テストを並列に立て、確度とブロッキング性を分けて返却する。「PR をレビューして」「レビュー依頼が来た」「承認していいか見て」「この PR 見て」などでも使用する。
+description: Review a large or irreversible PR as the person who holds the approval. Fires on a bare GitHub PR URL (https://github.com/<owner>/<repo>/pull/<n>). Use when asked to "review this PR", "is this safe to approve", "a review request came in", or "take a look at this PR" - cross-checks the body's claims against the facts of the diff, runs refuters and reproduction tests in parallel, and returns confidence and blocking separately.
 ---
 
-# PR レビュー v1.1
+# PR review v1.1
 
-## この型が解こうとしている問題
+## The problem this playbook is for
 
-大きな PR は上から読めない。読めても重要度の重み付けができない。そして
-**PR 本文は著者の認識の写像でしかなく、差分より先に古くなる。**
+A large PR cannot be read top to bottom. Even when it can, you cannot weight what matters. And
+**the PR body is only a projection of what the author believes, and it goes stale before the diff does.**
 
-だからこの型は、差分を読む順序を決めるのではなく、
-**何を見ないと決めたかを記録に残す**ことを中心に組み立ててある。
+So this playbook is not built around an order for reading the diff. It is built around
+**leaving a record of what you decided not to look at.**
 
-## 原則
+## Principles
 
-1. **指摘は反証可能でなければ指摘ではない。** 具体的な入力・状態 → 誤った出力／損失、が言えないものは
-   finding にしない。「読みにくい」「こうした方が綺麗」はこの型の対象外。
-2. **本文は仮説、差分が事実。** 主張の出所を本文にしない。
-3. **見つける役と、本当か確かめる役を分ける。** 検証役には「支持しろ」ではなく「反証しろ」と指示する。
-4. **既定は再現率より適合率。** 40 件の nit を出すレビューは読まれなくなる。深さは意図して上げる。
-5. **見ていないものを黙って通さない。** ゲートキーパーの唯一の不正行為はこれ。
-6. **レビュアーは対象コードを書き換えない。** 直すのは著者の仕事。
+1. **A finding you cannot refute is not a finding.** If you cannot name a concrete input or state → a
+   wrong output or a loss, it does not become a finding. "Hard to read" and "this would be nicer" are outside this playbook.
+2. **The body is a hypothesis. The diff is fact.** Never source a claim from the body.
+3. **Split the role that finds from the role that confirms.** Tell the verifying role to *refute*, not to support.
+4. **Precision over recall, by default.** A review carrying 40 nits stops being read. Raise the depth deliberately.
+5. **Never wave through what you did not look at.** It is the gatekeeper's one real offence.
+6. **The reviewer does not edit the code under review.** Fixing it is the author's job.
 
-## この型を実行している間、呼ばないもの
+## What you do not call while this playbook is running
 
-レビューは creative work でも実装でもないため、以下は**発火条件に見かけ上該当しても呼ばない**。
-呼ぶとレビューが別のタスクに変質する。
+Review is neither creative work nor implementation, so **do not call the following even when their trigger
+conditions appear to match**. Calling them turns the review into a different task.
 
-| 呼ばない | 理由 |
+| Do not call | Why |
 |---|---|
-| `plumb:graph` | 発火条件（複数ファイル・並列化・設計書との整合・サブエージェント）に全部該当してしまうが、これは**着手前の設計**スキル。レビューを設計タスクに変換してしまう |
-| `/simplify` | 「整理して」で当たる。quality-only かつ fix を適用する。原則 6 に反する |
-| plumb の `playbooks/shaping-the-work.md` | 設計対話が始まる。レビューは creative work ではない |
-| plumb の `playbooks/being-reviewed.md` | **著者側**の型。同じ PR で承認側と著者側を兼ねると、自分の差分を自分で判定した記録になる。返却後に著者が読むもので、こちらが読むものではない |
-| `/code-review --fix` / `--comment` | `--fix` は原則 6 に反する。`--comment` は 5 段の判定を通っていない findings が著者に直接届き、承認判断から切り離された指摘になる（返却は 6 段の 1 箇所に集約する） |
+| `plumb:graph` | Every trigger condition matches (several files, parallelism, alignment with a design doc, subagents), but it is a **pre-work design** skill. It converts the review into a design task |
+| `/simplify` | "Clean this up" lands on it. It is quality-only and it applies fixes. Against principle 6 |
+| plumb's `playbooks/shaping-the-work.md` | A design conversation starts. Review is not creative work |
+| plumb's `playbooks/being-reviewed.md` | The **author's** playbook. Wearing both hats on one PR leaves a record of you judging your own diff. It is what the author reads after you return, not what you read |
+| `/code-review --fix` / `--comment` | `--fix` is against principle 6. `--comment` sends findings that never passed stage 5's verdict straight to the author, cut loose from the approval decision (returning is concentrated in the one place that is stage 6) |
 
-逆に、以下は**取り込む**。
+These, on the other hand, you **do pull in**.
 
-- **principle-gate-claims-on-evidence** — 5 段の CONFIRMED 判定に直結
-- plumb の `playbooks/worktree-setup.md` — 3 段の再現テストの隔離
-- plumb の `playbooks/fan-out.md` — 3 段の並列実行
+- **principle-gate-claims-on-evidence** — it feeds directly into the CONFIRMED verdict in stage 5
+- plumb's `playbooks/worktree-setup.md` — isolation for stage 3's reproduction tests
+- plumb's `playbooks/fan-out.md` — stage 3's parallel execution
 
-## 手順
+## Steps
 
-### 0. 版を固定する
+### 0. Pin the revision
 
-PR URL だけを渡された場合はここから始める。
+Start here when all you were handed is a PR URL.
 
-1. URL を `owner/repo` と PR 番号に分解する
-2. ローカルに repo が無ければ clone、あれば `git fetch origin pull/<n>/head:pr<n>`
-3. ドリフトと保護設定を検出する
+1. Split the URL into `owner/repo` and the PR number
+2. Clone the repo if it is not local; otherwise `git fetch origin pull/<n>/head:pr<n>`
+3. Detect drift and branch protection
 
 ```bash
-plumb-pr-drift <owner/repo> <PR番号>
+plumb-pr-drift <owner/repo> <PR number>
 ```
 
-- レビュー対象の SHA を記録する。**以降すべてこの SHA に対して行う。**
-- 出力される保護設定の警告を確認する。`dismiss_stale_reviews_on_push` が false なら、
-  承認後の push で承認が空手形になる。その事実込みで承認するか判断する。
-- 長寿命 PR で 2 回目以降のレビューなら、前回読んだ SHA からの差分に対して以降を引き直す。
+- Record the SHA under review. **Everything below is done against that SHA.**
+- Read the protection warnings it prints. If `dismiss_stale_reviews_on_push` is false, a push after your
+  approval turns the approval into a blank cheque. Decide whether to approve with that fact included.
+- On a long-lived PR you are reviewing for the second time or later, re-run everything below against the
+  diff from the SHA you read last time.
 
-**返却物を作る直前に、0 段をもう一度回す。**（実運用で踏んだ失敗）
+**Run stage 0 again immediately before you build what you return.** (a failure taken in real use)
 
-レビュー中に PR が動く。実測では 2 時間のレビュー中に 13 コミットが入り、次が起きた。
+The PR moves while you review it. Measured: 13 commits landed during a two-hour review, and:
 
-- 指摘 9 件のうち **5 件でアンカー行がずれた**（GitHub は下書きを現在の差分に対して描画するため、
-  古い SHA に紐づけたインラインコメントは別の行を指す）
-- 指摘 3 件が**対象文書ごと削除**されて用済みになった
-- 1 件は**修正が入って形が変わった**
-- さらに、その 13 コミットが**新しい BLOCK 候補を 2 件**持ち込んでいた
+- **5 of 9 findings had their anchor line shift** (GitHub draws the draft against the current diff, so an
+  inline comment tied to an old SHA points at a different line)
+- 3 findings were spent because **the document they targeted was deleted outright**
+- 1 **changed shape when a fix landed**
+- and those 13 commits had brought in **2 new BLOCK candidates**
 
-「開始時に固定した」だけでは足りない。**提出直前に取り直し、動いていたら差分をレビューしてから返す。**
+Pinned at the start is not enough. **Take it again just before you submit, and if it moved, review the
+difference before you return.**
 
-**PR が動き続けている場合、それ自体を著者に伝える。** 動く標的を追い続けるとレビューは常に古くなる。
-規模・本文ドリフトと同じく、PR の構造上の問題として扱う。
-- **差分をファイルにダンプしておく**（1 段で使う）:
+**If the PR keeps moving, tell the author that fact itself.** Chasing a moving target keeps the review
+permanently out of date. Treat it as a structural problem with the PR, the same as size or body drift.
+- **Dump the diff to a file** (stage 1 uses it):
   `git diff <base>...<head> > <scratch>/pr<n>.diff`
 
-### 1. 双方向の棚卸し
+### 1. Bidirectional inventory
 
-命題の集合を **2 つ独立に**作る。
+Build **two independent** sets of claims.
 
-**(a) 本文側** — PR 本文・コミットメッセージから、真偽が判定できる命題だけを抜き出す。ここでは検証しない。
+**(a) From the body** — pull out of the PR body and the commit messages only the claims whose truth can be
+decided. Do not verify them here.
 
-**(b) 差分側** — `pr-diff-reader` agent に **0 段でダンプした差分ファイルだけ**を渡す。
-この agent は `Read` / `Grep` / `Glob` しか持たないため、**本文を取得できない**。
-polite な指示ではなく、ツール権限で強制する。
+**(b) From the diff** — hand the `pr-diff-reader` agent **only the diff file you dumped in stage 0**.
+That agent holds nothing but `Read` / `Grep` / `Glob`, so **it cannot fetch the body**.
+Tool permissions enforce this, not a polite instruction.
 
-そして **集合差を取る**。
+Then **take the set difference.**
 
-| ギャップ | 意味 | 危険度 |
+| Gap | What it means | Severity |
 |---|---|---|
-| 本文にあって差分にない | 未実装、または後から取り消された主張。承認者を誤誘導する | 中 |
-| **差分にあって本文にない** | **未申告の変更** | **常に高** |
+| In the body, not in the diff | Unimplemented, or claimed and then taken back. It misleads the approver | Medium |
+| **In the diff, not in the body** | **An undeclared change** | **Always high** |
 
-`pr-drift.sh` の「本文最終編集より後のコミット」は後者の機械的な下限値。
-ゼロでも安心はできない（本文が最初から不完全な場合がある）が、非ゼロなら確実に何かある。
+`pr-drift.sh`'s "commits after the body was last edited" is a mechanical lower bound on the second one.
+Zero does not clear you (the body can have been incomplete from the start), but non-zero means something
+is there for certain.
 
-### 2. 重み付けと切り捨て
+### 2. Weighting, and the cut
 
-各命題を **〈不可逆性〉×〈金銭・データ損失〉** で並べ替え、時間予算で線を引く。
+Sort every claim by ⟨irreversibility⟩ × ⟨money or data lost⟩ and draw the line at your time budget.
 
-**線より下を捨てたことを、その場でリストとして書き出す。** これは 6 段で返却する。
-レビューの質は「何を見たか」より「何を見ないと決めたか」で決まる。
+**Write out, right there, the list of what fell below the line.** Stage 6 returns it.
+The quality of a review is decided less by what you looked at than by what you decided not to look at.
 
-不可逆性の目安（高い順）: 本番 DB migration / 課金・請求の確定 / 外部サービスの状態変更 /
-ロールバック不能なデプロイ / 削除された後方互換経路。
+Irreversibility, high to low: production DB migration / a charge or invoice becoming final / state changed
+in an external service / a deploy you cannot roll back / a deleted backward-compatibility path.
 
-**ここで確定した対象パスが、3-A で `/code-review` に渡す引数になる。**
+**The paths you settle on here are the arguments you pass to `/code-review` in 3-A.**
 
-### 3. 反証（並列）
+### 3. Refutation (parallel)
 
-A〜D を**別コンテキストで並列に**走らせる。軸が重なった箇所を最優先にする。
-E は条件付きで、当たったときだけ足す。
+Run A through D **in parallel, in separate contexts**. Wherever two axes overlap goes first.
+E is conditional: add it only when it lands.
 
-| 軸 | 実行 | 担当領域 |
+| Axis | How it runs | Territory |
 |---|---|---|
-| **A. 行レベルの正しさ** | `/code-review <effort> <2段のパス>` | コードの正しさ |
-| **B. 不変条件** | `pr-invariant` agent | 複数箇所にまたがる性質 |
-| **C. cutover 経路** | `pr-cutover` agent | 手順・運用・不可逆性 |
-| **D. 再現** | `pr-repro` agent（**worktree 隔離必須**） | PLAUSIBLE の昇格 / 反証 |
-| **E. 別ファミリー**（条件付き） | `plumb:interrogate` | 同一ファミリーが共有する盲点 |
+| **A. Line-level correctness** | `/code-review <effort> <the paths from stage 2>` | whether the code is correct |
+| **B. Invariants** | `pr-invariant` agent | properties spanning several places |
+| **C. The cutover path** | `pr-cutover` agent | procedure, operations, irreversibility |
+| **D. Reproduction** | `pr-repro` agent (**worktree isolation required**) | promoting or killing a PLAUSIBLE |
+| **E. Another family** (conditional) | `plumb:interrogate` | blind spots one family shares |
 
-**E について。** A〜D は**役割**が分かれているが、**実行はすべて同じモデルファミリーの中**にある。
-役割の多様性は盲点の多様性ではない。だから次のどれかに当たるときだけ 1 本足す。
+**On E.** A through D split the **roles**, but **every one of them runs inside the same model family**.
+Diversity of role is not diversity of blind spot. So add one pass only when one of these holds.
 
-- 不可逆な変更（削除、マイグレーション、認証・認可、本番デプロイ）
-- **規定・規約・手順そのものを書いた差分**（自分で書いた規律は、自分では検査できない）
-- 設計の分岐を含む変更。approach ごと疑う必要があるもの
-- 1 段の棚卸しで「**差分にあって本文にない**」が出たとき
+- an irreversible change (a deletion, a migration, authn or authz, a production deploy)
+- **a diff that writes the rules, the conventions or the procedure itself** (discipline you wrote yourself
+  is discipline you cannot inspect yourself)
+- a change carrying a design fork, where the approach itself has to be doubted
+- stage 1's inventory turned up something **in the diff but not in the body**
 
-**当たらないなら足さない。ただし足さない判断は `skip: <理由>` として残す。**
-黙って省略しない。手順は `plumb:interrogate` が持つ。
-返ってきたものは A〜D と同じく**確度だけを持ち込み、ブロッキング性は 5 段でこちらが付ける。**
+**If none of them lands, do not add it. But leave the decision not to add it as `skip: <reason>`.**
+Never drop it silently. `plumb:interrogate` holds the steps.
+What comes back carries **confidence only, exactly as with A through D. You attach blocking in stage 5.**
 
-**A について。** `/code-review` は sensor であって判断者ではない。確度（CONFIRMED / PLAUSIBLE）は
-出すが**ブロッキング性は出さない**。それは 5 段で人間側が付ける。
-2 段の線の上に残ったパスにだけ当てること。全体に当てると、見ないと決めた領域の findings が返り、
-**自分で生成した実在の指摘を捨てる**羽目になる。effort は既定 medium、絞った上で high が上限。
-絞り込みを effort で取り返そうとしないこと。
+**On A.** `/code-review` is a sensor, not a judge. It gives confidence (CONFIRMED / PLAUSIBLE) but
+**it does not give blocking**: the human side attaches that in stage 5.
+Point it only at paths that survived stage 2's line. Point it at everything and it returns findings from
+the territory you decided not to look at, which leaves you **throwing away real findings you generated
+yourself**. effort is medium by default, and high is the ceiling once you have narrowed the target.
+Do not try to buy back the narrowing with effort.
 
-`/code-review` が構造上見つけられないもの: findings は必ずファイルに固定されるため、
-**どの 1 ファイルの差分にも現れない欠陥**（B）と、**コードの正しさの問題ですらないもの**（C）。
-A は B・C を代替しない。
+What `/code-review` cannot find by construction: every finding is pinned to a file, so it misses
+**a defect that appears in no single file's diff** (B), and **anything that is not a question of code
+correctness at all** (C). A is not a substitute for B or C.
 
-**ultra を勧める前に、4 つ確認する。**（実際に 3 回失敗した手順）
+**Check four things before you recommend ultra.** (a procedure that actually failed three times)
 
-1. **別課金が発生する。** ユーザーの費用判断が要る。勝手に前提にしない
-2. **上限は 500 files / 8,000 lines**（insertions+deletions）。`git diff --shortstat` で事前に測る。
-   拒否メッセージの数字は差分サイズであって上限ではない
-3. **base を明示する。** 引数なしはデフォルトブランチと比較される。develop 運用の repo では桁が変わる
-4. **自分では起動できない。** 人間のステップとして型に置く
+1. **It bills separately.** The cost call is the user's. Do not assume it
+2. **The ceiling is 500 files / 8,000 lines** (insertions+deletions). Measure it beforehand with
+   `git diff --shortstat`. The number in the refusal message is the diff size, not the ceiling
+3. **State the base.** With no argument it compares against the default branch, which is off by an order
+   of magnitude in a repo running develop
+4. **You cannot launch it yourself.** Put it in the playbook as a human step
 
-上限に収めるときは**テストから落とす**。製品コードを削ると sensor の意味が消える。
-落としたものは 6 段の「見ていない範囲」に必ず書く。
+To fit under the ceiling, **drop tests first**. Cutting product code drains the sensor of its meaning.
+Whatever you dropped goes into stage 6's "what I did not look at", without exception.
 
-**満たせないときの既定** = ローカル `/code-review max` をパス絞りで。別課金なし・サイズ上限なし。
+**Record the "too large" refusal itself as a finding.** A diff too big for automated review is material
+for the case that it should have been split.
 
-**「too large」で拒否されたこと自体を finding として記録する。** 自動レビューの容量を超える規模は、
-分割すべきだったという材料になる。
+**On D.** Of the PLAUSIBLE findings out of B and A, hand the reproducible kind to `pr-repro`.
+They can be promoted to `CONFIRMED = a failing test was written and it actually failed`.
 
-**D について。** B・A で PLAUSIBLE が出た finding のうち、再現可能な種類のものを `pr-repro` に渡す。
-`CONFIRMED = 失敗するテストを書いて実際に落とした` に格上げできる。
+Keep the asymmetry of reach in view at all times.
 
-射程の非対称性を必ず意識すること。
+- **Reproducible** — pure computation, boundary values, idempotency, reordering, state transitions
+  (as far as a fake or a harness exists)
+- **Not reproducible** — the irreversibility of a migration, how an external service really behaves in
+  production, manual procedure, infrastructure configuration
 
-- **再現できる** — 純粋な計算、境界値、冪等性、順序逆転、状態遷移（fake / harness がある範囲）
-- **再現できない** — migration の不可逆性、本番の外部サービス実挙動、人手の手順、インフラ設定
+So **axis C tops out at PLAUSIBLE by construction**. Do not let that invert into
+"only what a test confirmed matters".
+**On an irreversible change, axis C is usually the frightening one.**
+What confidence cannot cover, cover by raising blocking.
 
-つまり **C 軸は原理的に PLAUSIBLE 止まり**。ここで
-「テストで確認できたものだけが重要」という逆転を起こさないこと。
-**不可逆な変更では、たいてい C 軸が一番怖い。** 確度で補えない分はブロッキング性を上げて補う。
+**Put `pr-refuter` on every finding. On a BLOCK candidate, without exception.**
+When in doubt, fall to the refuting side.
 
-**各 finding には `pr-refuter` を当てる。BLOCK 候補は例外なく当てる。**
-迷ったら反証側に倒すのが既定。
+**Name the most promising line of refutation for the refuter.** Say only "refute this" and it tries the
+general case and comes back with "could not refute". Naming **the weakest point of your own finding,
+yourself** is the condition for the refuter to work at all.
 
-**反証役には「一番効きそうな反証候補」を名指しで渡す。** 「反証しろ」とだけ言うと、
-一般論を試して「反証できませんでした」と返ってくる。自分の finding の**一番弱い箇所を
-自分で名指しする**のが、反証役を機能させる条件。
+**Measured hit rate (one real run): 11 launched, 8 REFUTED.**
+Six of seven BLOCK candidates were demoted, and one BLOCK was left at the end. Without the refutation
+pass, a wrong Request changes would have gone back carrying six findings' worth of supporting material.
+You run it not "to be careful" but **because most of it collapses.**
 
-**実測の打率（1 回の実運用）: 11 本走らせて 8 本が反証成功。**
-BLOCK 候補は 7 件中 6 件が降格し、最終的に BLOCK は 1 件だけ残った。
-反証を通していなければ、誤った Request changes を 6 件分の根拠付きで返していた。
-「慎重を期すため」ではなく**過半が崩れるから**当てる。
+**A finding that survives refutation usually still gets its wording fixed.** All three survivors had the
+timeline, the blast radius or the permanence wrong. One was corrected in the **heavier** direction
+("cancellation blocked after 8 failures" → "cancellation blocked from the first failure").
+Shipped as written, it would have been thrown out as factually wrong.
+**Refutation is not only a process for killing things.**
 
-**反証に失敗した finding も、記述はたいてい修正される。** 生き残った 3 件すべてで
-時間軸・影響範囲・恒久性のいずれかが誤っていた。1 件は当初より**重い**方向に修正された
-（「8 回失敗後に解約不可」→「最初の失敗直後から解約不可」）。
-そのまま出していたら事実誤認として弾かれていた。**反証は殺すためだけの工程ではない。**
-
-**反証役の出力に「調査中に見つけた別件」の節を設ける。** 実運用で、反証役が
-4 軸のどれも出さなかった finding を副産物として出した（アラートのログ行に監視が
-紐づいていない、等）。殺す役に専念させると、この副産物が捨てられる。
+**Give the refuter's output a section for "other things found along the way".** In real use a refuter
+turned up, as a by-product, a finding none of the four axes produced (an alert log line with no monitoring
+attached to it). Keep it purely on killing and that by-product gets discarded.
 
 ```
-悪い: 「この finding を反証してください」
-良い: 「チェックリストが §6.2 を正本と明示しているのでは。これが成立すれば BLOCK から降ります」
-良い: 「`git clean` の指示が実在しないなら、そう明言してください」
-良い: 「反証が成立するなら『blocked に至る前に回復する経路がある』という形だけです」
+bad:  "Please refute this finding"
+good: "The checklist may well name §6.2 as the source of truth. If that holds, this drops out of BLOCK"
+good: "If the `git clean` instruction does not exist, say so outright"
+good: "The only shape a refutation can take here is 'there is a path that recovers before it reaches blocked'"
 ```
 
-### 3-x. サブエージェントの回収（呼び出し元の責任）
+### 3-x. Collecting the subagents (the caller's job)
 
-**agent のプレーンテキスト出力は呼び出し元に届かない。** agent 定義に「SendMessage で返せ」と
-書いても効かない（ハーネスが「最終テキストが返り値」と伝えており、そちらが優先される）。
+**An agent's plain-text output does not reach the caller.** Writing "return it with SendMessage" in the
+agent definition does not help: the harness tells the agent its final text is the return value, and that
+wins.
 
-**アイドル通知を受けたら、SendMessage で提出を依頼する。** これを手順として回す。
-依頼時は出力節の見出しと、当初依頼した個別の問いを再掲すること（省略されるため）。
+**When you get an idle notification, ask for delivery with SendMessage.** Run this as a step.
+When you ask, restate the headings of the output section and the individual questions you originally
+asked — they get dropped otherwise.
 
-### 4. 空白の点検
+### 4. Inspecting the blank space
 
-`pr-blindspot` agent を 1 つ立てる。「この PR 本文が一度も触れていない影響範囲は何か」だけを問う。
+Stand up one `pr-blindspot` agent. Ask it one thing only: what impact area does this PR body never once
+touch?
 
-### 5. 判定
+### 5. The verdict
 
-生き残った指摘を **2 軸で**分類する。1 本の severity に潰さない。
+Classify the surviving findings on **two axes**. Do not collapse them into a single severity.
 
-| 確度 | 定義 |
+| Confidence | Definition |
 |---|---|
-| **CONFIRMED** | 失敗するテストを書いて落とした、またはコードを追い切って壊れる経路が確定した |
-| **PLAUSIBLE** | 壊れる筋は立つが、確認しきれていない箇所が残る |
+| **CONFIRMED** | A failing test was written and it failed, or the code was followed all the way to a path that definitely breaks |
+| **PLAUSIBLE** | The case for breakage stands, but something is left unconfirmed |
 
-| ブロッキング性 | 定義 |
+| Blocking | Definition |
 |---|---|
-| **BLOCK** | 承認を止める |
-| **FIX** | 止めないが、マージ前に直す |
-| **NOTE** | 記録だけ。今回は直さない |
+| **BLOCK** | Stops the approval |
+| **FIX** | Does not stop it, but gets fixed before merge |
+| **NOTE** | Recorded only. Not fixed this time |
 
-CONFIRMED と書く前に **principle-gate-claims-on-evidence** の関門を通す
-——**それを証明するコマンドを、このターンで実行したか。**していないなら PLAUSIBLE。
+Before you write CONFIRMED, pass the gate of **principle-gate-claims-on-evidence**
+— did you run the command that proves it, this turn? If not, it is PLAUSIBLE.
 
-**ただしコマンド実行だけでは足りない。** 実際に BLOCK 候補 4 件中 3 件が、
-「コマンドは実行したが結論が誤り」で落ちた。実行に加えて 2 つ確認する。
+**But running the command is not enough.** Three of four BLOCK candidates actually fell to
+"the command ran, the conclusion was wrong". On top of running it, check two things.
 
-**(a) 出力を正しく読んだか。** grep の 1 行が読み取り側の判定なのか UPDATE の WHERE 句なのかで
-結論が反転する。該当行の**前後を開いて**文脈を確認する。grep の 1 行だけで確度を上げない。
+**(a) Did you read the output right?** One line out of grep reverses the conclusion depending on whether
+it is the reading side's test or an UPDATE's WHERE clause. **Open what surrounds that line** and confirm
+the context. Never raise confidence off a single grep line.
 
-**(b) 留保を落としていないか。** agent の報告と自分の表現を**並べて**読む。
-これが最も多い壊れ方だった。
+**(b) Did you drop a qualifier?** Read the agent's report and your own wording **side by side**.
+This was the most common way it broke.
 
-| agent の書き方 | やってはいけない固め方 |
+| How the agent put it | How you must not harden it |
 |---|---|
-| 「〜と言われた運用者が X を打つと」 | 「指示どおり X を打つと」（その指示は存在しなかった） |
-| 「再実行も同様に落ちる」 | 「**必ず**落ちる」（初回は通った） |
-| 「〜が見当たらない」 | 「〜は存在しない」 |
+| "if an operator who was told that types X" | "typing X as instructed" (that instruction did not exist) |
+| "a re-run fails the same way" | "it **always** fails" (the first run passed) |
+| "I do not see any" | "it does not exist" |
 
-**「存在しない」と書く前に、リポジトリ全体を grep して 0 件を確認する。**
-「文書に無いことの確認」は探し方が甘いと誤って CONFIRMED になる。
+**Before you write "does not exist", grep the whole repository and confirm zero hits.**
+"Confirming something is absent from the documents" turns into a false CONFIRMED whenever the search
+was sloppy.
 
-**(c) 連鎖の入口が実在するか確認したか。** 実運用で最も痛かった誤り。
-リンクを 1 本ずつ正しく検証しても、**連鎖が成立するとは限らない**。
-
-```
-実例: 「新規テナントは席1で詰む」
-  seatLimit ?? 1               ← 検証済み・正しい
-  backfill が在籍数に固定       ← 検証済み・正しい
-  subscription 無しは増席不可   ← 検証済み・正しい
-  app から seat_limit を書けない ← 検証済み・正しい
-  GRANT 許可列に無い            ← 検証済み・正しい
-  → 結論「新規テナントが詰む」   ← 誤り
-     セルフサインアップ経路が存在しなかった（入口が無い）
-     さらに管理者は自分で契約を作れた（出口があった）
-```
-
-シナリオを主張するときは、**入口の条件が実在するか**と
-**途中に出口が無いか**を、リンクの検証より先に確認する。
-
-### 6. 返却
-
-`references/report-template.md` の形で返す。必須要素は 4 つ。
-
-1. **対象 SHA**（「この承認は `<sha>` に対するもの」と明記）
-2. **承認判断**
-3. **引き受ける残存リスク**（名前と一次対応を書く。「たぶん大丈夫」は残存リスクではない）
-4. **見ていない範囲**（2 段で捨てたリスト）
-
-**個々の finding の中にも、未検証の部分を書く。** 6 段全体の「見ていない範囲」とは別に、
-指摘ごとに「これが覆れば指摘は崩れる」を明示する。著者が押し返せる余地を、指摘の中に残す。
+**(c) Did you confirm that the entry point of the chain exists?** The most painful error in real use.
+Verify every link correctly, one at a time, and **the chain still may not hold**.
 
 ```
-良い: 「Stripe が cancel_at 時に pending item を sweep しないことは実 API で確認していない。
-        これが覆れば指摘は崩れる。ただしその場合 contractEnded 経路の存在意義が消える」
-良い: 「JST 側が誤りとも UTC 側が誤りとも言えない。確実なのは、
-        どちらが Stripe と一致するかを確かめたテストが 1 本も無いことだけ」
+Real case: "a new tenant is stuck at one seat"
+  seatLimit ?? 1                        ← verified, correct
+  backfill pinned to headcount          ← verified, correct
+  no subscription means no seat added   ← verified, correct
+  the app cannot write seat_limit       ← verified, correct
+  not in the GRANT column list          ← verified, correct
+  → conclusion "a new tenant is stuck"  ← wrong
+     no self-signup path existed (there was no entry point)
+     and an admin could create the contract themselves (there was an exit)
 ```
 
-**降格した finding は、降格の経緯ごと書く。** 一度 BLOCK として扱ったものを黙って
-FIX に落とさない。「当初〜と判断したが誤りだった」と書く。指摘の重みが伝わらないのと、
-残った指摘の信頼性を担保できないため。
+When you assert a scenario, confirm **that the entry condition exists** and **that there is no exit along
+the way**, before you verify the links.
 
-**レビュー自体の信頼区間を書く。** 反証で何件が降格したかを添える。
-「残ったものも同じ性質を持ち得る」と明示するのは、見ていない範囲を書くのと同じ動機。
-確実だと言い切れないものを言い切らない。
+### 6. Returning it
 
-3 段 D で書いたテストは**返却時に消す**（パスと内容は報告に含める）。著者が採用するかは著者が決める。
+Return it in the shape of `references/report-template.md`. Four elements are required.
 
-視覚化する場合は `artifact-design` スキルを読んでから HTML で作る。
-出すべき盤面は差分の要約ではなく、**命題 × 判定 × 残存リスク**と、**cutover の時系列と破断点**。
+1. **The SHA under review** (write out "this approval is against `<sha>`")
+2. **The approval decision**
+3. **The residual risk you accept** (name it and write the first response. "Probably fine" is not a
+   residual risk)
+4. **What you did not look at** (the list you cut in stage 2)
 
-返却後、著者には plumb の `playbooks/being-reviewed.md` の作法（検証してから実装する・
-技術的根拠で押し返してよい）が適用されることを案内してよい。
+**Write the unverified part inside each individual finding too.** Separately from stage 6's overall
+"what I did not look at", state per finding what, if overturned, collapses it.
+Leave the author room to push back, inside the finding itself.
 
-## やらないこと
+```
+good: "I have not confirmed against the live API that Stripe does not sweep pending items at cancel_at.
+       If that is overturned the finding collapses, though then the contractEnded path has no reason to exist"
+good: "I cannot say the JST side is wrong, nor that the UTC side is. The one certain thing is that
+       not a single test checks which of them matches Stripe"
+```
 
-- スタイル・命名・可読性の指摘（linter と formatter の territory）
-- 「ついでに直せる」提案（YAGNI。今回の目的に奉仕しないものは NOTE にすら入れない）
-- 網羅の演出。読んでいない範囲を読んだように見せる書き方をしない
+**Write a demoted finding together with how it got demoted.** Do not quietly drop something you once
+treated as BLOCK down to FIX. Write "I first judged this to be X, and that was wrong."
+Otherwise the weight of the finding does not carry, and you cannot vouch for the reliability of the
+findings that remain.
+
+**Write the confidence interval of the review itself.** Attach how many findings the refutation pass
+demoted. Saying outright that "what remains can have the same property" comes from the same motive as
+writing down what you did not look at. Do not state as certain what you cannot be certain of.
+
+Delete the tests you wrote in stage 3 D **when you return** (their paths and contents go into the report).
+Whether to adopt them is the author's call.
+
+If you visualize it, read the `artifact-design` skill first and build it in HTML. The board to put up is
+not a summary of the diff: it is **claim × verdict × residual risk**, and **the cutover timeline with its
+break points**.
+
+After you return it, you may tell the author that plumb's `playbooks/being-reviewed.md` applies to them
+(verify before implementing; pushing back on technical grounds is allowed).
+
+## What not to do
+
+- Findings about style, naming or readability (linter and formatter territory)
+- "While we are here" suggestions (YAGNI. Anything that does not serve this PR's purpose does not even
+  become a NOTE)
+- Performing coverage. Do not write in a way that makes territory you never read look read
