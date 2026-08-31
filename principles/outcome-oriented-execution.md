@@ -1,47 +1,49 @@
 ---
 name: principle-outcome-oriented-execution
 origin: plumb
-description: "段の区切りが明示された、計画済みの書き換えや移行の最中に適用する。目標の設計に収束させる。使い捨ての互換コードで中間状態を滑らかに保たない。"
+description: "Converge a rewrite or migration on the target design instead of smoothing every intermediate state with throwaway compatibility code. Use during a planned migration whose stage boundaries are written down, or when asked \"can we add a shim to keep this green\", \"what breaks in the middle\", or \"how do we roll this out in stages\"."
 ---
 
 # Outcome-Oriented Execution
 
-**移行と書き換えは、目標の設計に収束させる。**途中の各時点を滑らかに保つことを目標にしない。
-呼び出し元の移行と旧 API の削除を同じ波でやる手口は
-**principle-migrate-callers-then-delete-legacy-apis**、
-検証できる単位への刻み方は **principle-sequence-verifiable-units**。
-この原則が持つのは**中間状態の扱い**——どこまでの破断を、計画として引き受けるか。
+**A migration or a rewrite converges on the target design.** Keeping every point along the
+way smooth is not the goal. Migrating the callers and deleting the old API in the same wave
+is **principle-migrate-callers-then-delete-legacy-apis**; slicing the work into verifiable
+units is **principle-sequence-verifiable-units**. What this principle owns is **the
+handling of intermediate states**: how much breakage you take on deliberately, as plan.
 
-**掛ける場面は狭い。**段の区切りが明示された、計画済みの移行や書き換え。
-`playbooks/running-a-plan.md` で台帳を開いて回す種類の仕事だけ。
-**日々の変更には掛けない。**そちらは常に緑を保つ。
+**The scope is narrow.** A planned migration or rewrite whose stage boundaries are written
+down — the kind of work you open a ledger for and run through
+`playbooks/running-a-plan.md`. **Do not apply it to everyday changes.** Those stay green
+throughout.
 
-**なぜ守れないか:** 各時点で壊さないことは、その場では常に正しく見える。
-壊さないために入る互換層は「一時的」と名乗って入る。
-**しかし、それを消す条件と担当は、たいてい誰の todo にも乗らない。**
-移行が終わる頃には、その層に新しい呼び出し元が付いている。
-**一時的なものが永久になるのは、消す約束が最初に書かれていないから。**
+**Why this is hard to keep.** Breaking nothing at any point always looks right in the
+moment. The compatibility layer that goes in to avoid breaking things introduces itself as
+temporary. **But what removes it, and who removes it, usually lands on nobody's todo.** By
+the time the migration ends, that layer has new callers on it. **Temporary becomes
+permanent because the promise to delete was never written down first.**
 
-## 互換層を入れる前の関門
+## The gate a compatibility layer passes before it goes in
 
-書く前に、次の三つを計画に書く。書けないなら、その層は入れない。
+Write these three into the plan before you write the layer. If you cannot write them, the
+layer does not go in.
 
-1. **消す条件。**何が満たされたら不要になるか
-2. **消す段と担当。**どの段で誰が消すか。**「移行が終わったら」は段ではない**
-3. **消し忘れに気付く仕掛け。**残存を数える検査を緑の条件に入れる
-   （**principle-encode-lessons-in-structure**）
+1. **What removes it.** What has to become true for it to be unnecessary
+2. **Which stage removes it, and who.** **"When the migration is over" is not a stage**
+3. **What catches you forgetting.** Put a check that counts the survivors into the
+   definition of green (**principle-encode-lessons-in-structure**)
 
-## 壊してよい中間状態の条件
+## When an intermediate state is allowed to break
 
-三つ全部を満たすときだけ。
+Only when all three hold.
 
-- **宣言してある。**どの段で何が一時的に動かなくなるかを、着手前に計画に書いた
-- **範囲が閉じている。**壊れるのは移行中の領域だけで、それ以外は緑のまま
-- **戻せる。**その段を revert すれば、元の状態に戻る
+- **It is declared.** Before you start, the plan says which stage stops what from working
+- **It is bounded.** Only the area under migration breaks; everything else stays green
+- **It reverses.** Revert that stage and you are back where you were
 
-**触っている領域の検査は、移行中も落とさない。**
-壊れてよい範囲を宣言することと、観測をやめることは別。
+**Do not drop the checks on the area you are touching, not even mid-migration.** Declaring
+a range that may break is one thing; stopping observation is another.
 
-**完了の条件:** 計画の最後で、静的検査と実行時の検証を通しで走らせる。
-段ごとに緑だったことは、**通しで緑だったことの根拠にならない**
-（**principle-gate-claims-on-evidence**）。
+**The condition for done:** at the end of the plan, run the static checks and the runtime
+verification end to end. Having been green at each stage **is not evidence of being green
+end to end** (**principle-gate-claims-on-evidence**).

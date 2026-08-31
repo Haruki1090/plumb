@@ -1,43 +1,34 @@
 ---
 name: principle-laziness-protocol
 origin: plumb
-description: "リファクタするとき、差分の大きさを測るとき、抽象や層や引き回しを足したくなったときに適用する。削除と、問題を解く最小の変更に倒す。"
+description: "Apply when refactoring, when sizing a diff, and whenever you feel the urge to add an abstraction, a layer, or one more value threaded through. Lean toward deleting, and toward the smallest change that solves the problem."
 ---
 
 # Laziness Protocol
 
-**問題を解く最小の変更を出す。**足すより先に消す。
-どこから消すかの順序は **principle-subtract-before-you-add** が持ち、
-残ったコードの読みにくさを測る尺度は **principle-minimize-reader-load** が持つ。
-この原則が持つのは**一回の変更の大きさ**——いま出そうとしている差分を、どこまで削れるか。
+**Ship the smallest change that solves the problem.** Delete before you add.
+The order you delete in belongs to **principle-subtract-before-you-add**; the scale for how
+hard the surviving code is to read belongs to **principle-minimize-reader-load**. This
+principle owns **the size of one change**: how far down the diff in front of you can be cut.
 
-**なぜ守れないか:** モデルにとって書く費用はほぼ 0 で、しかも書いた量がそのまま
-仕事をした感覚になる。費用を払うのは、**その差分を後から読んで直す人**だけ。
-払う側と決める側が分かれているので、**手加減は感覚では効かない。**
-「凝りすぎない」と決意しても、次に足りない気がした層はやはり足される。
-だから決意ではなく、出す前に数える。
+**Why this is hard to keep.** For a model, writing costs close to nothing, and the volume
+written reads back as work done. The one who pays is **whoever reads that diff later and has
+to repair it**. The side that pays and the side that decides are different, so **restraint by
+feel does not work.** Resolve not to overbuild, and the next layer that feels missing gets
+added anyway. So do not resolve. Count before you ship.
 
-## 出す前に数える
+## Count before you ship
 
-1. **消した行と足した行。**「改善して」と言われて足す側にしか動いていないなら、
-   まだ消す対象を探していない
-2. **増えた名前。**型、関数、ファイル、設定キー。増やした一つずつに、
-   **それが無いと書けない**理由があるか
-3. **呼び出し元が 1 つの層。**wrapper、adapter、間接。2 人目の消費者がいないなら、
-   それは層ではなく回り道
-4. **同じ判断が現れる箇所の数。**2 箇所以上で同じ条件を書いているなら、
-   判断は 1 箇所に寄せて、結果だけを渡す
-5. **答えに辿り着くまでに開くファイル数。**3 を超えたら、深さのほうを疑う。
-   **中で大きな仕事をしている面が広いことは、深さではない**
+1. **Lines deleted against lines added.** If "improve this" moved you only on the adding side, you have not gone looking for anything to delete yet
+2. **Names added.** Types, functions, files, config keys. For each one, is there a reason **you could not have written this without it**
+3. **Layers with one caller.** A wrapper, an adapter, an indirection. With no second consumer, that is not a layer, it is a detour
+4. **How many places the same decision appears in.** If the same condition is written in two or more places, pull the decision into one place and pass the result around
+5. **How many files you open to reach the answer.** Past three, suspect the depth. **A wide surface that does substantial work inside is not depth**
 
-## 足したくなったときに通す問い
+## Questions to pass before you add
 
-- **引き回しを頼まれたら止まる。**新しい値を型・スキーマ・経路の層に順に通す作業が始まったら、
-  それは設計が届いていない印。通す前に、直接届く道が無いかを見る
-- **「将来のために」は根拠にならない。**来なかった将来のために入れた間接は、
-  来るまでずっと読み手が払い続ける
-- **小さい漏れを後回しにしない。**一つの pass-through、一つの内部表現の露出、
-  一つの重複した判断は、単独では安い。
-  **安いまま増えて、消せない調整費用になる。**消すなら広がる前
+- **Stop the moment you are asked to thread a value through.** Once you are passing a new value down through the type layer, the schema layer and the routing layer in turn, that is the mark of a design that never arrived. Before you thread it, look for a path that reaches directly
+- **"For the future" is not a reason.** An indirection put in for a future that did not arrive is paid for by every reader until it does
+- **Do not defer a small leak.** One pass-through, one internal representation exposed, one duplicated decision: each is cheap on its own. **They stay cheap while they multiply, and become a coordination cost you cannot remove.** Delete them before they spread
 
-**削れなかった理由を言えないなら、まだ削れる。**
+**If you cannot say why it would not cut any further, it still cuts.**

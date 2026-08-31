@@ -12,10 +12,13 @@ of a router that indexes named principles, the decision to keep principles as
 plain documents rather than skills, and most of the principle names still in use.
 
 principles/ holds 22 files. Of those, 0 are reproduced verbatim from pstack —
-every one has been rewritten in plumb's own words, in Japanese, stating why the
-principle is hard to keep and how to tell whether it was kept. Each carries
-`origin: plumb` in its frontmatter. The English names survive because the
-playbooks cite them by name.
+every one has been rewritten in plumb's own words, stating why the principle is
+hard to keep and how to tell whether it was kept. Each carries `origin: plumb`
+in its frontmatter. The names survive because the playbooks cite them by name.
+
+Those rewrites were first written in Japanese and rewritten again in English for
+release; the Japanese text is frozen at the tag `v0.5.0-ja`. Neither pass took
+its wording from pstack.
 
 The playbooks are likewise written for plumb, not translated: docs/scope.md
 records, for each one, what it took from pstack and where it departs.

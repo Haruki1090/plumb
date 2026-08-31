@@ -1,22 +1,28 @@
-# 生きたプロセスの検屍
+# Live-process forensics
 
-**診断を持つのはあなた。動いているプロセスを計測する。ソースから推論しない。**
+**You hold the diagnosis. Measure the running process. Do not infer it from the source.**
 
-「なぜ実行時に漏れるのか / 回り続けるのか / 遅いのか」。ヒープスナップショット、
-アイドルなのに忙しいプロセス、再現しない不具合。**成果物は診断であって、修正ではない。**
+"Why does it leak / spin / run slow at runtime". A heap snapshot, a process that is busy while
+idle, a defect that will not reproduce. **What you produce is a diagnosis, not a fix.**
 
-1. 生きた信号を実物から捕る。回っているなら CPU プロファイル、漏れているならヒープ
-   スナップショット、描画の崩れなら trace。**推測ではなく実際の成果物を1つ**
-   （**principle-prove-it-works**）。取得は数十秒かかるのでペインに出す（`pane.driver`。未設定なら前面で実行する）。
-2. 成果物を「決定的な一点」まで削る。ホットパス上の関数、漏れたオブジェクトから GC ルートまでの
-   保持鎖、入力が無いのに発火し続けるループ。**大きな成果物の解析は探索役に投げ**、
-   本線には削った結果だけを置く（**principle-guard-the-context-window**）。
-3. 信じる前に機構を証明する。動いているプロセスに計測を注入するか、再読込せずに
-   その場を書き換えて、仮説が本当かを安く確かめる。
-   **もっともらしいが未確認の原因は、隣の層に本物がいるときでも一致して支持されうる。**
-4. 見つけた点をソースに戻す。ファイル、シンボル、確保または予約している行。
+1. Capture a live signal from the real thing. A CPU profile if it is spinning, a heap snapshot
+   if it is leaking, a trace if the rendering is wrong. **One real artifact, not a guess**
+   (**principle-prove-it-works**). Capturing takes tens of seconds, so run it in a pane
+   (`pane.driver`; unset: run it in the foreground).
+2. Cut the artifact down to a single decisive point: the function on the hot path, the
+   retention chain from the leaked object to a GC root, the loop that keeps firing with no
+   input. **Hand analysis of a large artifact to the explorer role** and keep only the cut-down
+   result in the main session (**principle-guard-the-context-window**).
+3. Prove the mechanism before you believe it. Inject instrumentation into the running process,
+   or patch it in place without reloading, and buy the answer cheaply.
+   **A plausible but unconfirmed cause can be consistently supported even while the real one
+   sits in the layer next door.**
+4. Take the point you found back to the source: the file, the symbol, the line that allocates
+   or holds the reservation.
 
-修正はしない（**principle-fix-root-causes**）。原因が判ったら、デバッグは SKILL.md の「plumb が型を持たないもの」へ、
-作り直しが要るなら `playbooks/shaping-the-work.md` へ渡す。
+Do not fix it (**principle-fix-root-causes**). Once the cause is known, hand debugging to
+"What plumb has no playbook for" in SKILL.md, or to `playbooks/shaping-the-work.md` if it needs
+a rebuild.
 
-**返すもの:** 捕った信号、削った結果、機構をどう証明したか、ソース上の位置、成果物のパス。
+**What you return:** the signal you captured, the cut-down result, how you proved the
+mechanism, the location in the source, the artifact paths.

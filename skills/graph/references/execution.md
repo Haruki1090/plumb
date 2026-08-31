@@ -1,113 +1,112 @@
-# 実行手段
+# Ways to execute it
 
-グラフ定義書ができた後、それを実際に動かすための対応表。環境は Claude Code を想定。
+Once the graph definition exists, this is the mapping that turns it into something that runs. Assumes Claude Code.
 
-## 設計要素 → 実行手段
+## Design element -> how it runs
 
-| 設計要素 | 実行手段 |
+| Design element | How it runs |
 |---|---|
-| ノード | サブエージェント1体、またはコードのステップ。中身の実装と検証は委譲する（SKILL.md「ノード層は委譲する」） |
-| 並列レーン | `Workflow` の `parallel()` / `pipeline()`、または同一メッセージ内の複数 Agent 呼び出し |
-| Barrier | `parallel()`（全部待つ）、または単純にフェーズを分けて直列に書く |
-| Pipeline（barrier なし） | `Workflow` の `pipeline()` |
-| Edge Contract | `agent()` の `schema` オプション（JSON Schema で強制、検証は呼び出し層で行われる） |
-| Model Tiering | `agent()` の `model` / `effort` オプション |
-| 作業場所の分離 | `isolation: 'worktree'`（**制約あり。下の「worktree の制約」を先に読む**） |
-| Human Gate | 実行を止めて人に聞く。グラフの中に埋めない |
-| 正本への反映 | 実行後に MCP ツール（Notion / GitHub 等）で書き戻す |
+| Node | one subagent, or a step of code. Its implementation and verification are delegated (SKILL.md, "Delegate the node layer") |
+| Parallel lane | `Workflow`'s `parallel()` / `pipeline()`, or several Agent calls in one message |
+| Barrier | `parallel()` (waits for all), or simply split the phases and write them serially |
+| Pipeline (no barrier) | `Workflow`'s `pipeline()` |
+| Edge Contract | `agent()`'s `schema` option (enforced by JSON Schema; validation happens in the calling layer) |
+| Model Tiering | `agent()`'s `model` / `effort` options |
+| Separating the workspace | `isolation: 'worktree'` (**has constraints. Read "Worktree constraints" below first**) |
+| Human Gate | stop execution and ask a human. Do not bury it inside the graph |
+| Writing back to the source of truth | write back with an MCP tool (Notion, GitHub and the like) after the run |
 
-## Workflow ツールを使う場合
+## Using the Workflow tool
 
-**前提**: `Workflow` はユーザーが明示的にマルチエージェント実行を求めた場合にのみ使う。「グラフを設計して」は設計の依頼であって、実行の依頼ではない。設計を見せて、実行するかは確認する。
+**Precondition**: use `Workflow` only when the user explicitly asked for multi-agent execution. "Design the graph" is a request for a design, not for a run. Show the design and confirm before executing.
 
-構造の既定は `pipeline()`。`parallel()` は前段の全結果が同時に必要なときだけ。
+The default structure is `pipeline()`. Use `parallel()` only when you need every upstream result at once.
 
 ```javascript
 export const meta = {
   name: 'lane-and-verify',
-  description: 'レーンごとに実装し、完了したものから独立に検証する',
-  phases: [{ title: '実装' }, { title: '検証' }],
+  description: 'implement lane by lane, verify each one independently as it finishes',
+  phases: [{ title: 'Implement' }, { title: 'Verify' }],
 }
 
 const results = await pipeline(
   LANES,
   lane => agent(lane.prompt, {
-    label: `impl:${lane.id}`, phase: '実装',
+    label: `impl:${lane.id}`, phase: 'Implement',
     schema: NODE_OUTPUT,          // Edge Contract
-    isolation: 'worktree',        // 共有資源以外の衝突を防ぐ
+    isolation: 'worktree',        // keeps collisions off everything but the shared resources
   }),
   (out, lane) => agent(
-    `次の変更が ${lane.spec} を満たすか、否定を試みて判定せよ。迷えば refuted。`,
-    { label: `verify:${lane.id}`, phase: '検証', schema: VERDICT, effort: 'high' }
+    `Decide whether the following change satisfies ${lane.spec}. Try to refute it. When in doubt, refuted.`,
+    { label: `verify:${lane.id}`, phase: 'Verify', schema: VERDICT, effort: 'high' }
   ).then(v => ({ lane: lane.id, out, verdict: v }))
 )
 
 return results.filter(Boolean).filter(r => !r.verdict.refuted)
 ```
 
-要点:
+The points:
 
-- 検証は実装と**別の `agent()` 呼び出し**にする。同じエージェントに続けさせない
-- `schema` を付けると戻り値が検証済みオブジェクトになる。パースを書かなくてよく、形が合わなければモデル側がリトライする
-- `agent()` は落ちると `null` を返す。`.filter(Boolean)` してから使う（失敗隔離）
-- `phase` を明示すると進捗表示のグループが安定する
-- `isolation: 'worktree'` はセットアップコストがあるので、**並列でファイルを書き換えるときだけ**使う
+- Verification is a **separate `agent()` call** from implementation. Do not let the same agent carry on
+- With `schema`, the return value comes back as a validated object. You write no parsing, and a shape that does not match makes the model retry
+- `agent()` returns `null` when it fails. `.filter(Boolean)` before using the results (failure isolation)
+- Naming `phase` explicitly keeps the progress display grouped stably
+- `isolation: 'worktree'` has a setup cost, so use it **only when rewriting files in parallel**
 
-## worktree の制約
+## Worktree constraints
 
-`isolation: 'worktree'` を使う前に、そのノードが何を必要とするかを確認する。
+Before using `isolation: 'worktree'`, check what the node needs.
 
-- **gitignore されたファイルは複製されない。** `.env` / `.env.local` / ローカル専用ディレクトリは worktree に存在しない。これらを `env_file` として必須参照する `docker-compose.yml` は、**起動どころか config の解決で失敗する**
-- **compose の project 名がディレクトリ名由来で変わる。** named volume が別物になるので、DB のデータもキャッシュも空から始まる。固定ポートを公開しているなら本体スタックと同時起動できない
-- **lint / test の結果が本体と一致しないことがある。** gitignore されたディレクトリが無い分だけ warning が消える。worktree の結果をもって「ローカル CI が通った」と主張しない
-- **グラフ定義書が gitignore 対象なら worktree から見えない。** ノードに渡すときは本体側の絶対パスを使う
+- **Gitignored files are not copied.** `.env`, `.env.local` and local-only directories do not exist in the worktree. A `docker-compose.yml` that requires them as `env_file` **fails at config resolution, let alone startup**
+- **The compose project name changes with the directory name.** Named volumes become different volumes, so the database data and the caches start empty. If it publishes fixed ports, it cannot run alongside the main stack
+- **Lint and test results can disagree with the main tree.** Warnings disappear exactly to the extent that gitignored directories are missing. Do not claim "local CI passed" on the strength of a worktree run
+- **A gitignored graph definition is invisible from the worktree.** Hand the node the absolute path in the main tree
 
-したがって **worktree に入れてよいのは「ソースを編集して lint / test / build を回す」ノードまで**。コンテナ起動を伴う検証ノード（DB を触る・E2E）は worktree の外で走らせる。
+So **what belongs in a worktree stops at nodes that edit source and run lint / test / build**. Verification nodes that start containers — touching a database, E2E — run outside the worktree.
 
-## モデルと effort の指定
+## Specifying model and effort
 
-ノードを `playbooks/running-a-plan.md` に委譲する場合、**役の割り当ては `docs/role-map.md` が正本**で、
-この文書はモデル名を持たない。以下は Workflow で直接組む場合の目安。
+When a node is delegated to `playbooks/running-a-plan.md`, **`docs/role-map.md` is the source of truth for role assignment** and this document carries no model names. What follows is a rough guide for building directly with Workflow.
 
-既定は「指定しない」。指定しなければ親セッションのモデルを継ぐ。
+The default is to specify nothing. Unspecified, a node inherits the parent session's model.
 
-| ノードの役割 | 指定 |
+| What the node does | What to specify |
 |---|---|
-| 抽出・分類・機械的変換 | `effort: 'low'`、必要なら軽量モデル |
-| 実装・調査 | 指定しない（既定を継ぐ） |
-| 検証・裁定・最終統合 | `effort: 'high'` 以上 |
+| Extraction, classification, mechanical transformation | `effort: 'low'`, and a lighter model if needed |
+| Implementation, investigation | nothing (inherit the default) |
+| Verification, arbitration, final integration | `effort: 'high'` or above |
 
-確信がないなら指定しない。下げると検証がすり抜け、上げるとコストだけ増える。
+If you are not sure, specify nothing. Lower it and verification slips through; raise it and only the cost goes up.
 
-## Workflow を使わない場合
+## Without the Workflow tool
 
-グラフが小さい（3〜5ノード）なら、Workflow を組むより素直に書くほうが速い。
+If the graph is small (3-5 nodes), writing it out plainly beats building a Workflow.
 
-- 独立したノードは、**同一メッセージ内で複数の Agent 呼び出し**を並べれば同時に走る
-- 直列でよいものは普通に順に実行する
-- barrier は「フェーズを分けて書く」だけで実現できる
+- Independent nodes run at the same time if you put **several Agent calls in one message**
+- Anything that can be serial just runs in order
+- A barrier is achieved by splitting the phases and nothing else
 
-**グラフ設計の価値は実行手段に依らない。** 設計そのものが、衝突・判断待ち・検証漏れを事前に潰している。手で実行しても効果は出る。
+**The value of designing the graph does not depend on how you execute it.** The design itself has already killed the collisions, the stalls, and the missed verification. Executing it by hand still pays.
 
-## 長時間の実行に耐えさせる
+## Surviving a long run
 
-出典: [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)
+Source: [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)
 
-コンテキストは必ず尽きるので、外部に状態を置く。
+Context always runs out, so keep the state outside.
 
-- **進捗ファイル** — 何が終わったかを外部ファイルに書く。新しいセッションはこれを読んで状況を把握する。コンテキストの記憶に頼らない
-- **項目リストの更新は限定する** — 完了フラグの値だけを書き換えさせる。項目そのものを書き換えさせない。放っておくと要件が書き換わって「全部終わった」ことになる
-- **セッション開始時の健全性確認** — 前回までの成果がまだ動くかを最初に確かめてから新しい作業に入る
-- **こまめなコミット** — 説明的なメッセージで刻む。問題があれば戻せる
-- **圧縮だけでは足りない** — コンテキスト圧縮は必要だが、それだけでは複数コンテキストにまたがる作業は成立しない。外部状態と併用する
+- **A progress file** — write what is finished to an external file. A new session reads it to pick up the situation. Do not rely on context to remember
+- **Restrict updates to the item list** — let it rewrite the completion flag and nothing else. Never the items themselves. Left alone, the requirements get rewritten and everything is "done"
+- **A health check at session start** — confirm that what was built so far still runs before starting new work
+- **Commit often** — commit in slices with descriptive messages. If something goes wrong you can go back
+- **Compaction alone is not enough** — context compaction is necessary, but on its own it does not carry work across several contexts. Pair it with external state
 
-## 再開
+## Resuming
 
-`Workflow` は `resumeFromRunId` で再開できる。スクリプトの変更されていない先頭部分はキャッシュから即座に返り、最初の変更点以降だけが再実行される。
+`Workflow` resumes with `resumeFromRunId`. The unchanged head of the script returns instantly from cache, and only what follows the first change re-runs.
 
-再開前に、完了したはずのノードが**本当に中身のある結果を返していたか**を確認する。空の結果がキャッシュされていることがある。
+Before resuming, confirm that the nodes marked finished **really returned results with something in them**. An empty result can be sitting in the cache.
 
-## 決定論を保つための注意
+## Keeping it deterministic
 
-- ワークフロースクリプト内で `Date.now()` / `Math.random()` / 引数なし `new Date()` は使えない（再開が壊れるため）。時刻は引数で渡すか、実行後に付与する
-- ランダム性が要るときは、インデックスでプロンプトやラベルを変える
+- `Date.now()`, `Math.random()` and no-argument `new Date()` cannot be used inside a workflow script (they break resumption). Pass the time in as an argument, or attach it after the run
+- When you need randomness, vary the prompt or the label by index

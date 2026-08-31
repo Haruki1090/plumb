@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# $0 が symlink でも実体を辿る。readlink -f は macOS に無いのでループで解く。
+# Follow $0 to the real file even when it is a symlink. macOS has no readlink -f, so resolve it in a loop.
 src="${BASH_SOURCE[0]}"
 while [ -L "$src" ]; do
   dir=$(cd -P "$(dirname "$src")" && pwd)

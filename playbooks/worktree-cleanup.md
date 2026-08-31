@@ -1,63 +1,71 @@
-# worktree とディスクの掃除
+# Cleaning up worktrees and disk
 
-**ディスクと安全弁を持つのはあなた。**マージ済みか放棄された worktree を刈って容量を戻す。
-**削除は不可逆なので、各手順が「使用中」と「未コミットの作業」を守る。**
+**You hold the disk and the safety catch.** Prune the worktrees that are merged or abandoned
+and get the space back. **Deletion is irreversible, so every step here protects "in use" and
+"uncommitted work".**
 
-1. 記録して棚卸しする。`df -h /` を先に取る。
-   **worktree の一覧は必ず `git worktree list` から読む。パスを手で組み立てない。**
-   このマシンには根が複数系統ある（`docs/path-map.md` の一覧が正本）。
-   手打ちの `myrepo-worktrees/x` は、別の根にある同名を取りこぼす
-   （**principle-encode-lessons-in-structure**）。
+1. Record and take inventory. Take `df -h /` first.
+   **Always read the list of worktrees from `git worktree list`. Do not assemble paths by hand.**
+   This machine has more than one family of roots (the list in `docs/path-map.md` is the source
+   of truth). A hand-typed `myrepo-worktrees/x` misses the same name living under a different
+   root (**principle-encode-lessons-in-structure**).
    ```bash
-   plumb-worktree-audit   # 読むだけ。何も消さない
+   plumb-worktree-audit   # read-only. It deletes nothing
    ```
 
-   容量・最終更新・マージ状態・未コミットの有無・**戻せない ignore 済みファイル**・PR の状態で
-   分類し、最後に「戻せないもの」を worktree ごとに並べる（**principle-build-the-lever**）。
-   `__pycache__` や `node_modules` のように作り直せるものは除外済み——
-   **除外しないと毎回「確認せよ」としか言わなくなり、本物の `.env` が紛れる。**
-   走査は数十秒かかるのでペインに出す（`pane.driver`。未設定なら前面で実行する）。
-2. **分類は助言であって許可ではない。**いま開いている作業・固定している作業が本物の判断材料
-   （**principle-prove-it-works**）。その集合は持ち主に聞く。全候補と突き合わせる。
-   道具が「安全」と印を付けた worktree が、実は固定されていたことがある。**固定側が勝つ。**
-3. 消す前に使用を確かめる。疑わしいものは、それを触った直近のセッションを読んで、
-   進行中か固定かを報告させる（**principle-guard-the-context-window**、跡はかさばる）。
-   **走っているセッションは、兄弟の worktree に子を撒いていることがある。**
-   名前が画面に出ていなくても使用中。
-4. **不可逆な損失の前で止まる。**追跡下の未コミット編集も、追跡外のファイルも、
-   **ignore されたファイルも、全部この関門の対象。**
+   It classifies by size, last modified, merge state, whether anything is uncommitted,
+   **ignored files that cannot be recovered**, and PR state, then lists "what cannot be brought
+   back" per worktree at the end (**principle-build-the-lever**). Things that can be rebuilt,
+   like `__pycache__` and `node_modules`, are already excluded — **without the exclusion it says
+   nothing but "check this" every time, and a real `.env` gets lost in the noise.**
+   The scan takes tens of seconds, so run it in a pane (`pane.driver`; unset: run it in the
+   foreground).
+2. **The classification is advice, not permission.** What is actually open and what is actually
+   pinned right now is the real input (**principle-prove-it-works**). Ask the owner for that
+   set and cross-check it against every candidate. A worktree the tool marked "safe" has turned
+   out to be pinned. **The pinned side wins.**
+3. Confirm use before you delete. For anything doubtful, read the most recent session that
+   touched it and have it report whether the work is in progress or pinned
+   (**principle-guard-the-context-window** — traces are bulky).
+   **A running session may have scattered children across sibling worktrees.**
+   It is in use even when the name is nowhere on screen.
+4. **Stop in front of irreversible loss.** Uncommitted edits under tracking, untracked files,
+   **and ignored files too — all of it falls under this gate.**
 
    ```bash
-   git -C <path> status --porcelain -uall        # 追跡外を含めて全部出す
-   git -C <path> status --porcelain --ignored    # ignore されたものも出す
+   git -C <path> status --porcelain -uall        # everything, untracked included
+   git -C <path> status --porcelain --ignored    # ignored files too
    ```
 
-   **`.env`・ローカル DB・生成前のメモ・ignore された成果物は、Git から復元できない。**
-   clean な worktree はブランチから戻せるが、これらは消えたら終わり。
-   中身を挙げて判断を仰ぐ。**clean かつマージ済みかつ未使用のときだけ進めてよい。**
-5. 確認できた集合を刈る。**まず `--force` を付けずに撃つ。**
+   **A `.env`, a local DB, notes that were never generated from anything, ignored artifacts:
+   Git cannot restore any of them.** A clean worktree comes back from its branch; these do not
+   come back at all. List what is there and ask for a decision. **You may proceed only when it
+   is clean, merged and unused.**
+5. Prune the set you confirmed. **Fire the first shot without `--force`.**
 
    ```bash
    git worktree remove <path>
    ```
 
-   **拒否されたら、それは安全弁が働いた合図。**`--force` で押し切らない。
-   手順 4 の 2 コマンドの出力を見せて、**持ち主の判断を仰ぐ。**
-   これは `playbooks/closing-a-branch.md` と同じ規則で、
-   **同じ操作に 2 つの正本を作らないため**にここも合わせてある。
-   承認が出たら `--force`、ディレクトリが残るなら `rm -rf`、最後に `git worktree prune`。
-   **ブランチの ref は残るのでコミットは失われない。**`df -h /` と再一覧で確認する。
-6. 次の回収先へ。**固定の一覧を書かない**——名前は古くなる。
-   大きい順に実測してから当たる。
+   **A refusal is the signal that the safety catch worked.** Do not push through with
+   `--force`. Show the output of the two commands in step 4 and **ask the owner to decide.**
+   This is the same rule as `playbooks/closing-a-branch.md`, and it is matched here **so that
+   one operation does not get two sources of truth.**
+   Once approved: `--force`, then `rm -rf` if the directory survives, then `git worktree prune`.
+   **The branch refs remain, so no commits are lost.** Confirm with `df -h /` and a fresh
+   listing.
+6. On to the next place to reclaim from. **Do not write down a fixed list** — names go stale.
+   Measure, largest first, then go after them.
 
    ```bash
    du -sh ~/Library/Caches/* ~/Library/Application\ Support/* 2>/dev/null | sort -rh | head -20
    ```
 
-   **持ち主が残すと言ったものは消さない。**
+   **Do not delete anything the owner said to keep.**
 
-**この型だけは、slip を捕まえるコードレビューが無いままユーザーの状態を消す。**
-だから上の関門がレビューそのもの。
+**This is the one playbook that deletes user state with no code review standing behind it to
+catch a slip.** The gates above are the review.
 
-**返すもの:** `df -h /` の前後と戻した容量、刈った worktree、
-留め置いた各件の理由を1行ずつ（どのセッションが使用中か、未コミットがあるか）。
+**What you return:** `df -h /` before and after and how much you got back, the worktrees you
+pruned, and one line per item you left standing saying why (which session has it, whether
+anything is uncommitted).

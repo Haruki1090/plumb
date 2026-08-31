@@ -1,102 +1,102 @@
-# パターンカタログ
+# Pattern catalogue
 
-グラフを組むときの引き出し。前半は Anthropic が整理したワークフローパターン（単一エージェントの外側の構造）、後半はグラフ特有のパターン。
+The stock to draw on when you build a graph. The first half is the workflow patterns Anthropic set out (structure outside a single agent); the second half is patterns specific to graphs.
 
-## 目次
+## Contents
 
-- [A. Anthropic のワークフローパターン](#a-anthropic-のワークフローパターン)
-- [B. グラフの構造パターン](#b-グラフの構造パターン)
-- [C. 品質を上げるパターン](#c-品質を上げるパターン)
-- [D. アンチパターン](#d-アンチパターン)
-
----
-
-## A. Anthropic のワークフローパターン
-
-出典: [Building Effective AI Agents](https://www.anthropic.com/engineering/building-effective-agents)
-
-大前提として、この記事の一貫した主張は **「シンプルなプロンプトから始めて、それで足りないときだけ多段構成にする」**。パターンを使うこと自体が目的にならないよう注意する。
-
-### Prompt Chaining（逐次分解）
-
-タスクを固定の手順に割り、各段が前段の出力を受け取る。段の間にコードのチェックを挟める。
-
-- **使う場面** — 分解が綺麗に決まる固定手順。精度と引き換えにレイテンシを払う
-- **例** — 文章を書いてから翻訳する、アウトラインを作ってから本文を書く
-
-### Routing（振り分け）
-
-入力を分類して、専門化した後続に振り分ける。関心の分離ができる。
-
-- **使う場面** — 明確に種類の違う入力が混ざっていて、分類が正確にできるとき
-- **例** — 問い合わせ種別による振り分け、質問の難易度に応じたモデルの出し分け
-- **重要** — 分類は AI、振り分けの制御フローはコード。両方 AI にすると同じ入力で経路がぶれる
-
-### Parallelization（並列化）
-
-同時に走らせて、結果をコードで集約する。2つの変種がある。
-
-- **Sectioning** — 独立した部分課題に割って同時に走らせる
-- **Voting** — 同じ課題を複数回・複数観点で走らせて多様性を得る
-- **使う場面** — 速度が要る、または複数視点で確信度を上げたい
-- **例** — 観点別のレビュー、複数プロンプトによる脆弱性スキャン
-
-### Orchestrator-Workers（動的分解）
-
-中央の LLM がタスクを動的に分解し、ワーカーに委譲して結果を統合する。
-
-- **使う場面** — 部分課題が事前に予測できない、柔軟性が要る
-- **例** — 複数ファイルにまたがるコード変更、多ソースの情報収集
-- **注意** — 事前に分解が決まるなら Parallelization のほうが安く、経路も追える
-
-### Evaluator-Optimizer（生成と評価のループ）
-
-一方が生成し、もう一方が評価とフィードバックを返すループ。
-
-- **使う場面** — 明確な評価基準があり、反復で実際に良くなることが確認できるとき
-- **例** — 文芸翻訳、複数ラウンドの調査
-- **注意** — 「反復すれば良くなる」が成り立たない対象に当てると、回すだけ無駄になる
-
-### ワークフローかエージェントか
-
-- **ワークフロー** — 予測可能性と一貫性が要る、定義の固まったタスク
-- **エージェント** — 柔軟性とモデル主導の判断が規模を持って必要なとき
-
-原則は3つ: **単純さ**、**透明性**（計画のステップを明示する）、**ツール設計**（エージェントとツールの境界を丁寧に文書化しテストする）。
+- [A. Anthropic's workflow patterns](#a-anthropics-workflow-patterns)
+- [B. Graph structure patterns](#b-graph-structure-patterns)
+- [C. Patterns that raise quality](#c-patterns-that-raise-quality)
+- [D. Anti-patterns](#d-anti-patterns)
 
 ---
 
-## B. グラフの構造パターン
+## A. Anthropic's workflow patterns
+
+Source: [Building Effective AI Agents](https://www.anthropic.com/engineering/building-effective-agents)
+
+The article's consistent claim, underneath everything: **start from a simple prompt, and go multi-stage only when that is not enough.** Watch that using a pattern does not become the point.
+
+### Prompt Chaining (sequential decomposition)
+
+Split the task into fixed steps, each taking the previous step's output. You can put a code check between the steps.
+
+- **When to use** — a fixed procedure that decomposes cleanly. You buy accuracy with latency
+- **Example** — write the text, then translate it; make the outline, then write the body
+
+### Routing (classify and dispatch)
+
+Classify the input and dispatch it to a specialized downstream. Gives you separation of concerns.
+
+- **When to use** — clearly different kinds of input are mixed together, and the classification can be accurate
+- **Example** — dispatch by inquiry type; pick a model by how hard the question is
+- **Important** — classification is AI, the dispatch control flow is code. Make both AI and the same input takes wobbling paths
+
+### Parallelization
+
+Run at once and aggregate the results in code. Two variants.
+
+- **Sectioning** — split into independent subtasks and run them at once
+- **Voting** — run the same task several times, from several angles, to get diversity
+- **When to use** — you need speed, or you want confidence raised by several viewpoints
+- **Example** — review by angle; a vulnerability scan across several prompts
+
+### Orchestrator-Workers (dynamic decomposition)
+
+A central LLM decomposes the task on the fly, delegates to workers, and integrates the results.
+
+- **When to use** — the subtasks cannot be predicted in advance, and you need flexibility
+- **Example** — a code change spanning several files; gathering information from many sources
+- **Caution** — if the decomposition is settled in advance, Parallelization is cheaper and its paths are traceable
+
+### Evaluator-Optimizer (a generate-and-evaluate loop)
+
+One side generates, the other returns an evaluation and feedback, in a loop.
+
+- **When to use** — the evaluation criteria are clear and you have confirmed that iterating actually improves the result
+- **Example** — literary translation; multi-round research
+- **Caution** — aimed at something where "iterating makes it better" does not hold, the loop is pure waste
+
+### Workflow or agent
+
+- **Workflow** — a well-defined task that needs predictability and consistency
+- **Agent** — when flexibility and model-driven judgment are needed at scale
+
+Three principles: **simplicity**, **transparency** (show the steps of the plan), and **tool design** (document and test the boundary between the agent and its tools carefully).
+
+---
+
+## B. Graph structure patterns
 
 ### Fan-out / Fan-in
 
-1ノードから複数へ分岐し、また1つに集める。最も基本。**分岐の前に共有資源の barrier があるかを必ず確認する。**
+Branch from one node to many, then collect back into one. The most basic shape. **Always check for a shared-resource barrier before the branch.**
 
 ### Diamond
 
-Fan-out して Fan-in する菱形。実務で最頻出。
+Fan out and fan back in. The most common shape in practice.
 
-### Barrier（同期点）
+### Barrier (a synchronization point)
 
-後続が「全部の完了」を必要とするときだけ置く。**正当なのは次のような場合に限る**:
+Place one only when what follows needs *everything* finished. **It is justified only in cases like these**:
 
-- 全結果を横断して重複排除・マージしてから下流に渡す
-- 合計件数がゼロなら後段を丸ごと省略する（早期打ち切り）
-- 後段のプロンプトが「他の結果との比較」を含む
+- You deduplicate or merge across all results before handing them downstream
+- You skip the whole next stage when the total count is zero (early cutoff)
+- The next stage's prompt includes "compare against the other results"
 
-**正当でない理由**:
+**Not reasons**:
 
-- 「一度平坦化したいから」→ それは段の中でやれる
-- 「段が概念的に別だから」→ 段が別であることと、同期が要ることは別
-- 「そのほうがコードが綺麗だから」→ barrier の待ち時間は実在するコスト
+- "I want to flatten it once" -> do that inside the stage
+- "The stages are conceptually separate" -> stages being separate and synchronization being required are different things
+- "The code is nicer that way" -> the wait a barrier imposes is a real cost
 
-### Pipeline（barrier なしの多段）
+### Pipeline (multi-stage, no barrier)
 
-各アイテムが段を独立に流れる。アイテムAが3段目にいるとき、アイテムBはまだ1段目でよい。**多段処理の既定はこちら。** 全体の所要時間は「一番遅いアイテムの通し時間」であって、「各段の最遅の合計」ではない。
+Each item flows through the stages independently. Item A can be in stage 3 while item B is still in stage 1. **This is the default for multi-stage processing.** Total time is "the slowest item's end-to-end time", not "the sum of the slowest item in each stage".
 
 ### Router
 
-分類結果に応じて経路を変える。前述のとおり判定は AI、分岐はコード。
+Change the path by the classification result. As above: AI judges, code branches.
 
 ```javascript
 const classification = await classifyRisk(diff);
@@ -106,59 +106,59 @@ return runQuickReview(diff);
 
 ---
 
-## C. 品質を上げるパターン
+## C. Patterns that raise quality
 
-### Adversarial Verification（反証志向の検証）
+### Adversarial Verification
 
-主張ごとに独立した懐疑者を N 体立て、**否定することを目的に**読ませる。過半数が否定したら落とす。「もっともらしいが間違っている」成果物を殺すのに効く。プロンプトには「迷ったら refuted に倒せ」と明示する。
+Stand up N independent skeptics per claim and have them read **with refuting as the goal**. Drop the claim if a majority refutes it. This is what kills plausible-but-wrong artifacts. State it in the prompt: when in doubt, fall toward refuted.
 
-### Perspective-diverse Verification（観点分散）
+### Perspective-diverse Verification
 
-失敗の仕方が複数あるなら、同一の検証を N 回やるより、観点を分けたほうが拾える。正しさ／規約適合／再現性／性能、のように役割を分ける。冗長性では取れない失敗モードが取れる。
+When there are several ways to fail, splitting the angles catches more than running the same check N times. Divide the roles: correctness / conformance to convention / reproducibility / performance. It catches failure modes redundancy cannot.
 
-### Judge Panel（審査団）
+### Judge Panel
 
-異なる方針で N 案を生成し、並列の審査で採点し、勝者を軸に他案の良い部分を接ぎ木する。解の空間が広いときは、1案を反復改善するより強い。
+Generate N options under different policies, score them with parallel judges, and graft the good parts of the others onto the winner. When the solution space is wide, this beats iterating on one option.
 
-### Loop-until-dry（枯れるまで回す）
+### Loop-until-dry
 
-発見数が事前に分からないもの（バグ、抜け、エッジケース）は、**K 回連続で新規が出ないまで**回す。単純な件数上限は末尾を取りこぼす。
+For things whose count you cannot know in advance — bugs, gaps, edge cases — run **until K consecutive rounds turn up nothing new**. A plain count cap drops the tail.
 
-重要な実装上の注意: 重複判定は **「これまでに見たもの全部」に対して行う。「採用したもの」に対して行わない。** 後者にすると、審査で落とした項目が毎ラウンド復活して収束しない。
+An implementation note that matters: deduplicate against **everything you have seen, not against what you accepted.** Against the latter, items rejected by the judge come back every round and it never converges.
 
 ```javascript
 const seen = new Set(), confirmed = [];
 for (const f of findings) {
   const id = key(f);
-  if (seen.has(id)) continue;   // seen に対して判定する
+  if (seen.has(id)) continue;   // decide against seen
   seen.add(id);
   if (await verify(f)) confirmed.push(f);
 }
 ```
 
-### Multi-modal Sweep（多角的な洗い出し）
+### Multi-modal Sweep
 
-探し方の違う複数のエージェントを並べる（構造から探す／内容から探す／固有名から探す／時系列から探す）。互いに何を見つけたか知らないまま走らせる。1つの探し方では全部は見つからない。
+Line up several agents that search differently — by structure, by content, by proper noun, by chronology. Run them without letting them know what the others found. One way of searching never finds all of it.
 
-### Completeness Critic（抜けの批評）
+### Completeness Critic
 
-最後に「何が漏れているか — 走らせていない探索軸、検証していない主張、読んでいない出典はないか」だけを問うノードを置く。ここで出たものが次のラウンドの仕事になる。
+At the end, place a node that asks one thing only: what is missing — a search axis never run, a claim never verified, a source never read. What comes out of it is the next round's work.
 
-### 暗黙の打ち切りを禁じる
+### Ban the silent cutoff
 
-上限件数・リトライなし・サンプリングで範囲を絞ったなら、**何を落としたかを必ず記録する。** 黙って切り詰めると、後から見たときに「全部カバーした」と読めてしまう。
+If you capped the count, skipped retries, or narrowed the scope by sampling, **always record what you dropped.** Trim it silently and it reads later as "everything was covered".
 
 ---
 
-## D. アンチパターン
+## D. Anti-patterns
 
-| アンチパターン | なぜ悪いか | 代わりに |
+| Anti-pattern | Why it is bad | Instead |
 |---|---|---|
-| 全ノードに最上位モデル | コストが線形に増え、機械的な段では差が出ない | Model Tiering |
-| 実装者が自分を検証 | 同じ文脈で盲点を共有し、循環論法になる | 独立検証ノード |
-| ノード間で会話履歴を丸ごと渡す | コンテキストを食い、下流の挙動が不安定になる | Edge Contract（構造化 JSON） |
-| 決定論的処理を AI にやらせる | 同じ入力で結果がぶれ、コストも増える | コードに落とす |
-| 全ゲートを1つの門にまとめる | 1件の判断待ちで全体が止まる | バッチ別にゲートを割る |
-| barrier なしで共有ファイルを並列変更 | 衝突の解決で並列化の利得が消え、意図も失われる | 事前に直列で片付ける |
-| 回数だけの終了条件 | 収束前に切れるか、無限に回る | 複合条件 + loop-until-dry |
-| 進捗管理用に新しい台帳を作る | 二つ目の正本ができてズレる | 既存の正本に列を足す |
+| The top model on every node | cost grows linearly, and the mechanical stages show no difference | Model Tiering |
+| The implementer verifies itself | it shares blind spots in the same context, so the verification is circular | an independent verification node |
+| Passing whole conversation history between nodes | it eats context and destabilizes downstream behavior | Edge Contract (structured JSON) |
+| Making AI do deterministic work | the result wobbles on the same input, and it costs more | put it in code |
+| Collecting every gate into one door | one pending decision stops everything | split the gates by batch |
+| Rewriting shared files in parallel with no barrier | conflict resolution eats the gain, and the intent is lost too | clear them serially first |
+| A termination condition that is only a count | it either cuts off before convergence or runs forever | a compound condition + loop-until-dry |
+| A new ledger for progress tracking | a second source of truth appears and drifts | add a column to the source of truth you have |

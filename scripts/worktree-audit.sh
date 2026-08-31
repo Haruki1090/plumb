@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# worktree の棚卸し。読むだけ。何も消さない。
-# 削除は playbooks/worktree-cleanup.md の人間ゲートに残す。
+# Take inventory of worktrees. Read-only. It deletes nothing.
+# Deletion stays behind the human gate in playbooks/worktree-cleanup.md.
 #
-# 使い方: scripts/worktree-audit.sh [repo-path]   （既定は現在のリポジトリ）
+# Usage: scripts/worktree-audit.sh [repo-path]   (defaults to the current repository)
 #
-# このマシンには worktree の根が複数系統ある（docs/path-map.md）。
-# git worktree list は、どの根に置かれていても登録されているものを全部返す。
+# This machine has several worktree roots (docs/path-map.md).
+# git worktree list returns everything registered, whichever root it sits under.
 set -u
 
 repo="${1:-$(git rev-parse --show-toplevel 2>/dev/null)}"
-[ -z "$repo" ] && { echo "git リポジトリの中で実行するか、リポジトリのパスを渡してください" >&2; exit 1; }
-cd "$repo" 2>/dev/null || { echo "cd できません: $repo" >&2; exit 1; }
+[ -z "$repo" ] && { echo "run this inside a git repository, or pass the repository path" >&2; exit 1; }
+cd "$repo" 2>/dev/null || { echo "cannot cd: $repo" >&2; exit 1; }
 git rev-parse --show-toplevel >/dev/null 2>&1 \
-  || { echo "git リポジトリではありません: $repo" >&2; exit 1; }
+  || { echo "not a git repository: $repo" >&2; exit 1; }
 
 main_wt=$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')
 
-# 既定ブランチもリモートも推測しない。
-# gh が見ているリポジトリと、手元の remote の対応を URL で突き合わせる。
-# 名前だけ合わせると、fork の main にマージされたものを upstream 着地と誤判定する。
+# Guess neither the default branch nor the remote.
+# Match the repository gh is looking at against the local remotes by URL.
+# Match on the name alone and something merged into a fork's main is misread as landing upstream.
 base_ref=""
 gh_url=$(gh repo view --json url -q .url 2>/dev/null || true)
 def=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || true)
@@ -34,7 +34,7 @@ if [ -n "$gh_url" ] && [ -n "$def" ]; then
     break
   done
 fi
-[ -z "$base_ref" ] && echo "warn: 対象リポジトリの既定ブランチを特定できません。MERGED 列は ? になります" >&2
+[ -z "$base_ref" ] && echo "warn: cannot determine the default branch of the target repository. The MERGED column will read ?" >&2
 
 prs=$(mktemp); KEEP=$(mktemp); REGEN=$(mktemp)
 gh pr list --author "@me" --state all --limit 1000 \
@@ -51,7 +51,7 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt;
   head_ts=$(git -C "$wt" log -1 --format='%ct' HEAD 2>/dev/null || echo 0)
   age=$([ "$head_ts" -gt 0 ] 2>/dev/null && echo "$(( (now - head_ts) / 86400 ))d" || echo "?")
 
-  # squash マージは main の祖先にならないので、PR の状態が本物の信号。
+  # A squash merge never becomes an ancestor of main, so the PR's state is the real signal.
   if [ -n "$base_ref" ]; then
     git merge-base --is-ancestor "$head" "$base_ref" 2>/dev/null && merged=YES || merged=no
   else merged="?"; fi
@@ -62,9 +62,9 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt;
     dirty="wip:$(printf '%s\n' "$porcelain" | grep -cv '^??')"
   else dirty="scratch:$(printf '%s\n' "$porcelain" | grep -c '^??')"; fi
 
-  # ignore されたものを、作り直せるものとそうでないものに分ける。
-  # 完全に ignore されたディレクトリは `!! build/` の 1 行に畳まれるので、
-  # 除外しても中身が見えなくなるだけ。**隠さず、別枠で数えて名前を出す。**
+  # Split what is ignored into what can be rebuilt and what cannot.
+  # A fully ignored directory collapses into the single line `!! build/`, so excluding it only
+  # hides what is inside. **Do not hide it: count it separately and print the names.**
   keep=0; regen=0; keeplist=""; regenlist=""
   while IFS= read -r ip; do
     [ -z "$ip" ] && continue
@@ -95,13 +95,13 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt;
     '.[] | select(.headRefName==$b) | "#\(.number)/\(.state)"' "$prs" 2>/dev/null | head -1)
   [ -z "$pr" ] && pr="-"
 
-  # セッションの置き場は cwd ごとのスラッグ（docs/path-map.md）。
-  # worktree の中で開いたセッションは、その worktree のスラッグ配下に残る。
-  # 本体のスラッグだけ見ると、使用中の worktree を「会話なし」と誤判定する。
+  # Sessions are stored under a slug per cwd (docs/path-map.md).
+  # A session opened inside a worktree stays under that worktree's slug.
+  # Look only at the main repository's slug and a worktree still in use is misread as "no chat".
   last="-"; last_ts=0
   for base in "$main_wt" "$wt"; do
-    # スラッグは英数字以外を全部 - にする（docs/path-map.md）。
-    # / だけ置換すると .herdr や .claude 配下のセッションを取り逃す。
+    # The slug turns every non-alphanumeric character into - (docs/path-map.md).
+    # Replace only / and you lose the sessions that live under .herdr or .claude.
     d="$HOME/.claude/projects/$(printf '%s' "$base" | sed 's#[^A-Za-z0-9]#-#g')"
     [ -d "$d" ] || continue
     if command -v rg >/dev/null 2>&1; then
@@ -116,8 +116,8 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt;
   done
   recent=$([ "$last_ts" -gt 0 ] 2>/dev/null && [ $(( (now - last_ts) / 86400 )) -le 4 ] && echo yes || echo no)
 
-  # 分類は助言であって許可ではない（playbook 手順 2）。
-  # safe は「clean かつマージ済みかつ未使用」のときだけ。手順 4 と一致させる。
+  # The bucket is advice, not permission (playbook step 2).
+  # safe only when it is clean, merged and unused. Keep it consistent with step 4.
   case "$dirty" in wip:*) bucket=hold-wip ;; *)
     case "$pr" in *OPEN*) bucket=hold-open-pr ;; *)
       if [ "$keep" -gt 0 ]; then bucket=verify-ignored
@@ -141,7 +141,7 @@ dump() {
     for i in $items; do printf '    %s\n' "$i"; done
   done < "$1"
 }
-dump "$KEEP"  "戻せない ignore 済み（判断はここから先が人間の仕事）:"
-dump "$REGEN" "作り直せるとして除外した ignore 済み（畳まれたディレクトリは中身を見ていない）:"
+dump "$KEEP"  "ignored and unrecoverable (from here on the judgment is a human's job):"
+dump "$REGEN" "ignored and excluded as rebuildable (a collapsed directory's contents were never looked at):"
 
 rm -f "$prs" "$KEEP" "$REGEN"

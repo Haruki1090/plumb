@@ -1,31 +1,36 @@
-# 性能
+# Performance
 
-**計測の物語を持つのはあなた。**すべての修正を計測に結び付ける。ソースを読んで計測の代わりにしない。
+**You hold the story the measurements tell.** Tie every fix to a measurement. Do not let reading the
+source stand in for measuring.
 
-1. 基準の trace を実物から捕る（**principle-prove-it-works**）。取得はペインに出す（`pane.driver`。未設定なら前面で実行する）。
-2. 仮説を地面に付ける。**走らせる前に性能の天井を語らない。**
+1. Capture the baseline trace from the real thing (**principle-prove-it-works**). Put the capture in a
+   pane (`pane.driver`; if it is unset, run it in the foreground).
+2. Put the hypothesis on the ground. **Do not talk about the performance ceiling before you have run
+   anything.**
 
-   修正のほとんどは次の8家族から出る。**チェックリストではなく仮説の発生源として使う。**
-   trace がその家族の名指す信号を見せたときだけ、その家族は試行に値する。
-   支配的なコストへの一点集中は、8つ全部を当てるより強い。
+   Most fixes come out of the eight families below. **Use them as a source of hypotheses, not as a
+   checklist.** A family is worth an attempt only when the trace shows the signal that family names.
+   One point of focus on the dominant cost is stronger than hitting all eight.
 
-   | 家族 | 当たる条件 |
+   | Family | When it applies |
    |---|---|
-   | **消去** | そもそも走る必要が無い。誰も消費しない計算、常に off のフラグ、冗長な同期、念のため残した旧経路。**trace は「遅い」を見せるが「消せる」は見せない**ので、ここだけは読解が要る。当たるときは他のどの家族より強い |
-   | **分割** | 支配的なコストが入力サイズに比例する。各片が触る量を減らすか、独立な片を並列に走らせる |
-   | **キャッシュ** | 同じ入力で同じ計算・取得が繰り返される。**何が無効化するかを言えるまで勝ちを主張しない** |
-   | **間接化** | ホットパスが、安い中間物で吸える高い仕事をしている。走査ではなく索引、対話スレッドから外すキュー。**取り除く量が足す量を上回るときだけ**。仕事を減らさない層は純粋な費用 |
-   | **バッチ** | 小さい操作が各々固定費を払っている。まとめて1回にする |
-   | **冗長化** | 待ちが1つの遅い試行にぶら下がっている。複製して速い方を採る。**負荷と引き換えなので、待ちが支配的で余力があると trace が示すときだけ** |
-   | **遅延** | 使われない／まだ要らない結果に費用が乗っている。初回使用まで遅らせる |
-   | **スケジューリング** | 仕事は必要だが、その瞬間には不要。誰も待っていない場所へ移す。遅延と違い**より早く**走らせることもある。効くのは体感なので、対話経路を計測する |
-3. trace から修正を組み立てる。関数境界をまたぐなら先に設計を割る。
-   実装は実装役に投げ、差分は本線がレビューする。修正後の trace を捕る。
-   各試行を検証してから次へ（**principle-sequence-verifiable-units**）。
-4. 成果物を突き合わせる。**「判定不能」や違う面での計測は合格ではない。**そう明記する。
-5. `playbooks/closing-a-branch.md` で締める。**PR を出すと決まったら**
-   `playbooks/opening-a-pr.md` へ。計測値を本文に載せる。
+   | **Elimination** | It did not need to run at all. Computation nobody consumes, a flag that is always off, a redundant sync, an old path kept just in case. **A trace shows you "slow" and never "removable"**, so this is the one family that takes reading. When it applies, it beats every other family |
+   | **Splitting** | The dominant cost is proportional to the input size. Cut what each piece touches, or run independent pieces in parallel |
+   | **Caching** | The same computation or fetch repeats on the same input. **Do not claim a win until you can say what invalidates it** |
+   | **Indirection** | A hot path is doing expensive work a cheap intermediate can absorb. An index instead of a scan; a queue that takes it off the interactive thread. **Only when what you remove outweighs what you add.** A layer that does not reduce work is pure cost |
+   | **Batching** | Small operations are each paying a fixed cost. Fold them into one |
+   | **Redundancy** | The wait hangs on a single slow attempt. Duplicate it and take the faster one. **You pay in load, so only when the trace shows the wait dominates and there is headroom** |
+   | **Deferral** | Cost is riding on a result that is unused, or not needed yet. Delay it to first use |
+   | **Scheduling** | The work is needed, but not at that moment. Move it where nobody is waiting. Unlike deferral it can also mean running it **earlier**. What it moves is the felt experience, so measure the interactive path |
+3. Build the fix out of the trace. If it crosses a function boundary, split the design first.
+   Hand the implementation to the implementer role; the main session reviews the diff. Capture the
+   trace after the fix. Verify each attempt before you move to the next
+   (**principle-sequence-verifiable-units**).
+4. Put the artifacts side by side. **"Cannot be judged" and a measurement on a different surface are
+   not a pass.** Write that down as such.
+5. Close out with `playbooks/closing-a-branch.md`. **Once a PR is decided on**, go to
+   `playbooks/opening-a-pr.md`. Put the measured numbers in the body.
 
-一発の修正ではなく、一つの指標を継続的に押し下げるなら `playbooks/hillclimb.md`。
+If it is not one fix but pushing one metric down continuously, `playbooks/hillclimb.md`.
 
-**返すもの:** 基準値、修正後の値、差分、成果物のパス。
+**What you return:** the baseline, the value after the fix, the delta, the paths to the artifacts.

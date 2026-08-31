@@ -1,41 +1,44 @@
 ---
 name: principle-migrate-callers-then-delete-legacy-apis
 origin: plumb
-description: "内側の API を作り直すときに適用する。呼び出し元の移行と旧 API の削除を、同じ波の中でやり切る。互換層を既定にしない。"
+description: "Migrate the callers and delete the old API inside the same wave, instead of leaving a compatibility layer as the default. Use when rebuilding an internal API, or when you hear yourself say \"we can delete the old one later\", \"just add a shim for now\", or \"deprecate it and clean it up next quarter\"."
 ---
 
 # Migrate callers then delete legacy APIs
 
-**新しい形が正しいと決めたなら、呼び出し元の移行と旧 API の削除を同じ波に入れる。**
-「あとで消す」は消えない。
+**Once you have decided the new shape is right, put the caller migration and the deletion
+of the old API in the same wave.** "Delete it later" never gets deleted.
 
-**なぜ守れないか:** 削除を別の回に切り出すと、その回は
-**機能が1つも増えないのに壊す危険だけがある**変更になる。
-価値の説明を求められて、毎回いちばん後ろに置かれる。
-一方で旧 API は、残っている限り新しい呼び出し元を増やし続ける。
-**先送りするほど、次に消すときの仕事は増える。**だから期限では守れず、
-**同じ波に入れるという切り方**でしか守れない。
+**Why this is hard to keep.** Split the deletion into a pass of its own and that pass
+**adds no feature and carries nothing but the risk of breaking something**. Asked to
+justify itself, it goes to the back of the queue every time. Meanwhile the old API keeps
+collecting new callers for as long as it stands. **Every deferral makes the next deletion
+bigger.** A deadline will not hold this. Only the slicing holds it: **migration and
+deletion in one wave.**
 
-## やり切るとはどういうことか
+## What finishing it means
 
-- **先に呼び出し元を数え、その数を書く。**数えていないなら、移行はまだ始まっていない
-- **移行と削除を同じ波に置く。**波の終わりに旧い経路が残っていないこと
-- **テストは新しい契約を主張する形に直す。**旧実装の内部だけを守っているテストは、
-  旧 API と一緒に消す
-- **中間の層を残すなら、消す条件と消す担当を書く。**書けないなら、それは恒久の分岐
+- **Count the callers first and write the number down.** If you have not counted, the
+  migration has not started
+- **Put the migration and the deletion in the same wave.** No old path survives the end
+  of the wave
+- **Rewrite the tests so they assert the new contract.** A test that only guards the
+  internals of the old implementation goes out with the old API
+- **If you leave an intermediate layer, write down what removes it and who removes it.**
+  If you cannot write that, what you have is a permanent fork
 
-## 判定
+## How to tell afterwards
 
-**波が終わった時点で、旧い名前の検索が 0 件になること。**
-コードだけでなく、テスト・設定・文書・コメントも数える。
-0 件でないなら、残した理由をその場で書く。
+**When the wave ends, a search for the old name returns zero hits.** Count more than the
+code: tests, configuration, documents and comments. If it is not zero, write down on the
+spot why the remainder was left.
 
-## 効かない場合
+## Where this does not apply
 
-**外の利用者が旧 API に依存しているなら、この原則は当たらない。**
-そこでは互換そのものが契約。**この原則が対象にするのは、
-呼び出し元を全部自分で数え切れる内側の API だけ。**
+**This principle does not apply when consumers outside your reach depend on the old API.**
+There, compatibility *is* the contract. **What this principle covers is the internal API
+whose callers you can count, all of them, yourself.**
 
-移行の途中の形を目標として扱わない、という向きは
-**principle-outcome-oriented-execution** が持つ。
-この原則が持つのは**切り方**——移行と削除を別の波に分けないこと。
+Refusing to treat a halfway migration as the target belongs to
+**principle-outcome-oriented-execution**. What this principle owns is **the slicing**:
+never split migration and deletion into separate waves.

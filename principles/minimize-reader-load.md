@@ -1,48 +1,54 @@
 ---
 name: principle-minimize-reader-load
 origin: plumb
-description: "追いにくいコードをレビューする、あるいは形作るときに適用する。問いから答えまでの層の数と、読み手の頭に残る隠れ状態を数える。呼び出し元が一つしかないラッパーは畳み、可変なスコープは縮める。"
+description: "Count the layers between a question and its answer, and the mutable state the reader has to carry: fold wrappers that have one caller, shrink mutable scope. Use when reviewing or shaping code that is hard to follow, or when asked \"why is this so hard to read\", \"is this abstraction worth it\", or \"should I add a layer here\"."
 ---
 
 # Minimize Reader Load
 
-**保守しやすさとは、読み手が理解のために払う労力のこと。**それを二つの軸で数える。
-差分を小さく保つのは **principle-laziness-protocol**、消す順序は
-**principle-subtract-before-you-add**。
-この原則が持つのは**尺度**——その変更が良くなったかどうかを、何で判定するか。
+**Maintainability is the effort a reader spends to understand.** Count it on two axes.
+Keeping the diff small belongs to **principle-laziness-protocol**; the order you delete
+in belongs to **principle-subtract-before-you-add**. What this principle owns is **the
+measure**: what you judge "did this get better" by.
 
-**なぜ守れないか:** 隠れ状態は、書いた本人には見えない。**もう頭に入っているから。**
-書き手の「読めば分かる」は、読んだ経験の後に出る感想であって、初見の読み手の負荷とは無関係。
-**自己評価では原理的に測れない。**だから感想ではなく数える。数えられる形にした軸が下の二本。
+**Why this is hard to keep.** Hidden state is invisible to the person who wrote it —
+**it is already in their head.** "You can just read it" is an opinion formed after
+reading, and says nothing about what a first-time reader pays. **Self-assessment cannot
+measure this, in principle.** So count instead of forming an opinion. The two axes below
+are that count made concrete.
 
-## 軸 1：問いと答えの間の層
+## Axis 1: the layers between question and answer
 
-「この値はどこから来たか」に答えるまでに開く定義の数。
+The number of definitions you open before you can answer "where did this value come from".
 
-- **2 人目の消費者がいない層は畳む。**呼び出し元が 1 つの wrapper、
-  実装が 1 つしか無い adapter、来なかった将来のために入れた間接
-- **隣り合う層が同じ言葉で話しているなら、片方は要らない。**
-  引数の名前も並びもほぼ同じまま渡しているだけの層は、抽象を変えていない
-- **境界は、隠す量で正当化する。**広い面を見せて、その裏に大した判断が無いなら、
-  読み手は面と中身の両方を覚える羽目になる。**隠す判断が多い境界だけが、層として元を取る**
+- **Fold any layer with no second consumer.** A wrapper with one caller, an adapter with
+  one implementation, indirection put in for a future that never arrived
+- **If two adjacent layers speak the same words, one of them is not needed.** A layer that
+  passes arguments through with near-identical names in near-identical order has not
+  changed the abstraction
+- **A boundary is justified by how much it hides.** Show a wide surface with no real
+  decisions behind it and the reader has to memorize the surface *and* the inside.
+  **Only a boundary that hides many decisions earns its keep as a layer**
 
-## 軸 2：読み手が頭に持つ状態
+## Axis 2: the state the reader carries
 
-「この値は、どこで書き換わりうるか」に答えるまでに抱える可変の文脈の量。
+The amount of mutable context you hold before you can answer "where can this value be
+rewritten".
 
-- **狭いほうへ倒す。**戻り値 > 局所変数 > フィールド > module の状態 > グローバル。
-  **同期させるより、導出する**
-- **不変条件は境界で 1 度名指す。**使う側の全部に書くと、読み手は毎回それを確かめ直す
+- **Lean narrow.** Return value > local variable > field > module state > global.
+  **Derive it rather than keep it in sync**
+- **Name an invariant once, at the boundary.** Written at every use site, it makes the
+  reader re-check it every time
 
-**二軸は独立していて、片方を減らすともう片方が増えることがある。**
-層の無い一枚のファイルが、可変の状態で読めなくなることも、その逆もある。**両方を見る。**
-モデルの文脈窓についての同じ話は **principle-guard-the-context-window** が持つ。
-こちらが数えるのは人間の読み手の負荷。
+**The two axes are independent, and cutting one can raise the other.** A single flat file
+with no layers can become unreadable through mutable state, and the reverse happens too.
+**Look at both.** The same story about a model's context window belongs to
+**principle-guard-the-context-window**. What this one counts is the load on a human reader.
 
-## 試験
+## The test
 
-初見の読み手が、**「X はどこから来たか」と「X は何によって変わるか」に 30 秒で答えられるか。**
-答えられないなら、層を削るか、状態を狭める。
+Can a first-time reader answer **"where did X come from" and "what can change X" inside
+30 seconds?** If not, cut a layer or narrow the state.
 
-**層や状態を足してよいのは、どこか別の場所で同じだけ減るときだけ。**
-足す前に、減る場所を名指す。名指せないなら足さない。
+**Add a layer or a piece of state only when the same amount goes away somewhere else.**
+Name the place it goes away before you add it. If you cannot name it, do not add it.

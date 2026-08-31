@@ -1,50 +1,52 @@
 ---
 name: principle-build-the-lever
 origin: plumb
-description: "一括作業に限らず、編集・移行・分析・チェックなど非自明な作業全般に適用する。手作業でやる代わりに、それを行う・証明する道具（codemod、スクリプト、ジェネレータ、サブエージェントが従うスキル）を作る。道具こそがレビュアーの再実行できる成果物になる。"
+description: "Apply to non-trivial work of any kind - edits, migrations, analysis, checks - not just bulk jobs. Instead of doing it by hand, build the tool that does it and the tool that proves it: a codemod, a script, a generator, a skill a subagent follows. The tool is the artifact the reviewer can re-run."
 ---
 
 # Build the Lever
 
-**自明でない作業は、それをやる道具・それを証明する道具を作ってから回す。**
-繰り返す教訓を恒久的なガードにするのは **principle-encode-lessons-in-structure**、
-検証そのものの設計は **principle-prove-it-works**。
-この原則が持つのは**目の前の一件**——回す速さと、レビュアーが再実行できる形。
+**Before you run non-trivial work, build the tool that does it and the tool that proves it.**
+Turning a lesson you keep re-learning into a permanent guard belongs to
+**principle-encode-lessons-in-structure**; designing the verification itself belongs to
+**principle-prove-it-works**. This principle owns **the one job in front of you**: how fast it
+runs, and whether the reviewer can re-run it.
 
-**なぜ守れないか:** 手作業は着手が速い。道具は着手が遅く、
-**しかも手で 3 件やった時点で「もう半分終わった」に見える。**
-着手の速さだけで比べれば、毎回手作業が勝つ。
-そして手でやった結果は、**レビュアーが再実行できない。**
-確かめる方法が「同じ作業をもう一度やる」しかないので、実際には誰も確かめない。
-**手作業は「信じてくれ」で終わり、道具は「これを走らせて」で終わる。**
+**Why this is hard to keep.** By hand starts fast. A tool starts slow, and **by the third
+item done by hand the work already looks half finished**. Compared on time-to-start alone,
+by hand wins every time. And what you did by hand, **the reviewer cannot re-run.** The only
+way to check it is to do the same work over again, so in practice nobody checks it.
+**By hand ends in "trust me". A tool ends in "run this."**
 
-## 作り方
+## How to build one
 
-1. **最初の 1 件を手でやる。**手順が分かる前に一般化すると、道具のほうが間違う
-2. **道具にして、その 1 件に当て直す。**手作業の結果と差分を取る。
-   一致しないとき、間違っているのが手作業のほうであることもある
-3. **何度走らせても安全にする。**レビュアーは必ずもう一度走らせる
-4. **仕事がセッションより長生きするならコミットする。**次の回が、やり直しではなく再実行になる
+1. **Do the first item by hand.** Generalize before you know the steps and the tool is what ends up wrong
+2. **Build the tool, then run it back over that same item.** Diff it against what you did by hand. When the two disagree, sometimes it is the hand-done one that is wrong
+3. **Make it safe to run any number of times.** The reviewer will run it again
+4. **Commit it if the work outlives the session.** The next round becomes a re-run instead of a redo
 
-## 決定的な道具は、撒くより強い
+## A deterministic tool beats fanning the work out
 
-1 回で全件を処理できるなら、**自分で走らせる。**
-スクリプトでできることを、委譲先に手で当てさせない。
+If one run can process every item, **run it yourself.**
+Do not make a delegate apply by hand what a script can do.
 
-撒くしかないときは、**道具を委譲先が読む型として書く。**
-手順・検証の契約・触ってはいけない範囲を、1 つの成果物に置く。
-プロンプトごとに書き直すと、**同じ指示のつもりで少しずつ違う版が配られ、各自が別々に逸れる。**
-その成果物は委譲先の書き込み範囲の外に置く——契約を、契約に従う側が編集できてはいけない。
+When you have no choice but to fan it out, **write the tool as a playbook the delegates
+read.** Put the steps, the verification contract, and the range they must not touch into one
+artifact. Rewrite it per prompt and **you hand out slightly different versions of what you
+believe is one instruction, and each delegate drifts its own way.** Keep that artifact
+outside the range they are allowed to write to: the side bound by the contract must not be
+able to edit the contract.
 
-## 引用したなら、差分にファイルが増える
+## Cite this and the diff gains a file
 
-この原則を引いたのに、差分にスクリプトも生成器も委譲先の型も無いなら、**引用が嘘。**
-`plumb-worktree-audit` と `plumb:doctor` は、この原則を当てた結果としてそこに在る。
+If you cited this principle and the diff holds no script, no generator and no playbook for
+the delegates, **the citation is a lie.**
+`plumb-worktree-audit` and `plumb:doctor` are here because this principle was applied.
 
-## 掛けない場面
+## When not to apply it
 
-- **本当に自明なとき。**一目で全部見える、2〜3 箇所の明らかな編集
-- 道具を作る費用が作業を超えるとき。**ただし基準は繰り返しの回数ではない**——
-  1 回きりの作業でも、**道具が唯一の確かめる手段になるなら作る**
+- **When it really is trivial.** Two or three obvious edits you can take in at a glance
+- When building the tool costs more than the work. **But the test is not how many times it repeats**: build one even for a job you do once, if the tool is the only way to check the result
 
-道具は**最小で作る**（**principle-laziness-protocol**）。枠組みを作らない。
+Build the tool **as small as it goes** (**principle-laziness-protocol**). Do not build a
+framework.

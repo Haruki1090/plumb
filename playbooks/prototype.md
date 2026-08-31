@@ -1,38 +1,41 @@
-# プロトタイプ
+# Prototype
 
-**設計判断を持つのはあなた。コードではない。プロトタイプは捨てる道具。**
+**You hold the design decision, not the code. A prototype is a tool you throw away.**
 
-「プロトタイプ」「モックして」「ざっと描いて」「このレイアウトを試して」、
-あるいは UI・操作・配置を決める前の探索。
-**持ち主に質問しようとしている経験的な分岐**（どの振る舞いか、どの間合いか、どの手か）を、
-走らせて観察すれば自分で答えられるときにも使う。
+"Prototype this", "mock it up", "sketch something", "try this layout", or any exploration
+before the UI, the interaction, or the arrangement is settled.
+Use it also when **an empirical branch you were about to hand the owner** — which behavior,
+which timing, which method — is one you can answer yourself by running it and watching.
 
-> **これは `playbooks/shaping-the-work.md` の「探り」の中で使う道具であって、その代わりではない。**
-> 探りの関門は残る——**何を試すかを 2〜3 文で提示し、頷きをもらうまで作らない。**
-> 「自分で答えられるから聞かない」は、**作ってよいかの承認には適用されない。**
-> 承認の後は、探りが「安く済ませろ」と言うところを、この型が具体的な作り方で埋める。
+> **This is a tool used inside the "probe" tier of `playbooks/shaping-the-work.md`, not a replacement for it.**
+> The probe's gate stands: **say what you are about to try in two or three sentences, and build nothing until you get a nod.**
+> "I can answer this myself, so I won't ask" **does not extend to permission to build.**
+> After approval, where the probe says only "keep it cheap", this playbook fills in how.
 
-関門の内側では、**「最小の変更」と検証の基準が反転する。**磨きより速さ。コードの質は問わない。
-**厳密さは、正しい設計を安く選ぶところにある。**大胆にやる。頼まれていない変種を出す。
-一つ捨てて別を試す。
+Inside the gate, **the bar for "smallest change" and for verification inverts.** Speed over
+polish. Code quality is not the question. **The rigor lives in choosing the right design
+cheaply.** Be bold. Produce variants nobody asked for. Throw one away and try another.
 
-1. **このプロトタイプが下すための判断を先に決める。**どの配置か、どの操作か、どの密度か。
-   経験的な分岐なら、どの振る舞いか・どの間合いか・どの手か。
-   **判断が無いならプロトタイプはしない。**`playbooks/shaping-the-work.md` へ回す。
-   決めた判断と、試す手を 2〜3 文で出す。**承認を待つ。ここで止まる。**
-2. 設計空間が開いているなら参照を集める。先行例を探し、主題・配色・配置を要約して見せ、
-   方向を先に選んでもらう。方向が決まっているなら飛ばす。
-3. 製品のソースとは別の隔離した場所に、捨てる前提で作る。
-   見た目の判断なら素の HTML/CSS/JS か、その案が描ける最軽量の構成。
-   振る舞いや間合いの判断なら、その問いだけを動かす最小のスクリプト。
-   **製品のフレームワークも、テストも、抽象も入れない。**
-4. 案を比べるなら、**1つの切替器の裏に全部を置く**。各変種にラベルを付け、持ち主が名前で呼べるようにする。
-   これは **principle-exhaust-the-design-space** を安くやる形。
-5. 実物で確かめる。見た目なら各変種のスクリーンショットを撮り、操作を実際に動かす。**目が試験。**
-   振る舞いや間合いなら、間合いを記録し、出力を出し、描画を見る。**ここでは観察が試験**であって、
-   assert ではない。
-6. 案・trade-off・推奨を出す。**成果物は判断と捨てる実装であって、出荷できるコードではない。**
-   選ばれた方向は `playbooks/writing-a-plan.md` へ渡して、本番として作り直す。
+1. **Decide first what this prototype exists to settle.** Which arrangement, which
+   interaction, which density. For an empirical branch: which behavior, which timing, which
+   method. **No decision means no prototype** — send it to `playbooks/shaping-the-work.md`.
+   State the decision and the approach in two or three sentences. **Wait for approval. Stop here.**
+2. If the design space is open, gather references. Find prior art, summarize the themes,
+   palettes and arrangements, and let the direction be chosen first. Skip this when the
+   direction is already fixed.
+3. Build it somewhere isolated from the product source, on the assumption you will delete it.
+   For a visual decision: plain HTML/CSS/JS, or the lightest setup that can draw the option.
+   For a behavior or timing decision: the smallest script that exercises that one question.
+   **No product framework, no tests, no abstractions.**
+4. When you are comparing options, **put all of them behind one switch**. Label each variant
+   so the owner can call it by name. This is **principle-exhaust-the-design-space** done cheaply.
+5. Check against the real thing. For visuals, screenshot every variant and actually drive the
+   interaction. **Your eye is the test.** For behavior or timing, record the timings, produce
+   the output, watch it render. **Here observation is the test**, not an assert.
+6. Return the options, the trade-offs, and a recommendation. **The artifact is a decision and
+   a disposable implementation, not shippable code.** Hand the chosen direction to
+   `playbooks/writing-a-plan.md` and build it again for real.
 
-**返すもの:** 探した変種、根拠（見た目ならスクリーンショット、振る舞いなら観察した出力や間合い）、
-trade-off、推奨、スクラッチのパス。**プロトタイプは捨てるものだと、はっきり書く。**
+**What you return:** the variants you explored, the evidence (screenshots for visuals, observed
+output or timings for behavior), the trade-offs, the recommendation, and the path to the
+scratch work. **Say plainly that the prototype is meant to be thrown away.**

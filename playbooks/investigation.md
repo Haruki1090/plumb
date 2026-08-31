@@ -1,21 +1,25 @@
-# 調査
+# Investigation
 
-**答えを持つのはあなた。組み立て、経路を決め、書く。**
+**You hold the answer. You assemble it, decide the route, and write it.**
 
-「X はどう動いているのか」「なぜ Y はこう作られたのか」「Z は本当に大丈夫か」
-「X と Y のどちらを採るべきか」——コードを変えずに、根拠付きの説明か推奨を返す仕事。
+"How does X work." "Why was Y built this way." "Is Z really safe." "Which of X and Y do we take."
+Work that returns an explanation or a recommendation with grounds, without changing code.
 
-1. 読むだけの調査だと最初に宣言する。コード変更に流れ込まない。
-2. 広く当てる必要があるなら `Explore` の探索役に投げる。**本線に全文を引き込まない**
-   （**principle-guard-the-context-window**）。返させるのはファイルの指し先と要約だけ。
-3. 「本当に大丈夫か」型の問いでは、**支持ではなく反証を試みる**。
-   前提そのものが間違っているなら、そう言う。頼まれた結論に寄せない。
-4. 出力の形を先に決める。説明なら「全体像 / 主要な概念 / 動き方 / どこにあるか / 落とし穴」。
-   判断なら、選択肢の比較表と、あなたの推奨を理由付きで1つ。
-5. 引用は必ず `path:line` で出す。**辿れない主張は書かない。**
+1. Declare up front that this is a read-only investigation. Do not let it run on into a code change.
+2. If you need broad coverage, hand it to the explorer role in `Explore`. **Do not pull the full text
+   into the main session** (**principle-guard-the-context-window**). What comes back is pointers to
+   files and a summary, and nothing else.
+3. On an "is it really safe" question, **try to refute rather than to support**.
+   If the premise itself is wrong, say so. Do not lean toward the conclusion you were asked for.
+4. Decide the shape of the output first. For an explanation: "the whole picture / the main concepts /
+   how it moves / where it lives / the traps". For a decision: a comparison table of the options, and
+   one recommendation of your own with the reason attached.
+5. Always cite as `path:line`. **Do not write a claim nobody can trace.**
 
-設計を伴わないので `playbooks/shaping-the-work.md` は呼ばない。
-調査の結果としてコードを変えることになったら、そこで手を止めて持ち主に戻し、
-`playbooks/shaping-the-work.md` に入り直す。調査の勢いのまま実装に滑り込まない。
+No design happens here, so you do not call `playbooks/shaping-the-work.md`.
+If the investigation ends in a code change, stop your hands there, hand it back to the owner, and
+re-enter through `playbooks/shaping-the-work.md`. Do not slide into implementation on the momentum of
+the investigation.
 
-**返すもの:** 調査の出力そのもの。「大丈夫か」型には、あなたの本当の判断を理由付きで。
+**What you return:** the output of the investigation itself. For an "is it safe" question, your real
+judgment with the reason attached.

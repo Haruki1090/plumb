@@ -1,52 +1,58 @@
 ---
 name: principle-encode-lessons-in-structure
 origin: plumb
-description: "同じ指示を二度書こうとしたとき、同じ修正を二度したとき、同じ事実を二箇所に書き写そうとしたときに適用する。文章を増やさず、機構にする。lint、検査、スクリプト、唯一の入口。書き写しは機構ではない。"
+description: "Apply when you are about to write the same instruction twice, when you have made the same fix twice, or when you are about to copy the same fact into a second place. Do not add prose - make it a mechanism: a lint, a check, a script, a single entry point. Copying the text is not a mechanism."
 ---
 
 # Encode Lessons in Structure
 
-**文章は、読まれたときにしか効かない。**機構は、読まれなくても効く。
-**同じことを二度書いた時点で、文章では足りないという観測が出ている。**
+**Prose only works when someone reads it.** A mechanism works whether or not anyone does.
+**The moment you write the same thing twice, you have the observation that prose is not
+enough.**
 
-**なぜ:** 規則を文章で足すのは、その場では一番安い。費用は書いた瞬間には現れず、
-**守られなかった回数として後から分散して出る**ので、原因の側に返ってこない。
-しかも増えた文章は読む量を押し上げ、次の規則がさらに読まれなくなる。
-**放っておくと必ず文章が増える方向に倒れる。**
+**Why this is hard to keep.** Adding a rule as prose is the cheapest move available at the
+time. The cost does not appear when you write it: **it comes back later, spread thin, as the
+number of times the rule went unkept**, so it never lands on the thing that caused it. And
+every line you add raises how much there is to read, which makes the next rule less likely
+to be read still. **Left alone, this always tips toward more prose.**
 
-## 二度目に気づいたら、強いほうへ落とす
+## The second time you notice, drop it to something stronger
 
-上から順に、その状況で使える一番強いものを取る。
+Go down the list and take the strongest rung available in your situation.
 
-1. **そもそも表現できない形にする** — 書けないものは守られる
-2. **検査で赤くする** — lint、CI の関門、`scripts/` の検査。落ちなければ通らない
-3. **入口を一つにする** — 正しいやり方が唯一の呼び口になっていれば、間違いは書きにくい
-4. **実行時に落とす** — 遅いが、確実に一度は出る
-5. **文章で書く** — 上が全部使えないときだけ
+1. **Make it unrepresentable** — what cannot be written stays kept
+2. **Make a check go red** — a lint, a CI gate, a check under `scripts/`. What fails does not get through
+3. **Make one entry point** — when the right way is the only thing there is to call, the wrong way is hard to write
+4. **Fail at runtime** — late, but it does surface once, reliably
+5. **Write it as prose** — only when none of the rungs above is available
 
-**弱い段で妥協すると、それが次の手本になる。**周りのコードに合わせて書く者にとって、
-既にあるゆるい書き方は許可と同じ意味を持つ。
+**Settle for a weaker rung and that rung becomes the example for the next person.**
+To anyone writing code that matches its surroundings, a loose form that already exists means
+permission.
 
-## 書き写しは機構ではない
+## Copying the text is not a mechanism
 
-**同じ事実を二箇所に書いたら、片方が古くなる。**手順も、パスも、判定基準もそう。
-だから**書き写さず、指す。**
-同じ理由で、**事実を手で組み立てない。**worktree の一覧も、置き場のパスも、
-手で綴った瞬間に本物とずれうる複製になる。**機械に訊いて、返ってきたものを使う。**
+**Write the same fact in two places and one of them goes stale.** Steps, paths, the bar for
+judging: all of them. So **do not copy it. Point at it.**
+For the same reason, **do not assemble a fact by hand.** A list of worktrees, the path where
+artifacts go: the moment you spell one out, it is a copy that can drift from the real one.
+**Ask the machine, and use what it returns.**
 
-指すだけでは古さは止まらないので、**ずれたら赤くなる検査を一緒に置く。**
-片側を直して片側を忘れても落ちるなら、そこで初めて機構になっている。
+Pointing does not stop staleness by itself, so **put a check beside it that goes red once
+the two drift.** When fixing one side and forgetting the other makes something fail, you
+finally have a mechanism.
 
-## 全員に同じ間違いが出たら、直す先は個体ではない
+## When all of them make the same mistake, the individual is not what you fix
 
-配った先が揃って外したなら、外したのは渡し方。**個別に直さず、渡す文面を直して配り直す。**
-一人が一度外しただけなら、それは一回の失敗として扱う。
+If every delegate missed the same way, what missed was the handoff. **Do not fix them one by
+one: fix the text you hand out and hand it out again.** If one delegate missed once, treat
+that as one failure.
 
-## 閉じる
+## Close it out
 
-- **「気を付けます」は残らない。**記録するか、機構にするか、どちらかにする
-- **記録して終わりにしない。**「lint にすべき」というメモは、lint になるまで何も守っていない
-- **今やるか、行き先の付いた作業として置くか。**行き先の無い気づきは消える
+- **"I'll be careful" leaves nothing behind.** Either record it or make it a mechanism
+- **Recording it is not finishing it.** A note saying "this should be a lint" keeps nothing until it is a lint
+- **Do it now, or leave it as a task with a destination.** A realization with nowhere to go disappears
 
-**症状に当てないという判断そのものは fix-root-causes。**
-この原則が持つのは、**同じ失敗が二度起きない形にする**ところだけ。
+**The decision not to patch the symptom is fix-root-causes itself.**
+What this principle owns is only **the shape in which the same failure cannot happen twice.**

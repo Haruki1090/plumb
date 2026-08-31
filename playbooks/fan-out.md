@@ -1,64 +1,66 @@
-# 独立した仕事を、同時に配る
+# Fan independent work out at once
 
-**役割は `docs/role-map.md` の `role.bulk`。**
-`plumb-config role.bulk ""` が空を返したら、**本線が順に処理する**——
-そう言ってから進む（**可視スキップ**）。速くならないだけで、間違いではない。
+**The role is `role.bulk` in `docs/role-map.md`.**
+If `plumb-config role.bulk ""` returns empty, **the main session works through it in order** — say so
+before you go (**a visible skip**). That is slower, not wrong.
 
-配る理由は二つしか無い。**待ち時間を畳むため**と、**かさばるものを本線から追い出すため**
-（**principle-guard-the-context-window**）。
-どちらでもないなら配らない。**配る手間が、やる手間を超える。**
+There are only two reasons to fan out. **To fold up waiting time**, and **to push bulky things out of
+the main session** (**principle-guard-the-context-window**).
+If it is neither, do not fan out. **Handing it out costs more than doing it.**
 
-## 1. 独立を、思い込みで決めない
+## 1. Do not settle independence by assumption
 
-**同じものに書く二人を作らない**（**principle-separate-before-serializing-shared-state**）。
+**Do not create two writers on the same thing** (**principle-separate-before-serializing-shared-state**).
 
-配る前に、各仕事について書き込み先を並べる——ファイル、ブランチ、生成物の置き場、
-外部の状態。**一つでも重なったら、それは独立ではない。**
+Before you hand anything out, list what each job writes to: files, branches, where the artifacts land,
+external state. **One overlap and it is not independent.**
 
-重なったときの既定は**共有そのものを消す**こと。書き込み先を仕事ごとに分け、
-**読むときだけ合流させる**。分けられないなら、配らずに順にやる。
-「順番に触ってね」と書いて渡すのは並行制御ではない。
+When they do overlap, the default is to **remove the sharing itself**. Split the write targets per job
+and **join them only on read**. If you cannot split them, do not fan out; do it in order.
+Writing "take turns touching this" and handing that over is not concurrency control.
 
-**原因が繋がっている仕事も配らない。**一つ直したら他も消える種類の失敗は、
-まとめて一人に見せたほうが早く終わる。何が壊れているか分かっていない段階も同じ。
-隔離が要るなら `playbooks/worktree-setup.md`。
+**Do not fan out jobs whose causes are connected, either.** Failures where fixing one makes the rest
+disappear finish sooner shown to one worker together. The same holds while you still do not know what
+is broken. If you need isolation, `playbooks/worktree-setup.md`.
 
-## 2. 渡すものを、こちらで作る
+## 2. Build what you hand over, yourself
 
-**自分の履歴を渡さない。**渡すのは、その仕事のために組み立てた文脈だけ。
-履歴を渡すと、相手はこちらの思考の跡を読み始めて、仕事から離れる。
+**Do not hand over your own history.** Hand over only the context you assembled for that job.
+Hand over the history and the worker starts reading the trail of your thinking instead of the work.
 
-一通に必ず入れる:
+Every brief carries:
 
-- **範囲。**どのファイル・どの領域か。「全部直して」は迷子になる合図
-- **判断材料そのもの。**失敗の出力・再現手順・関係する行。「あの不具合」で済ませない
-- **触ってはいけないもの。**書かないと、周辺のリファクタが返ってくる
-- **返す形。**何を、どの粒度で返してほしいか
+- **The range.** Which files, which area. "Fix everything" is the signal for getting lost
+- **The material to judge on, itself.** The failing output, the repro steps, the lines involved. Do not settle for "that bug"
+- **What must not be touched.** Leave it out and a refactor of the surroundings comes back
+- **The shape of the answer.** What you want back, and at what granularity
 
-## 3. 一度の返答で、全部出す
+## 3. Put them all out in one reply
 
-**同じ返答の中に並べたものだけが同時に走る。**一通ずつ出せば、それは直列に配っただけ。
+**Only what you line up in the same reply runs at the same time.** One brief per reply is fanning out
+in series.
 
-数は仕事の数で決める。**手が空いたから増やす、はしない。**
-戻ってきたものを読む時間も、こちらの有限な資源。
+Let the count come from the number of jobs. **Do not add more because you have capacity.**
+The time to read what comes back is a finite resource on your side too.
 
-## 4. 戻ってきたものを、差分で見る
+## 4. Look at what comes back as a diff
 
-**要約は主張であって、証拠ではない**（**principle-prove-it-works**）。
-やったつもりのことを書いて返ってくるので、**実際に何が変わったかを自分で見る**。
+**A summary is a claim, not evidence** (**principle-prove-it-works**).
+What comes back is a write-up of what they meant to do, so **look at what actually changed yourself**.
 
     git status --porcelain -uall
-    git diff --stat <配る前のコミット>
+    git diff --stat <the commit before you fanned out>
 
-見る順:
+The order to look in:
 
-1. **書いた場所が、渡した範囲の中に収まっているか。**はみ出しは真っ先に出る
-2. **配った者どうしが同じ行を触っていないか。**触っていたら手順 1 の判定を外している
-3. **全体の検査を、統合したあとで一度通す。**
-   個々が緑でも、合わせると赤いことがある（**principle-sequence-verifiable-units**）
+1. **Whether what they wrote stayed inside the range you handed them.** Overrun shows up first
+2. **Whether two of them touched the same lines.** If they did, your step 1 judgment was wrong
+3. **Run the whole check once, after integration.**
+   Each one can be green and the combination red (**principle-sequence-verifiable-units**)
 
-**同じ間違いが全員に出ていたら、それは渡し方の間違い。**個別に直さず、渡す文面を直して配り直す
-（**principle-encode-lessons-in-structure**）。
+**If the same mistake came back from all of them, the mistake is in how you handed it out.** Do not fix
+them one at a time: fix the brief and fan out again (**principle-encode-lessons-in-structure**).
 
-**返すもの:** 配った単位とその独立の根拠、実際に走った本数、各々が触った範囲、
-統合後の検査結果、**配り方の側にあった問題**（あれば）。
+**What you return:** the units you handed out and the grounds for their independence, how many actually
+ran, the range each one touched, the check result after integration, **what was wrong on the
+handing-out side** (if anything).

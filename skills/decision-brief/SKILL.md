@@ -1,71 +1,71 @@
 ---
 name: decision-brief
-description: 分岐のある判断を持ち主に渡すときに使う。選択肢が2つ以上あり、どれを選ぶかで作るものが変わる場面 — PR を何本に割るか、設計ドキュメントと実装のどちらを正とするか、複数案の画面から選ぶ、方式・ライブラリ・スコープの切り方、正本どうしが食い違ったときの裁定、途中で前提が崩れて続きが分岐したとき。「HTML で見せて」「比較して選ばせて」「案を並べて」と言われたときも使う。判断の要らない進捗報告や、やることが1本道の作業では使わない。
+description: Hand a branching decision back to the owner as a comparison they can choose from, not as prose. Use when there are 2 or more options and the choice changes what gets built - how many PRs to split into, whether the design doc or the implementation is the source of truth, picking among screen designs, choosing an approach, a library or where to cut scope, ruling between sources of truth that disagree, or a premise collapsing mid-task. Also use when asked to "show me the options", "compare them and let me pick", "put the options side by side". Do not use it for progress reports, for work with one path, or for a plain "is this OK".
 ---
 
-# 判断を渡す
+# Handing over a decision
 
-**分岐は、テキストの段落で渡さない。**見えるものにして、選べる形にして渡す。
+**Do not hand a branch over as a paragraph of text.** Make it visible, make it selectable, then hand it over.
 
-長い散文は、読み手に「何を決めさせられているのか」を自分で組み立てさせる。
-組み立て方が書き手と違えば、返ってくる答えは別の問いへの答えになる。
+Long prose makes the reader assemble for themselves what they are being asked to decide.
+Assemble it differently from the writer and the answer that comes back is the answer to a different question.
 
-## 出すもの
+## What you produce
 
-**次の3つを、この順で。1つでも欠けたら判断は渡っていない。**
+**These three, in this order. Miss one and the decision was not handed over.**
 
-| | 中身 |
+| | What it holds |
 |---|---|
-| **1. 判断文** | 何を決めるのかを1文。**選び方で何が変わるか**を続けて1文 |
-| **2. HTML** | 選択肢を横に並べた1枚。書く前に `artifact-design` を読む。`Artifact` で publish する |
-| **3. AskUserQuestion** | HTML と**同じラベル**の選択肢。`preview` に実物を入れる |
+| **1. The decision sentence** | one sentence on what is being decided, then one on **what changes with the choice** |
+| **2. HTML** | one page with the options side by side. Read `artifact-design` before writing it. Publish with `Artifact` |
+| **3. AskUserQuestion** | options carrying **the same labels** as the HTML. Put the real thing in `preview` |
 
-ターミナルに残すのは、判断文とリンクだけ。**説明を二重に書かない。**
+What stays in the terminal is the decision sentence and the link. **Do not write the explanation twice.**
 
-## HTML に入れるもの
+## What goes in the HTML
 
-**列は選択肢、行は比べる軸。**軸は自分で作らず、**選び方で実際に変わるもの**から取る。
+**Columns are the options, rows are the axes you compare on.** Do not invent the axes — take them from **what actually changes with the choice**.
 
-- **実物。**差分の抜粋、スクリーンショット、実測値、ファイル構成の before/after。
-  「保守しやすい」ではなく、保守が何行変わるかを出す
-- **選ばなかったときに残るもの。**推奨だけを厚く書くと、選択ではなく承認になる
-- **自分の推奨と、その理由。**隠さない。**ただし他の選択肢を痩せさせない**
-- **決められない部分。**自分に判断材料が無いなら、無いと書く。埋めない
+- **The real thing.** Excerpts of the diff, screenshots, measured numbers, before/after of the file layout.
+  Not "easier to maintain" — how many lines maintenance changes by
+- **What is left standing if it is not chosen.** Write only the recommendation thickly and it stops being a choice and becomes an approval
+- **Your recommendation, and why.** Do not hide it. **But do not starve the other options**
+- **The part you cannot decide.** If you have nothing to judge on, say so. Do not fill it in
 
-**すでに調べれば分かることを聞かない。**調べてから、分かったことを持って聞く。
+**Do not ask what you could find out by looking.** Look first, then ask carrying what you found.
 
-## AskUserQuestion の形
+## The shape of the AskUserQuestion
 
-- 選択肢は **2〜4**。5つ以上になるなら軸が2本ある。**質問を分ける**（1回に最大4問）
-- 推奨を先頭に置き、ラベル末尾に「（推奨）」
-- `preview` は文章ではなく**実物**を入れる。コマンド、ディレクトリ図、差分、寸法表
-- **不利な側の preview も同じ密度で書く。**片方だけ薄いと選択肢ではない
-- `description` には**その選択肢を採ったとき何が起きるか**を書く。良し悪しの評ではなく
+- **2 to 4** options. Five or more means there are two axes in there. **Split the question** (up to 4 per call)
+- Put the recommendation first, with "(Recommended)" at the end of the label
+- `preview` holds **the real thing**, not prose: commands, a directory tree, a diff, a table of dimensions
+- **Write the preview for the losing side at the same density.** One thin side is not a choice
+- `description` says **what happens if this option is taken**, not a verdict on whether it is good
 
-## 発動しない場面
+## When not to fire
 
-| 場面 | 代わりに |
+| Situation | Instead |
 |---|---|
-| 進捗・完了の報告 | ターミナルに数行 |
-| やることが1本道 | 作る。聞かない |
-| 「これで良いですか」だけ | 聞かずに進める。承認が要る操作なら1文で確認する |
-| 選択肢が実質1つ（他が明らかに損） | 選択肢の体を装わない。**そう報告して進める** |
-| 長いだけで分岐が無い調査報告 | 単発の資料（HTML 一枚などの調査報告）に落とす。AskUserQuestion は付けない |
+| Reporting progress or completion | a few lines in the terminal |
+| Work with one path | build it. Do not ask |
+| Nothing but "is this OK" | proceed without asking. If the action needs approval, confirm in one sentence |
+| Effectively one option (the rest are plainly worse) | do not dress it as a choice. **Report that, and proceed** |
+| An investigation report that is long but has no branch | land it as a standalone document (a single HTML report). No AskUserQuestion |
 
-## 答えが返ったら
+## Once the answer comes back
 
-**選ばれた理由ではなく、選ばれた結果を実行する。**再説得しない。
+**Execute the result that was chosen, not the reason it was chosen.** Do not re-argue it.
 
-選択が長く効くもの（正本の裁定、方式の選択、スコープの切り方）なら、
-**決定を残す** — `plumb-decision-log`、または memory の `feedback` / `project`。
-残さないと、次のセッションで同じ表をもう一度作ることになる。
+If the choice has a long reach — ruling on a source of truth, picking an approach, cutting scope —
+**record the decision**: `plumb-decision-log`, or memory as `feedback` / `project`.
+Without a record, you build the same table again next session.
 
-## よくある崩れ方
+## How this breaks
 
-| 崩れ | 直し方 |
+| Failure | What to do |
 |---|---|
-| HTML を作らずターミナルに全部書き、最後に AskUserQuestion だけ足す | 説明が2箇所に割れる。**説明は HTML に寄せる** |
-| 選択肢が「やる／やらない」 | それは分岐ではなく承認。**やり方の違いで割り直す** |
-| 推奨以外の preview が1行 | 選ばせる気が無い印。**同じ密度で書く** |
-| HTML のラベルと質問のラベルが違う | 読み手が対応を取れない。**文字列を一致させる** |
-| 判断を渡したあと、待たずに実装を進める | 選択の前提が崩れる。**分岐に依存しない作業だけ**を先に進める |
+| Writing it all in the terminal with no HTML, then bolting on an AskUserQuestion | the explanation splits in two. **Put the explanation in the HTML** |
+| The options are "do it / don't" | that is approval, not a branch. **Re-cut it by how it gets done** |
+| One line of preview on everything but the recommendation | the mark of not meaning to let them choose. **Same density on all of them** |
+| The HTML labels and the question labels differ | the reader cannot line them up. **Match the strings** |
+| Carrying on with the implementation without waiting after handing the decision over | the premise of the choice collapses. **Only advance work that does not depend on the branch** |

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# PR の版を固定し、本文と差分のドリフト・保護設定の穴を検出する。
+# Pin the revision of a PR, and detect drift between body and diff plus holes in branch protection.
 #
-# 使い方: plumb-pr-drift <owner/repo> <PR番号>
+# Usage: plumb-pr-drift <owner/repo> <PR number>
 #
-# 日時は必ず UTC の ISO8601 で比較する。git の %cI はローカルタイムゾーン付きで
-# 文字列比較が壊れるため、比較は Python 側で datetime に落としてから行う。
+# Always compare timestamps as UTC ISO8601. git's %cI carries a local timezone offset, which breaks
+# string comparison, so the comparison happens on the Python side after parsing into datetime.
 
 set -euo pipefail
 
@@ -51,19 +51,19 @@ commits = [c["commit"] for c in pr["commits"]["nodes"]]
 print("=" * 68)
 print(f"  {pr['title']}")
 print("=" * 68)
-print(f"レビュー対象 SHA : {head}")
-print(f"base ブランチ    : {pr['baseRefName']}")
-print(f"規模             : {pr['changedFiles']} files  +{pr['additions']} -{pr['deletions']}")
-print(f"本文の最終編集   : {edited}")
+print(f"SHA under review : {head}")
+print(f"base branch      : {pr['baseRefName']}")
+print(f"size             : {pr['changedFiles']} files  +{pr['additions']} -{pr['deletions']}")
+print(f"body last edited : {edited}")
 
-# --- 本文ドリフト -----------------------------------------------------------
+# --- body drift ------------------------------------------------------------
 after = [c for c in commits if ts(c["committedDate"]) > ts(edited)]
 print()
-print("-- 本文ドリフト " + "-" * 52)
+print("-- Body drift " + "-" * 54)
 if not after:
-    print("本文編集後のコミットなし。（本文が最初から不完全な可能性は別途 1 段で見る）")
+    print("No commits after the body was edited. (Whether the body was incomplete from the start is stage 1's job.)")
 else:
-    print(f"!! 本文を書いた後に {len(after)} コミット入っている。本文は現在の差分を説明していない。")
+    print(f"!! {len(after)} commits landed after the body was written. The body does not describe the current diff.")
     for c in after:
         print(f"   {c['oid'][:8]}  {c['committedDate']}  {c['messageHeadline'][:64]}")
     base = None
@@ -72,25 +72,25 @@ else:
             base = c["oid"]
     if base:
         print()
-        print(f"   未申告の変更を見るには:  git diff --stat {base[:8]}..{head[:8]}")
+        print(f"   To see the undeclared changes:  git diff --stat {base[:8]}..{head[:8]}")
 
-# --- 承認の失効設定 ---------------------------------------------------------
+# --- when an approval gets dismissed ---------------------------------------
 print()
-print("-- 承認まわりの保護設定 " + "-" * 44)
+print("-- Approval protection settings " + "-" * 36)
 pull = next((r for r in rules if r.get("type") == "pull_request"), None)
 strict = next((r for r in rules if r.get("type") == "required_status_checks"), None)
 
 if pull is None:
-    print("!! base ブランチに pull_request ルールが無い。レビュー承認はマージの条件になっていない。")
+    print("!! No pull_request rule on the base branch. Review approval is not a condition of merging.")
 else:
     p = pull["parameters"]
     risks = [
         ("dismiss_stale_reviews_on_push", p.get("dismiss_stale_reviews_on_push"),
-         "承認後に push しても承認が生き残る。別 SHA がマージされ得る"),
+         "an approval survives a push made after it. A different SHA can get merged"),
         ("require_last_push_approval", p.get("require_last_push_approval"),
-         "最後に push した本人がそのままマージできる"),
+         "whoever pushed last can merge it themselves"),
         ("required_review_thread_resolution", p.get("required_review_thread_resolution"),
-         "未解決のレビュースレッドがあってもマージできる"),
+         "it can be merged with review threads still unresolved"),
     ]
     print(f"   required_approving_review_count = {p.get('required_approving_review_count')}")
     for key, val, why in risks:
@@ -99,8 +99,8 @@ else:
 
 if strict is not None and strict["parameters"].get("strict_required_status_checks_policy") is False:
     print("   !! strict_required_status_checks_policy = False"
-          "  … base に追従していない状態でマージできる（意味的コンフリクトを検出しない）")
+          "  … it can be merged without being up to date with base (semantic conflicts go undetected)")
 
 print()
-print("次: SKILL.md の 1 段（双方向の棚卸し）へ。差分側の復元には本文を渡さないこと。")
+print("Next: stage 1 of SKILL.md (bidirectional inventory). Do not hand the body to the side that reconstructs the diff.")
 PY

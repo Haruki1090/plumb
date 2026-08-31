@@ -1,54 +1,61 @@
 ---
 name: principle-prove-it-works
 origin: plumb
-description: "「動いた」と言える状態を作るときに適用する。実物を一つ選んで直接見る。代理指標・自己申告・要約・伝聞は主張であって観測ではない。落ちるところを見ていない検証器は、緑になっても何も証明していない。"
+description: "Verify against the real thing by picking one and looking at it directly: a proxy, a self-report, a summary or hearsay is a claim, not an observation, and a verifier you never watched fail proves nothing when it goes green. Use when deciding what would count as proof - \"what is the real thing here\", \"what would prove this works\", \"is a passing build enough\" - or when asked \"did you actually check that\"."
 ---
 
 # Prove It Works
 
-**確かめる方法を持つのがこの原則。**いつ確かめるかは **gate-claims-on-evidence** が持っている。
-あちらが主張の直前に関門を置き、**こちらがその関門で何を見るかを決める。**
+**This principle holds the method of checking.** When to check belongs to
+**gate-claims-on-evidence**. That one puts a gate immediately before a claim;
+**this one decides what you look at once you are standing at it.**
 
-**なぜ:** 代理指標は安いのではなく、**速く緑になる**。ビルドの成功、ファイルの更新時刻、
-サブエージェントの完了報告——どれも実物を見たときと同じ手触りの安心を、一段手前で返す。
-**観測の手軽さと観測の強さは逆に並んでいる**ので、楽なほうを選び続けると必ず弱いほうへ寄る。
-気を付けて直る種類の話ではない。**何が実物かを先に決めておく**しかない。
+**Why this is hard to keep.** A proxy isn't cheaper — it's *faster to green*. A passing
+build, a fresh mtime, a subagent reporting done: each hands back the same feeling of
+safety as the real thing, one step early. **Ease of evidence and strength of evidence
+run in opposite directions**, so taking the easy reading every time always drifts toward
+the weak one. Care does not fix this. **Decide what counts as the real thing before you
+need it.**
 
-## 実物と代理を分ける
+## Telling the real thing from a proxy
 
-**導出が一段でも挟まったものは代理。**
+**Anything with even one step of derivation in front of it is a proxy.**
 
-| 代理 | 実物 |
+| Proxy | The real thing |
 |---|---|
-| ビルドが通った | 機能の経路を実際に通し、出た値を読んだ |
-| ファイルが更新されている | 中身を開いて、変わっているのを見た |
-| プロセスが起動している | そのプロセスに要求を投げ、返事を見た |
-| 配った先が「やった」と言った | 差分と生成物を自分で見た |
-| レビュー指摘にそう書いてある | 指摘された行を開き、このコードベースでそうか確かめた |
-| 「だいたい捨てていいと言われた」 | 捨てる候補を全部並べ、持ち主の言葉と突き合わせた |
+| The build passed | You ran the feature's path and read the value that came out |
+| The file has been updated | You opened it and saw the content change |
+| The process is up | You sent it a request and saw the reply |
+| The role you handed it to said it was done | You looked at the diff and the artifacts yourself |
+| The review finding says so | You opened the line it names and checked whether that holds in this codebase |
+| "They said we could pretty much throw it away" | You listed every deletion candidate and matched it against the owner's own words |
 
-**人が言ったことも代理の側。**指摘も、引き継ぎ文も、前のセッションが残した主張も、
-**仮説として受け取って、実物で当たり直す。**
+**What a person said sits on the proxy side too.** A finding, a handover note, a claim
+left behind by an earlier session: **take it as a hypothesis and re-check it against the
+real thing.**
 
-## 検証器が動いていることを、先に見る
+## See the verifier work, first
 
-**赤を見ていない緑は、検証器が働いた証拠を持っていない。**
-テストは実装より先に書き、**落ちるところを一度見る。**
-既にあるテストで確かめるなら、対象を一度壊して赤くなるか試す。
+**A green you reached without ever watching it fail carries no evidence that the
+verifier works.** Write the test before the implementation and **watch it fail once.** If you are
+checking with a test that already exists, break the target once and see whether it goes
+red.
 
-- **行数 0 は緑ではない。**何も走っていない可能性のほうが先に立つ
-- **観測が合わないとき、まず疑うのは観測の側。**見る場所・時刻・環境がずれているほうが、
-  系が壊れているより多い
-- **通すために検証器を緩めない。**閾値を下げる、対象を外す、失敗を握り潰す——
-  **検証器を殺すのと同じ**で、以後その領域は永久に無観測になる
+- **Zero lines is not green.** The likelier reading is that nothing ran at all
+- **When the observation disagrees, suspect the observation first.** Looking at the wrong
+  place, the wrong time or the wrong environment is more common than the system being
+  broken
+- **Do not loosen the verifier to make it pass.** Lowering a threshold, excluding the
+  target, swallowing a failure: **that is killing the verifier**, and the area stays
+  unobserved from then on
 
-## 再実行できる形にする
+## Put it in a form you can re-run
 
-一度眺めて終わりにせず、**同じ比較をもう一度回せるものにする。**
-等価性の検査、基準値との突き合わせ、before/after を並べるスクリプト。
-**再実行できる観測だけが、レビュアーが自分で確かめられる証拠になる。**
-その道具をどう作るかは **build-the-lever** が持っている。
+Do not look once and be done. **Make the same comparison something you can run again**: an
+equivalence check, a comparison against a baseline, a script that puts before and after
+side by side. **Only an observation you can re-run becomes evidence the reviewer can
+confirm without you.** How to build that tool belongs to **build-the-lever**.
 
-**何を一単位として確かめるかは sequence-verifiable-units、
-症状ではなく原因に当てているかは fix-root-causes。**
-この原則が持つのは、一回一回の観測の中身だけ。
+**What counts as one unit to verify belongs to sequence-verifiable-units, and whether you
+are aimed at the cause rather than the symptom belongs to fix-root-causes.** What this
+principle owns is the content of each single observation.

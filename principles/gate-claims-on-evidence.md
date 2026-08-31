@@ -1,44 +1,43 @@
 ---
 name: principle-gate-claims-on-evidence
 origin: plumb
-description: "「終わった」「直った」「通った」と書こうとした瞬間に適用する。主張の前に関門を一つ置き、そのメッセージの中で実際に走らせた出力を根拠として添える。走らせていないなら、主張しない。"
+description: "Apply the moment you are about to write 'done', 'fixed', or 'it passes'. Put one gate in front of the claim and attach, in that same message, the output of the run you actually made. If you did not run it, do not claim it."
 ---
 
 # Gate claims on evidence
 
-**主張の直前に関門を置く。**何をどう確かめるかは **prove-it-works** が持っている。
-この原則が持つのは**発火点**——いつ、その確認を強制するか。
+**Put the gate immediately before the claim.** What you check, and how, belongs to
+**prove-it-works**. This principle owns **the trigger point**: when that check is forced.
 
-**なぜ:** 検証の方法を知っていることと、書く直前に実行することは別の能力。
-落ちるのはいつも後者で、しかも**落ちたことが出力に残らない**。
-根拠の無い「通りました」は、間違っているときだけ高くつき、
-正しいときには何の跡も残さない。だから習慣では守れず、関門にするしかない。
+**Why this is hard to keep.** Knowing how to verify and running it just before you write are
+two different abilities. The one that fails is always the second, and **the failure leaves no
+trace in the output.** An "it passes" with nothing behind it costs something only when it is
+wrong and leaves no mark at all when it is right. Habit will not hold this. A gate will.
 
-## 関門
+## The gate
 
-「終わった」と書こうとしたら、書く前にこの四つを通す。
+When you are about to write "done", pass these four first.
 
-1. **どのコマンドがこの主張を証明するか**を名指す。名指せないなら、それは主張ではなく感想
-2. **いま走らせる。**部分ではなく全体を、前回の結果を再利用せずに
-3. **出力を読む。**終了コードと失敗件数まで見る。**行数が 0 なら、それは緑ではなく無観測**
-4. **出力が主張を支えているか**を見る。支えていないなら、**主張ではなく実測値のほうを書く**
+1. **Name the command that proves this claim.** If you cannot name it, what you have is an impression, not a claim
+2. **Run it now.** The whole of it, not a part, without reusing the last result
+3. **Read the output.** Down to the exit code and the failure count. **Zero lines is not green: it is nothing observed**
+4. **Check that the output supports the claim.** Where it does not, **write what you measured instead of the claim**
 
-## 発火する場面
+## What fires it
 
-- **完了・修正・成功を言うとき。**言い換えても同じ。「できました」も「問題ありません」も
-  「大丈夫そうです」も、全部この関門の内側
-- **満足を表明するとき。**「いい感じ」「うまくいった」は、根拠を持たない成功の主張
-- **コミット・push・PR の作成の前**
-- **次のタスクへ移る前。**移った時点で、前のタスクは検証済みだと宣言したことになる
-- **委譲したものを受け取ったとき。**相手の自己申告は主張であって出力ではない。
-  差分か生成物を自分で見る
+- **Saying something is done, fixed, or working.** Rephrasing changes nothing: "it's finished", "no problems", "looks fine" are all inside this gate
+- **Expressing satisfaction.** "Nice", "that worked" are claims of success with nothing behind them
+- **Before a commit, a push, or opening a PR**
+- **Before you move to the next task.** Moving on declares the previous task verified
+- **When you take back work you delegated.** A self-report is a claim, not output. Look at the diff or the artifact yourself
 
-## 通らない言い訳
+## Excuses that do not pass
 
-- **「さっき通った」** — 通ったのはその時のツリー。いまのツリーではない
-- **「lint が緑だった」** — lint はコンパイルもテストも見ていない。証明する対象が違う
-- **「自信がある」** — 自信は出力ではない
-- **「今回だけ」** — 例外を一度作ると、以後の緑が全部同じ重さになる
-- **「言い方を変えたから当たらない」** — 当たる。関門は語ではなく主張に掛かっている
+- **"It passed a minute ago"** — what passed was the tree as it was then, not the tree as it is
+- **"The lint was green"** — the lint looked at neither the compile nor the tests. It proves something else
+- **"I am confident"** — confidence is not output
+- **"Just this once"** — make the exception once and every green after it carries the same weight
+- **"I worded it differently, so it does not apply"** — it applies. The gate sits on the claim, not on the wording
 
-**主張を落とすのは、いつでも許される。**確かめずに主張することだけが許されない。
+**Dropping the claim is always allowed.** Making it without checking is the only thing that
+is not.

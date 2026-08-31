@@ -1,43 +1,39 @@
 ---
 name: principle-foundational-thinking
 origin: plumb
-description: "ロジックを書く前に適用する。中核となる型とデータ構造を選ぶとき、足場作りと機能実装の順序を決めるとき、並行して走るものの間で何を共有するかを問うとき。データ構造を正しく作れば、下流のコードは自明になる。"
+description: "Apply before writing the logic: when choosing the core types and data structures, when ordering scaffolding against feature work, when asking what gets shared between things that run in parallel. Get the data structures right and the downstream code becomes obvious."
 ---
 
 # Foundational Thinking
 
-**ロジックを書く前に、中核の型とデータ構造を決める。**形が正しければ、下流は自明になる。
-既存の設計に新しい要件が刺さったときの作り直しは
-**principle-redesign-from-first-principles** が持つ。
-この原則が持つのは**順序**——何を先に確定させ、何を後に回すか。
+**Settle the core types and data structures before you write the logic.** Get the shape right
+and everything downstream becomes obvious. Rebuilding when a new requirement lands in an
+existing design belongs to **principle-redesign-from-first-principles**. This principle owns
+**the ordering**: what you settle first, and what you leave for later.
 
-**なぜ守れないか:** データ構造を変える費用は、時間とともに跳ね上がる。
-着手直後なら 1 行の差分、呼び出し元が増えた後なら書き直し。
-それなのに、**進捗が見えるのはロジックのほう**で、型を眺めている時間は
-何も進んでいないように見える。この非対称が、毎回同じ向きに押す。
-費用が跳ね上がる前に払えるのは、押し戻すことを手順にしたときだけ。
+**Why this is hard to keep.** The cost of changing a data structure climbs steeply with time:
+a one-line diff right after you start, a rewrite once the callers have multiplied. And yet
+**the logic is where progress shows**, while time spent looking at types looks like nothing
+moving. That asymmetry pushes the same way every time. You only get to pay before the cost
+climbs if pushing back is written into the procedure.
 
-## 先に確定させるもの
+## What you settle first
 
-- **中核の型。**この仕事が扱う対象は何で、どんな状態を取りうるか
-- **支配的な経路。**その型に**実際に**掛かるアクセスを全部並べ、太い経路に形を合わせる。
-  珍しい経路のために形を歪めない
-- **足場。**後続の全部の段が、それが在ることで楽になるもの。
-  「次の段も、その次の段も、これが在ると助かるか」に yes なら先に置く
-- **共有するかどうか。**別々に走るものの間に状態を持たせる前に、
-  「片方が書き換えている最中にもう片方が読んだら何が起きるか」を答える。
-  **「何も起きない」以外の答えが出たら、共有しないで分ける**
-  （**principle-separate-before-serializing-shared-state**）
+- **The core types.** What this work is about, and which states it can be in
+- **The dominant path.** Lay out every access that **actually** hits that type and fit the shape to the heavy path. Do not distort the shape for a rare one
+- **The scaffolding.** Whatever makes every later step easier by existing. If "does the next step, and the one after that, get easier with this in place" is yes, put it down first
+- **Whether to share at all.** Before you put state between things that run separately, answer "what happens if one reads while the other is midway through writing". **Any answer other than "nothing" means you split instead of sharing** (**principle-separate-before-serializing-shared-state**)
 
-## 先に決めないもの
+## What you do not settle first
 
-- **抽象。**似た書き方が 3 回現れても、まだ足りない。揃えるのは型とデータの形であって、行ではない
-- **一般化。**まだ来ていない要件に効く形は選ばない。来たときに作り直すのが
-  **principle-redesign-from-first-principles** の仕事で、**そのための余地を残すのがここの仕事**
-- **賢さ。**読んで分かる形が、短い形より上。試験で固定するのは振る舞いと際であって、行数ではない
+- **Abstractions.** Three places written alike is still not enough. What you unify is the shape of the types and the data, not the lines
+- **Generalization.** Do not pick a shape for a requirement that has not arrived. Rebuilding when it does is **principle-redesign-from-first-principles**' job; **leaving room for that is this principle's job**
+- **Cleverness.** A shape you can read beats a short one. What tests pin down is behavior and edges, not line count
 
-**足場を敷く前に、引き算が先**（**principle-subtract-before-you-add**）。
-死んだ重さの上に土台を敷くと、その重さごと固まる。
+**Subtraction comes before you lay any scaffolding**
+(**principle-subtract-before-you-add**). Lay a foundation over dead weight and the dead weight
+sets along with it.
 
-**判定:** 一段進むごとに、その差分が**一つのまとまった形**を置いたか、既にある形を深くしたか。
-新しい能力を呼び出し元の側に特別扱いとして撒いたなら、形がまだ足りていない。
+**How to tell afterwards.** At each step, ask whether that diff put down **one coherent shape**
+or deepened a shape already there. If the new capability got scattered across the callers as
+special cases, the shape is not there yet.

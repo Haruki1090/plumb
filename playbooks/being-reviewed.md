@@ -1,99 +1,103 @@
-# レビューを頼み、指摘に応じる
+# Ask for review, and answer what comes back
 
-**著者としての型。**承認する側は `plumb:pr-review`。
-**同じ PR の上で、両方を自分でやらない。**自分の差分を自分で判定した記録は、証拠にならない。
+**This is the author's playbook.** The side that approves is `plumb:pr-review`.
+**Do not do both yourself on the same PR.** A record of you judging your own diff is not evidence.
 
-## 頼む
+## Asking
 
-### いつ
+### When
 
-**大きいものを作り終えたとき、着地の前、そして詰まったとき。**
-最後だけ頼むと、直す量が最大になったところで初めて他人の目が入る。
+**When you have finished something large, before it lands, and when you are stuck.**
+Ask only at the end and the first outside eyes arrive at the moment there is the most to fix.
 
-### 誰に
+### Who
 
-**判定役は `docs/role-map.md` の `role.judge`。**
-`plumb-config role.judge ""` が空なら本線が代行するが、**別の目が入っていないことを言ってから**やる
-（**可視スキップ**）。同じ文脈の同じ頭で読み直したものは、独立検証ではない。
+**The judge role is `role.judge` in `docs/role-map.md`.**
+If `plumb-config role.judge ""` comes back empty the main session stands in, but **say first that no
+second pair of eyes was involved** (**a visible skip**). Re-read by the same head in the same context
+is not independent verification.
 
-### 何を渡すか
+### What you hand over
 
-**セッションの履歴を渡さない。**渡すのは差分と、それを読むのに要るものだけ。
+**Do not hand over the session history.** Hand over the diff and only what it takes to read it.
 
-- **版**。どこからどこまでが対象か。ブランチ名ではなくコミットで固定する
+- **The version.** What range is in scope. Pin it with commits, not with a branch name
 
-        git rev-parse origin/<戻り先> HEAD
+        git rev-parse origin/<base> HEAD
 
-- **何を作ったか**を数行で。差分から読める事実に留める
-- **何が通れば正しいか**。仕様・受け入れ条件へのパス。**無いなら、無いと書く**
-- **返す形**（次節）
+- **What you built**, in a few lines. Stay to facts that are readable from the diff
+- **What has to pass for it to be right.** A path to the spec or the acceptance criteria. **If there is none, write that there is none**
+- **The shape of the answer** (next section)
 
-**差分そのものを本文に貼らない**（**principle-guard-the-context-window**）。
-パスと版を渡せば、相手が自分で読む。
+**Do not paste the diff itself into the body** (**principle-guard-the-context-window**).
+Hand over the path and the version, and the reviewer reads it themselves.
 
-### 返す形は、二軸で頼む
+### Ask for the answer on two axes
 
-**`Critical / Important / Minor` の一軸を持ち込まない。**
-一軸に畳むと「重大だが確度が低い」と「確実だが些細」が同じ棚に並び、
-**着地を止めるべきかどうかが読めなくなる。**
+**Do not bring in the single `Critical / Important / Minor` axis.**
+Folded onto one axis, "severe but low confidence" and "certain but trivial" sit on the same shelf,
+and **whether to stop the landing becomes unreadable.**
 
-頼む形は**確度**（確認済みか、疑いか）と**ブロッキング性**（着地を止めるか）の二軸。
-`plumb:pr-review` が返すのと同じ形なので、**どちらから返ってきても同じ表に載る。**
+Ask on two axes: **confidence** (confirmed, or suspected) and **blocking** (does it stop the landing).
+It is the same shape `plumb:pr-review` returns, so **whichever side it comes back from, it goes on
+the same table.**
 
-## 応じる
+## Answering
 
-### 全部読んでから、一件も動かない
+### Read all of it before you move on any of it
 
-**一件でも意味が取れないものがあれば、そこで止めて訊く。**
-分かった分だけ先に直さない——**指摘どうしは繋がっていることがあり、
-半分の理解で入れた修正は、残り半分を読んだ時点で作り直しになる。**
+**If even one finding does not parse, stop there and ask.**
+Do not fix the part you understood first. **Findings connect to each other, and a fix made on half
+an understanding gets rebuilt the moment you read the other half.**
 
-### 直す前に、こちらで確かめる
+### Verify it on your side before you fix
 
-**指摘は仮説であって、事実ではない**（**principle-prove-it-works**）。
-入れる前に見るもの:
+**A finding is a hypothesis, not a fact** (**principle-prove-it-works**).
+What to look at before you take it in:
 
-- **このコードベースで本当にそうなっているか。**指摘の前提を実際に確かめる
-- **いまの実装がそうなっている理由が無いか。**互換・環境・過去の裁定
-- **持ち主が既に裁定した件と衝突しないか。**衝突するなら、直さずに持ち主へ戻す
+- **Whether it is actually so in this codebase.** Check the finding's premise for real
+- **Whether there is a reason the implementation is the way it is.** Compatibility, environment, a past ruling
+- **Whether it collides with something the owner already ruled on.** If it does, hand it back to the owner instead of fixing it
 
-**「ちゃんと実装してほしい」と言われたら、先に呼び出し元を数える。**
-誰も呼んでいないものを立派にするのは、増やす仕事であって直す仕事ではない。
+**When you are told to "implement it properly", count the callers first.**
+Making something nobody calls magnificent is work added, not work fixed.
 
-### 同意を演じない
+### Do not perform agreement
 
-**「おっしゃる通りです」「良い指摘です」「ありがとうございます」を書かない。**
-書いた分だけ、検証していないことが隠れる。**直したなら、直したことを書けば足りる。**
+**Do not write "you're absolutely right", "great catch", "thanks for this".**
+Every line of it hides the fact that you did not verify. **If you fixed it, writing that you fixed it
+is enough.**
 
-    直した。<どこを、どう変えたか>
+    Fixed. <where, and what changed>
 
-### 押し返してよい。ただし技術で
+### You may push back, but with technique
 
-**根拠を持って違うと言えるなら、言う。**
-壊れる箇所、通っているテスト、依存している版——**指し示せるものを添える。**
-確かめる手段が無いなら、**無いと言う。**「たぶん大丈夫」で通さない。
+**If you can say it is wrong and stand behind that, say so.**
+The place it breaks, the test that passes, the version you depend on: **attach something you can
+point at.** If you have no way to check, **say you have none.** Do not push "probably fine" through.
 
-押し返して、自分が間違っていたと分かったとき。
-**何をどう確かめて、どこが違っていたかを一行書いて、直す。**
-長い謝罪も、押し返した理由の弁明も要らない。
+When you push back and it turns out you were wrong:
+**write one line saying what you checked and where you were wrong, then fix it.**
+No long apology, and no defence of why you pushed back.
 
-### 直す順
+### The order you fix in
 
-**着地を止めるもの → 小さいもの → 大きいもの。**
-**一件ずつ直して、一件ずつ検査を通す**（**principle-sequence-verifiable-units**）。
-まとめて直してまとめて回すと、どれが何を壊したか分からなくなる。
+**What stops the landing, then the small ones, then the large ones.**
+**Fix one, run the check on that one** (**principle-sequence-verifiable-units**).
+Fix in a batch and run in a batch, and you lose which one broke what.
 
-全部入れ終えたら、**もう一度全体の検査を通してから完了と言う**
-（**principle-gate-claims-on-evidence**）。
+Once they are all in, **run the whole check again before you say done**
+(**principle-gate-claims-on-evidence**).
 
-### 返し先
+### Where to answer
 
-**行に付いた指摘は、その行のスレッドに返す。**
-PR の一番下にまとめて書くと、どの指摘への返答か辿れない。
+**A finding attached to a line is answered in that line's thread.**
+Collect them at the bottom of the PR instead and nobody can trace which finding an answer belongs to.
 
-    gh api repos/<owner>/<repo>/pulls/<番号>/comments/<コメント id>/replies -f body='...'
+    gh api repos/<owner>/<repo>/pulls/<number>/comments/<comment id>/replies -f body='...'
 
-**入れなかった指摘こそ、理由を残す。**沈黙は、見落としと区別が付かない。
+**The findings you did not take in are the ones that need a reason on the record.**
+Silence is indistinguishable from an oversight.
 
-**返すもの:** 受け取った件数と二軸での内訳、直した件と各々の検査結果、
-**入れなかった件とその根拠**、持ち主に戻した件。
+**What you return:** how many came in and the breakdown on the two axes, what you fixed and the check
+result for each, **what you did not take in and on what grounds**, what you handed back to the owner.

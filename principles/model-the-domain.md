@@ -1,45 +1,53 @@
 ---
 name: principle-model-the-domain
 origin: plumb
-description: "状態を持つロジックを書くとき、分岐が増えたとき、複数のファイルで同じ形の前提を繰り返しているときに適用する。ドメインの知識を条件分岐に散らさず、構造として1箇所に置く。"
+description: "Hold domain knowledge as structure in one place instead of scattering it across conditionals. Use when writing stateful logic, when the branches keep multiplying, when the same shape of assumption repeats across files, or when asked \"why does adding one case touch five files\" or \"should this be a state machine\"."
 ---
 
 # Model the domain
 
-**ドメインの知識は構造で持つ。**条件分岐に散らした知識は、
-どの分岐が同じ規則を表しているかを機械が知らないので、次の変更で必ずずれる。
+**Domain knowledge lives in structure.** Knowledge spread across conditionals leaves the
+machine with no way to know which branches express the same rule, so the next change pulls
+them out of alignment.
 
-**なぜ守れないか:** 分岐を1本足すのは、いつでもその場の最小変更に見える。
-構造を入れ替えるには調査と作り直しが要る。**差が出るのは3回目以降**で、
-1回目と2回目は足したほうが速い。だから自制では守れない。
-**書くときに選ばなければ、後から取り戻す作業はリファクタとして先送りされ続ける。**
+**Why this is hard to keep.** Adding one more branch always looks like the smallest local
+change available. Replacing the structure takes investigation and rework. **The difference
+only shows from the third time onward**; the first and second time, adding is faster.
+Self-restraint will not hold this. **If you do not choose at the moment you write it, the
+work of winning it back gets deferred as refactoring, indefinitely.**
 
-## 構造が欠けている印
+## Signs the structure is missing
 
-- **新しい要件が、既存の if/else に1本足す形で入った**
-- **2つの真偽値が、常に同期していなければならない**（片方だけ立った状態が作れてしまう）
-- **同じ形の前提が複数のファイルで繰り返されている**（この種別なら必ずこの欄がある、等）
-- **module の名前が処理の段階になっている**（読み込み・検査・変換・保存）。
-  **実行の順番は所有ではない。**段階で割ると、同じドメイン規則が全段階に写る
-- **「この組み合わせは実際に起きるのか」に、書いた人以外が答えられない**
+- **A new requirement went in as one more branch on an existing if/else**
+- **Two booleans have to stay in sync at all times** (a state where only one of them is
+  set is constructible)
+- **The same shape of assumption repeats across several files** (this kind always carries
+  that field, and so on)
+- **The module names are stages of processing** (load, validate, transform, save).
+  **Execution order is not ownership.** Split by stage and the same domain rule gets copied
+  into every stage
+- **Nobody but the author can answer "does this combination actually occur"**
 
-## 何を入れるか
+## What to put in
 
-**答えは一つではない。**決めるのは二つの問い——**何を作れなくしたいか**と、
-**どう読まれるか**。散らばった真偽値なら状態機械、広がった分岐なら表かレジストリ、
-繰り返す形の仮定なら型、その場限りの書き換えなら命令と履歴。
-**どれも当てはまらないなら、この二つの問いに自分で答えてから形を決める。**
+**There is no single answer.** Two questions decide it: **what you want to make impossible
+to construct**, and **how it will be read**. Scattered booleans want a state machine;
+sprawling branches want a table or a registry; a repeating shape of assumption wants a
+type; ad-hoc rewriting wants commands and a history. **If none of those fit, answer the
+two questions yourself before you pick a shape.**
 
-**module の割り方も同じ問いで決まる。1つの module は1つのドメイン知識を持つ。**
-一緒に変わるものを一緒に置き、技術の層で割らない。
+**How you split modules is settled by the same questions. One module holds one piece of
+domain knowledge.** Put what changes together in one place, and do not split along
+technical layers.
 
-型検査器に何を証明させるかは **principle-type-system-discipline** が持つ。
-ロジックより先に中核の型を決めるという着手順は **principle-foundational-thinking** が持つ。
-この原則が持つのは、**構造が欠けていることの判定**だけ。
+What you make the type checker prove belongs to **principle-type-system-discipline**.
+Settling the core types before the logic belongs to **principle-foundational-thinking**.
+What this principle owns is only **the call that structure is missing**.
 
-## 入れすぎの側
+## The overshoot side
 
-**間接を足して、分岐も不正状態も減らないなら、それは構造ではなく層。**
-形が既に明快で、局所的で、増える見込みが無いなら、退屈なコードのまま残す。
-判定は読み手側で行う——問いと答えの間の層が減ったか
-（**principle-minimize-reader-load**）。どこも下がっていないなら取り消す。
+**If you add indirection and neither the branches nor the invalid states go down, what you
+added is a layer, not structure.** Where the shape is already clear, local, and unlikely to
+grow, leave it as boring code. Judge it from the reader's side: did the layers between
+question and answer go down (**principle-minimize-reader-load**)? If nothing went down
+anywhere, take it back out.

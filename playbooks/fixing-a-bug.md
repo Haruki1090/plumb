@@ -1,125 +1,132 @@
-# バグを直す
+# Fix a bug
 
-**先に再現を手に入れる。直し方を思いつくのは、その後。**
+**Get a repro first. Thinking of a fix comes after that.**
 
-「落ちる」「たまに落ちる」「この環境でだけおかしい」「直したはずが戻った」。
+"It crashes." "It crashes sometimes." "It only misbehaves in this environment." "I fixed it and it
+came back."
 
-**症状を根本原因まで辿るという判断そのものは principle-fix-root-causes が持っている**ので、
-ここには書き写さない（**principle-encode-lessons-in-structure**）。
-この型が持つのは**手順と、その手順が実際に崩れる場所**。
+**The judgment of tracing a symptom back to its root cause belongs to principle-fix-root-causes**, so
+it is not copied here (**principle-encode-lessons-in-structure**).
+What this playbook holds is **the steps, and the places those steps actually break**.
 
-振る舞いを変えずに構造を動かすなら `playbooks/refactoring.md`、
-落ちてはいないが遅いだけなら `playbooks/perf-issue.md`。**どちらもここへは来ない。**
+Moving the structure without changing the behavior is `playbooks/refactoring.md`; slow but not
+crashing is `playbooks/perf-issue.md`. **Neither of them comes here.**
 
-## 1. 設計から始めない
+## 1. Do not start from design
 
-読んだ瞬間に浮かんだ直し方は、**書き留めるだけにして手を止める。**
-それは仮説であって、根拠をまだ一つも持っていない。
+The fix that came to mind the moment you read the report: **write it down, and stop your hands.**
+It is a hypothesis, and it holds not one piece of evidence yet.
 
-**当てにいくと、当たったかどうかを判定する手段が残らない。**
-症状が消えても、消したのがその変更なのかは分からないまま終わる。
+**Take the shot and you are left with no way to judge whether it hit.**
+The symptom goes away and you never learn whether that change is what removed it.
 
-## 2. 再現を、機械が判定する形に固定する
+## 2. Pin the repro in a form a machine judges
 
-**手で触って確かめた、は再現ではない**（**principle-gate-claims-on-evidence**）。
-落ちるテスト、落ちる短いスクリプト、決まった手順で必ず出る終了コード。
-**同じ入力で同じ結果が返るものを、直すより先に作る。**
+**"I checked it by hand" is not a repro** (**principle-gate-claims-on-evidence**).
+A failing test, a short failing script, an exit code that comes out every time from a fixed procedure.
+**Build the thing that returns the same result for the same input before you fix anything.**
 
-- **失敗の出力を最後まで読む。**行番号・パス・終了コードを飛ばさない。
-  探しているものがそこに書いてあることは珍しくない
-- **再現しないなら、まだ材料が足りない。**回数を増やす、負荷を掛ける、環境を揃える。
-  **再現しないまま直すのは、直ったかどうかを永久に確かめないと決めること**
-- **再起動やデプロイを跨いで出るなら、コードより先に残っている状態を疑う。**
-  走り直してもコードは変わらないが、キャッシュ・設定・ロック・保存された途中経過は変わる
-- **いつから出るかを見る。**直近で動いた変更があるなら、容疑者の範囲はそこまで縮む
+- **Read the failure output to the end.** Do not skip the line number, the path, the exit code.
+  What you are hunting for is often written right there
+- **If it does not reproduce, you do not have enough material yet.** Raise the count, put load on it,
+  match the environment. **Fixing without a repro is deciding never to check whether it got fixed**
+- **If it survives a restart or a deploy, suspect leftover state before you suspect the code.**
+  Running again does not change the code, but caches, config, locks and saved partial progress do change
+- **Look at when it started.** If a change landed recently, the suspect range shrinks to there
 
-固定した再現は捨てない。**直したあと、そのままテストとして残す**
-（`playbooks/writing-tests.md`）。
+Do not throw the pinned repro away. **After the fix, keep it as a test**
+(`playbooks/writing-tests.md`).
 
-## 3. 落ちた場所から、壊れた場所まで遡る
+## 3. Trace back from where it fell to where it broke
 
-**最初に落ちた行は、たいてい犯人ではない。**そこは不正な値が**着いた**場所であって、
-生まれた場所ではない。
+**The line that fell first is usually not the culprit.** That is where the bad value *arrived*, not
+where it was born.
 
-一段ずつ上へ辿る。**この値を渡したのは誰か**を、遡れなくなるまで繰り返す。
-辿れなくなったら、**推測せずに計器を入れる**——値と呼び出し経路を、
-その操作の**直前に**出す。落ちてから出しても、原因はもう上流にある。
+Go up one level at a time. Repeat **who handed this value over** until you cannot go back further.
+When you run out of trail, **put instruments in rather than guessing**: print the value and the call
+path **immediately before** that operation. Print after the fall and the cause is already upstream.
 
-**層をまたぐ系では、境界ごとに入りと出を並べる。**
-どの境界で形が変わったかが見えれば、読む範囲は一層に縮む。
-**「たぶんこの層」から読み始めない。**
+**In a layered system, line up what goes in and what comes out at each boundary.**
+Once you can see which boundary changed the shape, the range you read shrinks to one layer.
+**Do not start reading from "probably this layer".**
 
-**壊れていない同型の経路と並べる。**同じリポジトリに動いている似た流れがあるなら、
-その差分が容疑者の一覧になる。
+**Line it up against an identically shaped path that is not broken.** If a similar flow works in the
+same repository, the diff between the two is your list of suspects.
 
-## 4. 直すのは一箇所、一度に一つ
+## 4. Fix one place, one thing at a time
 
-- **「ついでに効きそうなもの」を相乗りさせない。**
-  `playbooks/autonomous-run.md` の手順 3 が同じ規律を持っている——
-  **前進しなかった変更は全部取り消す。**混ぜると、効いたものが特定できない
-- **落ちるのを黙らせるガードは修正ではない。**nil で落ちるなら、nil を通した経路を直す
-- **同じ形が他にも在るなら、そこも数える。**一件だけ直すと、同じ調査をもう一度やる
+- **Do not let "this looks like it might help too" ride along.**
+  Step 3 of `playbooks/autonomous-run.md` holds the same discipline: **revert every change that did
+  not move things forward.** Mixed together, the one that worked cannot be identified
+- **A guard that silences the crash is not a fix.** If it dies on nil, fix the path that let nil through
+- **If the same shape exists elsewhere, count those too.** Fix one and you will run the same
+  investigation a second time
 
-**三度続けて外したら、直し方ではなく前提を疑う。**
-外すたびに別の場所へ新しい症状が移るなら、それは仮説の失敗ではなく構造の問題。
-**四度目を自分で試さない。**止まって、判定役に渡す（`docs/role-map.md`）。
+**Miss three times running and doubt the premise, not the fix.**
+If every miss moves a new symptom somewhere else, that is not a failed hypothesis but a structural
+problem. **Do not try a fourth one yourself.** Stop, and hand it to the judge role
+(`docs/role-map.md`).
 
-## 5. 直ったことを、同じ再現で示す
+## 5. Show it is fixed with the same repro
 
-**直す前に落ちていたものが、直した後に通る。**この二点が揃って初めて主張になる
-（**principle-prove-it-works**）。片方だけでは何も示していない。
+**What failed before the fix passes after it.** Only the two together make a claim
+(**principle-prove-it-works**). One alone shows nothing.
 
-**取り直しは全体で。**一本を通すために別の一本を落としているのは、直したことにならない。
+**Retake it whole.** Getting one to pass by dropping another is not a fix.
 
-## 6. 同じ穴を二度塞がない
+## 6. Do not plug the same hole twice
 
-直った瞬間に、次を考える（**principle-encode-lessons-in-structure**）。
+The moment it is fixed, think about the next one (**principle-encode-lessons-in-structure**).
 
-- **再現をテストとして残す。**これが最低線。残さなければ同じバグは戻る
-- **不正な値が入れた境界を締める。**入口で弾けるなら入口で弾く
-  （**principle-boundary-discipline**——ガードは境界に集める。
-  通り道の全部に検査を撒くのは、この原則の逆で、後から誰も消せなくなる）
-- **人が気を付ける、で終わらせない。**同じ注意を二度書いたなら、それは検査の欠落
+- **Keep the repro as a test.** This is the floor. Leave it out and the same bug comes back
+- **Tighten the boundary the bad value came in through.** If it can be rejected at the entrance, reject
+  it at the entrance (**principle-boundary-discipline**: guards concentrate at the boundary.
+  Scattering checks along the whole path is the inverse of that principle, and afterwards nobody can
+  remove them)
+- **Do not settle for "people will be careful".** If you have written the same warning twice, that is
+  a missing check
 
-## 時間で待たない
+## Do not wait on time
 
-**`sleep` を足して通したテストは、遅い機械で落ちる。**
-待つ対象は時間ではなく**条件**——その状態になったか、その生成物が出来たか、
-その件数に届いたか。上限を必ず付けて、超えたら**何を待っていたかを書いて落とす。**
+**A test you got to pass by adding `sleep` fails on a slow machine.**
+What you wait on is not time but **a condition**: is it in that state, did that artifact appear, did it
+reach that count. Always attach a ceiling, and when it is exceeded **fail with what you were waiting
+for written out.**
 
-**時間そのものが仕様のときだけ、時間で待ってよい。**
-その場合は**なぜその値かをコードに書く。**書けないなら、それは推測。
+**Wait on time only when time itself is the specification.**
+Then **write into the code why that value.** If you cannot write it, it is a guess.
 
-## 隣に汚されているとき
+## When something next door is polluting you
 
-単独では通るのに、まとめて走らせると落ちる。**そのテストは無実。**
-原因は**先に走った誰かが残した状態**で、探す先は落ちた側ではない。
+It passes alone and fails when everything runs together. **That test is innocent.**
+The cause is **state left behind by whoever ran earlier**, and where you look is not the side that fell.
 
-    plumb-isolate-pollution '<残骸を判定するコマンド>' '<一件を走らせるコマンド>' <対象>...
+    plumb-isolate-pollution '<command that detects the residue>' '<command that runs one>' <target>...
 
-一件ずつ走らせ、**残骸が現れた最初の一件で止まる。**
-見つかったら、残した側の後始末を直す。**落ちた側に待ちを足して黙らせない。**
+Run them one at a time and **stop at the first one where the residue appears.**
+Once you find it, fix the cleanup on the side that left it. **Do not silence the side that fell by
+adding a wait to it.**
 
-## 隔離と、配ること
+## Isolation, and fanning out
 
-作業場を分けるなら `playbooks/worktree-setup.md`。
-**原因が繋がっている失敗は配らない**——`playbooks/fan-out.md` が既に持っている。
-一つ直せば残りも消える種類の失敗は、まとめて一人が見たほうが早く終わる。
+To split off a workspace, `playbooks/worktree-setup.md`.
+**Do not fan out failures whose causes are connected** — `playbooks/fan-out.md` already holds that.
+Failures where fixing one makes the rest disappear finish sooner seen by one worker together.
 
-直った差分は `playbooks/closing-a-branch.md` へ。
+The fixed diff goes to `playbooks/closing-a-branch.md`.
 
-## よくある崩れ方
+## How this breaks
 
-| 崩れ | 直し方 |
+| Failure | What to do |
 |---|---|
-| 急ぎなので手順を飛ばした | 飛ばした分は当て推量の往復として返ってくる。**急ぐほど再現を先に取る** |
-| 単純なバグなので原因は要らない | 単純なバグにも出所はある。**単純なら遡る距離が短いだけ** |
-| 落ちた行にガードを足したら通った | 通ったのは症状。**値の出所は一行も動いていない** |
-| 効きそうな修正を三つ同時に入れた | どれが効いたか分からない。**取り消して、一つずつ** |
-| 待ち時間の調整に何時間も使った | その時間はもう戻らない。**待ちを全部消して 2 からやり直す** |
-| 再現しないので直して様子を見る | 様子見は検証ではない。**再現が無いなら、まだ直す段ではない** |
-| 直ったので、以前の失敗をそのまま報告した | 出力は取り直す（**principle-gate-claims-on-evidence**） |
+| It was urgent so you skipped the steps | What you skipped comes back as round trips of guesswork. **The more urgent it is, the earlier you take the repro** |
+| It is a simple bug so it needs no cause | A simple bug has an origin too. **Simple only means the distance back is short** |
+| You added a guard on the failing line and it passed | What passed is the symptom. **The value's origin has not moved one line** |
+| You put three likely fixes in at once | You cannot tell which one worked. **Revert, and go one at a time** |
+| You spent hours tuning wait times | That time does not come back. **Delete every wait and start again from 2** |
+| It does not reproduce, so fix it and watch | Watching is not verification. **With no repro you are not at the fixing stage yet** |
+| It is fixed, so you reported the earlier failure output as it was | Retake the output (**principle-gate-claims-on-evidence**) |
 
-**返すもの:** 固定した再現（コマンドと、直す前の出力）、遡って着いた根本原因、
-変えた場所、直した後の同じコマンドの出力、残した構造（テスト・境界の検査）、
-外した仮説とその根拠。
+**What you return:** the pinned repro (the command, and the output before the fix), the root cause you
+traced back to, what you changed, the output of the same command after the fix, the structure you left
+behind (the test, the boundary check), the hypotheses you dropped and on what grounds.

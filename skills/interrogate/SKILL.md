@@ -1,92 +1,91 @@
 ---
 name: interrogate
-description: PR レビューの反証段に、別モデルファミリーの軸を1本足す層。「別ファミリーにも見せて」「Codex にも当てて」「同じファミリーだけで判定していないか」と言われたとき、および不可逆・広範囲の変更をレビューするときに使う。単独では成立しない。`plumb:pr-review` の 3 段から呼ばれる。
+description: Adds one adversarial axis from a different model family to the refutation stage of a PR review. Use when asked to "show this to another model family", "get a second family on it", "are we judging inside one family only", and whenever the change under review is irreversible or wide. It does not stand on its own - it is called from stage 3 of `plumb:pr-review`.
 ---
 
-# 別ファミリーの軸
+# The other family's axis
 
-**この層は単独では成立しない。**レビューの正本は `plumb:pr-review` スキル。
-6 段の手順・2 軸の判定・返却の形は全部そちらが持っている。
-**ここはその 3 段の E 軸**（`plumb:pr-review` の反証段の表に載っている）**だけを持つ。**
+**This layer does not stand on its own.** The source of truth for review is the `plumb:pr-review` skill.
+The six stages, the two axes of the verdict, and the shape of what you return all live there.
+**This holds axis E of stage 3 only** — the one listed in `plumb:pr-review`'s refutation-stage table.
 
-**「別ファミリーにも見せて」と単独で呼ばれたときも、いきなり走らせない。**
-`plumb:pr-review` の 1 段（双方向の棚卸し）と 2 段（重み付けと切り捨て）を先に通す。
-**渡すのは 2 段で絞ったパス**であって、差分全体ではない。
-その 2 段を通さずに走らせると、下の「足し方」の前提が崩れる。
+**Even when called on its own with "show this to another family", do not just run it.**
+Go through stage 1 (bidirectional inventory) and stage 2 (weighting, and the cut) of `plumb:pr-review` first.
+**What you hand over is the set of paths stage 2 narrowed to**, not the whole diff.
+Run it without those stages and the premise of "How to add it" below is gone.
 
-## なぜ足すのか
+## Why add it
 
-`plumb:pr-review` の 3 段は複数の軸に分かれているが、**E を除く全部が同じモデルファミリーの中で走る。**
-役割は分かれていても、実行系は 1 つ。
+Stage 3 of `plumb:pr-review` splits into several axes, but **every one of them except E runs inside the same model family.**
+The roles are separated; the thing executing them is one.
 
-役割の多様性は、盲点の多様性ではない。同じ族は同じところを見落とす。
+Diversity of roles is not diversity of blind spots. The same family misses the same places.
 
-これは実測で出ている。plumb バッチ1では、Claude ファミリーのレビューを 3 回通したうえで、
-別ファミリーの判定が**設計の核心に関わる欠陥を 3 件**出した。
-
-```
-可視スキップの抜け道   「行を消すな」しか書いておらず、最初から行を作らなければ全部迂回できた
-実行先キーの誤り       実装の委譲先が探索役に化ける。役割表に実装役が無かった
-第二の正本            古い計画書が隣に残り、後から来た者が修正を全部巻き戻す仕掛けになっていた
-```
-
-**3 件とも、同じファミリーのレビューは 3 回とも素通りしている。**
-体裁と仕様適合では有効だったが、**自分が書いた規定の論理的な穴**は見えなかった。
-
-同日、別のリポジトリの認証まわり 6 本スタックでも同じ形が出た。
+This is measured. In plumb's batch 1, after three passes of review in the Claude family, a verdict from a
+different family turned up **three defects that went to the core of the design**.
 
 ```
-別ファミリーが出した新規 finding   6 件
-同ファミリー 4 軸が挙げていた数    0 件
+A way around the visible skip   It only said "do not delete the line", so never creating the line bypassed all of it
+The wrong routing key           The implementation was delegated to the explorer role. The role map had no implementer role
+A second source of truth        An old plan sat next to the new one, rigged so that anyone arriving later rolled every fix back
 ```
 
-このときの本線の報告が要点を突いている——
-**「自分で『自傷でしかない』『grep 0 件だから崩れた』と線を引いた 2 箇所が、
-別ファミリーには穴として見えていた」。**
+**All three passed straight through the same-family review, all three times.**
+That review was effective on presentation and on conformance to the spec, but **the logical holes in rules it had written itself** were invisible to it.
 
-**見落としではない。**同ファミリーが検討したうえで「問題なし」と閉じた箇所が、
-別ファミリーには開いて見えた。**役割を分けても、閉じ方の癖は共有される。**
+The same shape showed up the same day on a stack of six authentication PRs in a different repository.
 
-## いつ足すか
+```
+New findings from the other family   6
+Found by the 4 same-family axes      0
+```
 
-**条件は書かない。**`plumb:pr-review` の 3 段の「E について」が正本。
-そこに 4 つの発火条件と、当たらないときの `skip: <理由>` の規則がある。
+The main session's report from that run puts it exactly —
+**"the two places where I had drawn the line myself, 'this only hurts whoever does it' and 'grep returns nothing, so it is already broken', were visible as holes to the other family."**
 
-ここに写すと、片方だけが更新されて食い違う。**それはこの層自身が下で禁じていること。**
+**These were not oversights.** Places the same family considered and closed as fine were open to the other one.
+**Separating the roles does not separate the habit of how you close a question.**
 
-## 足し方
+## When to add it
 
-`plumb:pr-review` の **2 段で絞ったパス**を渡す。全体には当てない——
-見ないと決めた領域の指摘が返り、自分で生成した実在の指摘を捨てる羽目になる。
+**The conditions are not written here.** "On E" in stage 3 of `plumb:pr-review` is the source of truth.
+That is where the four trigger conditions live, along with the `skip: <reason>` rule for when none of them hold.
 
-1. ペインを立て（`pane.driver`。未設定なら前面で実行する）、`docs/role-map.md` の判定役を起こす。
-2. 依頼書をファイルに書いて**パスだけを渡す**（**principle-guard-the-context-window**）。
-   依頼書に入れるもの:
-   - 2 段で確定した対象パス
-   - 差分の取り方（`git diff <base>...<head> -- <パス>`）
-   - **意図の 1 段落**。何を達成しようとしているコードか。
-     判定役が挑むのは「意図をうまく達成しているか」であって、意図の是非ではない
-   - 返す形: 各件に「ファイル:行」と「具体的な入力・状態 → 誤った出力／損失」
-   - **「指摘が無い項目は『無し』と書く。絞り出さなくていい」**を明記する
-3. 結果はファイルに書かせて読む。ペインの表示から拾わない。
+Copy them here and one copy gets updated alone. **That is exactly what this layer forbids below.**
 
-## 返ってきたものの扱い
+## How to add it
 
-**判定役の出力は反証であって、判決ではない。**
+Hand over **the paths stage 2 of `plumb:pr-review` narrowed to**. Do not aim it at everything —
+you get findings in territory you decided not to look at, and end up throwing away real findings you generated yourself.
 
-- 確度（CONFIRMED / PLAUSIBLE）は `plumb:pr-review` の 5 段の定義で付け直す。
-  **判定役が「確認した」と書いていても、証明するコマンドがこのターンで走っていないなら PLAUSIBLE。**
-- **ブロッキング性は判定役に付けさせない。**5 段でこちらが付ける。
-- 他の軸と重なった箇所を最優先にする。**軸をまたいで一致した指摘が最も強い信号。**
-- 単独の軸からしか出ていない指摘も読む価値はある。ただし確度は下げて扱う。
-- 判定役が明示的に「問題ない」と言った箇所と、他の軸の指摘が食い違うなら、
-  **その食い違い自体を 5 段に残す。**片方を黙って捨てない。
+1. Open a pane (`pane.driver`; unset: run it in the foreground) and wake the judge role from `docs/role-map.md`.
+2. Write the request to a file and **hand over the path alone** (**principle-guard-the-context-window**).
+   What goes in the request:
+   - The target paths settled in stage 2
+   - How to take the diff (`git diff <base>...<head> -- <paths>`)
+   - **One paragraph of intent.** What is this code trying to achieve?
+     What the judge role attacks is whether it achieves that intent, not whether the intent is right
+   - The shape to return: for each item, "file:line" and "concrete input or state -> wrong output / what is lost"
+   - State explicitly: **"write 'none' for an item with no finding. Do not squeeze findings out"**
+3. Have it write the result to a file and read that. Do not scrape it off the pane.
 
-## この層がやらないこと
+## What to do with what comes back
 
-- **コードを書き換えない。**直すのは著者の仕事（`plumb:pr-review` の原則 6）。
-- **`plumb:pr-review` の手順を再実装しない。**段・軸・判定の定義も、E の発火条件も、
-  そちらが正本。ここに写すと、片方だけが古くなる。
-  **この規則は、この文書自身に一番強く効く。**
-- **判定役を同じファミリーに落とさない。**環境の都合で落とすことはあるが、
-  そのときは `docs/role-map.md` の規則どおり**記録する。黙って劣化させない。**
+**The judge role's output is a refutation, not a verdict.**
+
+- Reassign confidence (CONFIRMED / PLAUSIBLE) by the definitions in stage 5 of `plumb:pr-review`.
+  **Even where the judge role wrote "confirmed", it is PLAUSIBLE unless the command that proves it ran this turn.**
+- **Do not let the judge role assign blocking.** You assign that in stage 5.
+- Put what overlaps another axis first. **A finding that matches across axes is the strongest signal there is.**
+- A finding from one axis alone is still worth reading, but carry it at lower confidence.
+- Where the judge role explicitly said "this is fine" and another axis disagrees,
+  **carry that disagreement itself into stage 5.** Do not silently drop one side.
+
+## What this layer does not do
+
+- **It does not rewrite code.** Fixing is the author's job (`plumb:pr-review`, principle 6).
+- **It does not reimplement `plumb:pr-review`'s steps.** The definitions of the stages, the axes and the verdict,
+  and E's trigger conditions, all live there. Copied here, one copy goes stale.
+  **This rule bites hardest on this very document.**
+- **It does not drop the judge role back into the same family.** The environment sometimes forces that,
+  and when it does, **record it** as `docs/role-map.md` requires. Never degrade it silently.

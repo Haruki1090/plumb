@@ -1,49 +1,57 @@
 ---
 name: principle-sequence-verifiable-units
 origin: plumb
-description: "複数ステップの作業と、その届け方に適用する。検証できる状態で終わる単位に割り、一つ緑にしてから次へ進む。単位の緑は合成の緑ではないので、繋いだあとにもう一度通す。並べる順序そのものがレビュアーへの証明になる。"
+description: "Slice multi-step work into units that each end in a verifiable state, get one green before starting the next, and run the whole thing again once they are joined, because a green unit is not a green composition: the ordering itself is your proof to the reviewer. Use when asked \"how should I split this up\", \"what order do these land in\", or \"can I just do it all and test at the end\"."
 ---
 
 # Sequence work into verifiable units
 
-**一度に進める幅は、一度に切り分けられる幅を超えない。**
+**Never advance further in one go than you can carve up in one go.**
 
-**なぜ:** まとめて編集して最後に一度確認するほうが、いつも速く見える。
-**速いのは失敗しなかったときだけで、その分岐は事前に見えない。**
-外れたときは、赤い出力から原因の一件を特定する作業が丸ごと乗り、
-しかもその上に既に何段か積んでいる。**期待値が非対称なので、感覚で選ぶと必ず外れる側を選ぶ。**
+**Why this is hard to keep.** Editing in bulk and checking once at the end always looks
+faster. **It is faster only when nothing goes wrong, and that branch is invisible in
+advance.** When something does go wrong, you pay the entire cost of picking one cause out
+of a wall of red, with several more layers already stacked on top of it. **The expected
+values are asymmetric, so choosing by feel picks the losing side every time.**
 
-## 出発点を先に緑にする
+## Get the starting point green first
 
-**割る前に、いまのツリーが緑であることを見る。**
-ここを飛ばすと、最初の赤が自分のせいなのか元からなのかを分ける手段が消える。
-作業場を作った直後、幹に乗せ直した直後は、**必ず一度通してから始める。**
+**Before you slice, see that the tree you already have is green.** Skip this and you lose
+any way to tell whether the first red is yours or was there before you arrived. Right after
+you create a workspace, right after you put the work back on the trunk: **run it through
+once before you start.**
 
-## 単位の作り方
+## How to make a unit
 
-- **検査で終わる最小の塊を取る。**一つの編集とそれを見るテスト、単独で成立するコミット
-- **緑にしてから次へ。**まとめて編集してから一度回す、をしない
-- **1回の取り消しが1単位を戻せる形にする。**戻せない粒度は、割ったことになっていない
-- **道具が編集を代行しているときほど、単位ごとの検査を省かない。**
-  手が速くなった分だけ、赤の発見が遅れたときの巻き戻しが大きい
+- **Take the smallest chunk that ends in a check.** One edit and the test that watches it;
+  a commit that stands on its own
+- **Green, then next.** Do not edit in bulk and run once
+- **Shape it so that one undo takes back one unit.** A granularity you cannot take back is
+  not a slice
+- **Do not drop the per-unit check, least of all when a tool is doing the editing for you.**
+  However much faster your hands got, that is how much bigger the rewind is when the red
+  shows up late
 
-## 単位の緑は、合成の緑ではない
+## A green unit is not a green composition
 
-**繋がって初めて出る失敗は、単位の検査を一つも通っていない。**
-単位ごとの関門は範囲がその単位に閉じているので、原理的にそこを見ていない。
+**A failure that only appears once the pieces are joined has passed through no unit check
+at all.** A per-unit gate is scoped to that unit, so it is not looking there — it cannot be.
 
-- 配った仕事が個々に緑でも、**統合したあとに全体をもう一度通す**
-- ブランチを閉じる前に、**ブランチ全体を一度だけ見る**
-- 指摘に応じるときも、**一件ずつ直して一件ずつ通し**、最後に全体をもう一度
+- Even when the work you handed out is green piece by piece, **run the whole thing again
+  after integration**
+- Before you close out a branch, **look at the branch as a whole, once**
+- Answering findings works the same way: **fix one, run one**, and put the whole thing
+  through again at the end
 
-## 順序を証明に使う
+## Use the ordering as proof
 
-**並べ方は、レビュアーが再生できる筋書きになる。**
-基準になる形は**先に落ちるテスト、その上に修正**——
-一つ目が問題の実在を示し（赤）、二つ目が解決を示す（緑）。
+**How you arrange the units becomes a storyline the reviewer can replay.** The reference
+shape is **a failing test first, the fix on top of it**: the first shows the problem is
+real (red), the second shows it is solved (green).
 
-他にも、消してから作り直す、基準値を捕ってから手を入れる、土台を置いてから機能を乗せる。
-**どれも「信じてほしい」を「赤が緑になるところを見てほしい」に変える。**
+There are others. Delete, then rebuild. Capture a baseline, then touch it. Lay the
+foundation, then put the feature on top. **Each of them turns "trust me" into "watch the
+red go green".**
 
-**一回一回の検査を本物にするのは prove-it-works、単位ごとの検査を安くするのは build-the-lever。**
-この原則が持つのは、割り方と並べ方だけ。
+**Making each single check real belongs to prove-it-works, and making per-unit checks cheap
+belongs to build-the-lever.** What this principle owns is the slicing and the ordering.

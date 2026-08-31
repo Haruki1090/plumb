@@ -1,42 +1,40 @@
 ---
 name: principle-exhaust-the-design-space
 origin: plumb
-description: "コードベースに前例のない新規の UI インタラクションやアーキテクチャ判断に直面したときに適用する。決める前に、競合する 2〜3 案を作って並べて比べる。"
+description: "Apply when you face a new UI interaction or an architecture decision with no precedent in the codebase. Before you decide, build 2-3 competing options and compare them side by side."
 ---
 
 # Exhaust the Design Space
 
-**前例のない判断では、2〜3 個の競合する案を作って並べてから決める。**
-どの案を採るかの基準は **principle-experience-first**、
-安く作って捨てる手順は `playbooks/prototype.md` が持つ。
-この原則が持つのは**決める前に何本要るか**——1 本で決めてよい場面と、そうでない場面の線。
+**On a decision with no precedent, build 2-3 competing options and line them up before you
+decide.** The bar for choosing between them is **principle-experience-first**; the steps for
+building one cheap and throwing it away live in `playbooks/prototype.md`. This principle owns
+**how many you need before deciding**: the line between when one is enough and when it is not.
 
-**なぜ守れないか:** 最初に思い付いた案は、その後の思考の足場になる。
-2 本目を作れと言われて出てくるのは 1 本目の変奏で、
-**しかも本人には「別案を検討した」と感じられる。**
-そのうえ 1 本目には既に手が動いていて、捨てる費用が発生している。
-**本数を先に決めておかないと、探索は必ず 1 本で終わる。**
+**Why this is hard to keep.** The first option you think of becomes the scaffolding for
+every thought after it. Told to produce a second, what comes out is a variation on the first,
+and **from the inside it feels like you considered an alternative.** On top of that, work has
+already gone into the first one, so dropping it now costs something. **Fix the count up front
+or the search always ends at one.**
 
-## 別案であることの判定
+## How to tell a second option is really a second option
 
-**共倒れ試験。**1 本目が置いている前提が崩れたとき、その案も一緒に落ちるか。
-落ちるなら、それは同じ案の別の見た目。**違う前提を置いている案が 2 本目。**
+**The collapse-together test.** When the assumption the first option rests on breaks, does
+this one fall with it? If it does, it is the same option wearing a different face.
+**An option resting on a different assumption is the second option.**
 
-- データの持ち方が同じで、見せ方だけ違う → 同じ案
-- 制御の流れが同じで、名前だけ違う → 同じ案
-- **どちらかが成立すれば、もう一方が要らなくなる**関係にあるなら、別案
+- Same way of holding the data, different presentation → the same option
+- Same control flow, different names → the same option
+- If **either one working makes the other unnecessary**, they are different options
 
-## 並べ方
+## How to line them up
 
-- **同じ土俵に載せる。**同じ入力、同じ場面、同じ評価軸。
-  完成度の違うものを並べると、比べているのは案ではなく作り込みの量になる
-- **1 つの切替器の裏に置き、名前を付ける。**持ち主が名前で呼べる形にする
-- **決めたら、落とした案を落とした理由ごと残す。**
-  残さないと、次に同じ分岐が来たときにもう一度全部作ることになる
+- **Put them on the same ground.** Same input, same scenario, same axes. Line up options built to different degrees of finish and what you compare is how much work went in, not the options
+- **Put them behind one switch and give each a name.** The owner has to be able to call them by name
+- **Once you decide, keep the rejected options together with the reason you rejected them.** Without that, the next time this fork comes around you build all of them again
 
-## 掛けない場面
+## When not to apply it
 
-- **形が既に決まっている機械的な実装。**同じ型がコードベースに何度も在る
-- **目標の状態がはっきりしているバグ修正とリファクタ**
-- **制約が案を 1 本に絞りきっている場面。**ただし**絞りきっていると言うなら、
-  他の案が制約のどれに当たって落ちるかを言う。**言えないなら、絞れていない
+- **Mechanical implementation where the shape is already settled.** The same shape appears again and again in the codebase
+- **A bugfix or a refactor whose target state is already clear**
+- **When the constraints narrow it to one.** But **if you claim they do, name which constraint each of the other options hits and dies on.** If you cannot name it, it is not narrowed

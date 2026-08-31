@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# plumb doctor — 文書が主張する「環境」が、いまも実在するかを見る。
-# check-harness.sh が内側の整合を見るのに対し、こちらは外側との接点を見る。
-# 使い方: scripts/doctor.sh [plugin-root]
+# plumb doctor — checks whether the environment the documents claim still exists.
+# check-harness.sh looks at the inside for consistency; this looks at the seam with the outside.
+# Usage: scripts/doctor.sh [plugin-root]
 set -uo pipefail
 
 root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -12,163 +12,168 @@ bad()  { note "NG" "$1"; fail=1; }
 
 echo "plumb doctor: $root"
 
-# 1. 内側の整合（check-harness に委譲。二重に書かない）
-echo "— 内側"
+# 1. Inside consistency (delegated to check-harness. Do not write it twice)
+echo "— inside"
 if bash "$root/scripts/check-harness.sh" "$root" >/dev/null 2>&1; then
-  note "ok" "横断ルール（check-harness.sh）"
+  note "ok" "cross-cutting rules (check-harness.sh)"
 else
-  bad "横断ルールが落ちている。scripts/check-harness.sh を直接走らせて内容を見る"
+  bad "the cross-cutting rules are failing. Run scripts/check-harness.sh directly to see what"
 fi
 
-# selftest から呼ばれたときは呼び返さない。相互再帰になる。
+# When selftest called us, do not call back. That is mutual recursion.
 if [ -n "${PLUMB_IN_SELFTEST:-}" ]; then
-  note "--" "スクリプトの振る舞い: selftest から呼ばれているので省略"
+  note "--" "script behaviour: skipped, called from selftest"
 elif bash "$root/scripts/selftest.sh" "$root" >/dev/null 2>&1; then
-  note "ok" "スクリプトの振る舞い（selftest.sh）"
+  note "ok" "script behaviour (selftest.sh)"
 else
-  bad "selftest が落ちている。scripts/selftest.sh を直接走らせて内容を見る"
+  bad "selftest is failing. Run scripts/selftest.sh directly to see what"
 fi
 
-# 2. 実行先。**必須と任意を分ける。**
-#    git と gh は無いと型そのものが成立しない。それ以外は設定したときだけ要る。
-#    「持っていない」を「壊れている」と報告すると、初回の体験が「壊れている」になる。
-echo "— 実行先"
+# 2. Routing targets. **Keep required and optional apart.**
+#    Without git and gh, the playbooks do not work at all. Everything else is needed only once
+#    you configure it. Report "you do not have it" as "it is broken" and the first experience
+#    of plumb becomes "it is broken".
+echo "— routing targets"
 for c in git gh; do
-  command -v "$c" >/dev/null 2>&1 && note "ok" "$c" || bad "$c が PATH に無い（plumb の全ての型が前提にしている）"
+  command -v "$c" >/dev/null 2>&1 && note "ok" "$c" || bad "$c is not on PATH (every plumb playbook assumes it)"
 done
-# python3 は plumb-pr-drift（skills/pr-review/scripts/pr-drift.sh）だけが使う。
-# 他の型は前提にしていないので git/gh と同列の必須にはしない。持っていない人の
-# 初回体験を「壊れている」にしないため、無ければ情報行（--）に留める。
+# python3 is used by plumb-pr-drift (skills/pr-review/scripts/pr-drift.sh) alone.
+# No other playbook assumes it, so it does not rank as required alongside git and gh. To keep the
+# first experience from reading as "broken" for someone without it, missing stays an info line (--).
 command -v python3 >/dev/null 2>&1 \
   && note "ok" "python3" \
-  || note "--" "python3 が PATH に無い（plumb-pr-drift を使うときだけ必要）"
+  || note "--" "python3 is not on PATH (needed only when you use plumb-pr-drift)"
 
 cfg() { bash "$root/scripts/plumb-config.sh" "$1" ""; }
 for k in role.judge role.bulk pane.driver; do
   v=$(cfg "$k")
   if [ -z "$v" ]; then
-    note "--" "$k: 未設定（本線が代行する）"
+    note "--" "$k: unset (the main session stands in)"
   elif command -v "$v" >/dev/null 2>&1; then
     note "ok" "$k = $v"
   else
-    bad "$k = $v と設定されているが PATH に無い"
+    bad "$k = $v is configured but is not on PATH"
   fi
 done
 
 st=$(cfg stack.tool)
 if [ -z "$st" ]; then
-  note "--" "stack.tool: 未設定（landing-a-stack は素の gh pr merge に落ちる）"
+  note "--" "stack.tool: unset (landing-a-stack falls back to plain gh pr merge)"
 elif [ "$st" = "gh-stack" ]; then
   gh extension list 2>/dev/null | grep -q 'gh stack' \
     && note "ok" "stack.tool = gh-stack" \
-    || bad "stack.tool = gh-stack だが gh の拡張が入っていない"
+    || bad "stack.tool = gh-stack but the gh extension is not installed"
 else
-  command -v "$st" >/dev/null 2>&1 && note "ok" "stack.tool = $st" || bad "stack.tool = $st が PATH に無い"
+  command -v "$st" >/dev/null 2>&1 && note "ok" "stack.tool = $st" || bad "stack.tool = $st is not on PATH"
 fi
 
-# 3. 外部プラグインへの依存は無い。
-#    2026-08-30 まで、plumb のルータは「バグを直す」と「計画をタスク単位で回す」を
-#    superpowers に転送しており、doctor はそれが実在するかを見ていた。
-#    その 5 本を plumb の語彙で書き下ろした時点で**依存は 0 になった**ので、検査ごと消す。
-#    「入っていれば ok、無ければ `--`」を残す手もあったが、**それは依存が在るかのように読める。**
-#    無い依存を検査しないのが、この道具の正しい状態（**principle-subtract-before-you-add**）。
-#    他の候補（agent-routing・graph-engineering・pr-review）は既に同梱か転送に替わっている。
+# 3. There is no dependency on an outside plugin.
+#    Until 2026-08-30, plumb's router forwarded "fix a bug" and "run a plan task by task" to
+#    superpowers, and doctor checked whether that existed.
+#    Once those 5 playbooks were rewritten in plumb's own vocabulary, **the dependency count hit
+#    zero**, so the check goes with it.
+#    Keeping "ok if installed, `--` if not" was an option, but **that reads as though a dependency
+#    is still there.** Not checking for a dependency that does not exist is the correct state of
+#    this tool (**principle-subtract-before-you-add**).
+#    The other candidates (agent-routing, graph-engineering, pr-review) are already bundled or
+#    forwarded instead.
 
-# 3b. 同梱した agent 6 体が実在するか（本文 → 実体）
-#     pr-review スキルが名指す agent が消えると、反証段の呼び出し先を失ったまま気付けない。
-#     抽出は本文形式（backtick 付き `pr-xxx`）で候補を拾うだけなので、`pr-drift` のような
-#     bin/plumb-pr-drift の略称（agent ではない）も同じ形に見えてしまう。2026-08-30 に実測。
-#     候補が bin/plumb-<name> コマンドとして実在する場合は agent 判定から外す。
-echo "— 同梱 agent"
+# 3b. Do the 6 bundled agents exist (body text -> file)
+#     If an agent the pr-review skill names disappears, the refutation stage loses what it calls
+#     and nobody notices. Extraction only picks up candidates in the body form (`pr-xxx` in
+#     backticks), so the short name of bin/plumb-pr-drift — `pr-drift`, which is not an agent —
+#     looks identical. Measured on 2026-08-30.
+#     Drop a candidate from the agent test when it exists as a bin/plumb-<name> command.
+echo "— bundled agents"
 while IFS= read -r name; do
   [ -z "$name" ] && continue
   [ -f "$root/bin/plumb-$name" ] && continue
   if [ -f "$root/agents/$name.md" ]; then note "ok" "agents/$name.md"
-  else bad "agents/$name.md が無い（skills/pr-review/SKILL.md が名指している）"; fi
+  else bad "agents/$name.md is missing (skills/pr-review/SKILL.md names it)"; fi
 done < <(grep -oE '`pr-[a-z-]+`' "$root/skills/pr-review/SKILL.md" | tr -d '`' | sort -u)
 
-# 3c. agents/ に置いたのに、誰からも名指されていない agent は無いか（実体 → 本文）
-#     check-harness のルール8（プレイブック/原則の索引）は本文↔実体を両方向見ているが、
-#     agent はここまで 3b の一方向（本文が指す先の実在）しか見ていなかった。片方向だと
-#     agent を足しただけで、誰にも呼ばれない孤児ファイルが静かに残っても気付けない。
+# 3c. Is there an agent sitting in agents/ that nobody names (file -> body text)
+#     check-harness's rule 8 (the playbook and principle index) looks both ways, but agents were
+#     only ever checked in 3b's one direction (does what the body names exist). One direction
+#     means you can add an agent and quietly leave an orphan file nobody ever calls.
 for f in "$root"/agents/*.md; do
   [ -f "$f" ] || continue
   n=$(basename "$f" .md)
   grep -q "\`$n\`" "$root/skills/pr-review/SKILL.md" \
-    || bad "agents/$n.md を名指す本文が無い（孤児 agent）"
+    || bad "no body text names agents/$n.md (orphan agent)"
 done
 
-# 4. agent が名指す呼び出し元が実在するか
-#    ここで見る ~/.claude/agents/*.md は plumb が同梱するものではなく、あなた自身が
-#    置いた私物。plumb を使う人ほど agent を増やすため、私物 agent の書き方次第で
-#    plumb の doctor が NG になるのは筋が違う。fail は立てず、件数だけ報告する
-#    （中身は持ち主にとって有用な情報なので検査自体は残す）。
-echo "— agent の呼び出し元（あなたの ~/.claude/agents/ 私物。plumb は同梱していない）"
+# 4. Do the callers an agent names exist
+#    The ~/.claude/agents/*.md read here are not bundled by plumb — they are your own. The more
+#    someone uses plumb the more agents they accumulate, so it is wrong for plumb's doctor to go
+#    NG over how a private agent happens to be written. Do not raise fail; just report the count
+#    (the contents are useful to the owner, so the check itself stays).
+echo "— the agents on your side (your own ~/.claude/agents/. plumb does not bundle these)"
 orphan=0
 for f in "$CLAUDE"/agents/*.md; do
   [ -f "$f" ] || continue
   while IFS= read -r name; do
     [ -f "$CLAUDE/skills/$name/SKILL.md" ] || {
-      note "--" "$(basename "$f" .md) が指す「$name スキル」が見当たらない（あなたの私物 agent。plumb には無関係）"
+      note "--" "$(basename "$f" .md) points at a \"$name skill\" that is nowhere to be found (your own agent. Nothing to do with plumb)"
       orphan=$((orphan+1)); }
-  done < <(grep -oE '`?[a-z][a-z0-9-]+`? スキル' "$f" | tr -d '`' | sed 's/ スキル//' | sort -u)
+  done < <(grep -oE '`?[a-z][a-z0-9-]+`? skill' "$f" | tr -d '`' | sed 's/ skill//' | sort -u)
 done
-note "--" "宙吊りの private agent: ${orphan} 件"
+note "--" "dangling private agents: ${orphan}"
 
-# 5. path-map が主張するパスが実在するか
-echo "— パス"
-[ -d "$CLAUDE/projects" ] && note "ok" "~/.claude/projects/" || bad "~/.claude/projects/ が無い"
+# 5. Do the paths path-map claims exist
+echo "— paths"
+[ -d "$CLAUDE/projects" ] && note "ok" "~/.claude/projects/" || bad "~/.claude/projects/ is missing"
 roots=$(git worktree list 2>/dev/null | wc -l | tr -d ' ')
-note "--" "git worktree list が見ている worktree: ${roots} 件"
+note "--" "worktrees git worktree list can see: ${roots}"
 for d in "$HOME/.herdr/worktrees" "$HOME/.codex/worktrees"; do
-  [ -d "$d" ] && note "--" "worktree 根あり: ${d/#$HOME/~}"
+  [ -d "$d" ] && note "--" "worktree root present: ${d/#$HOME/~}"
 done
 
-# 5b. 成果物の置き場が解決できるか
-#     plumb-path.sh は cwd の git リポジトリを起点に解決する。git リポジトリの外から
-#     doctor を回すと「壊れている」のではなく「確認できない」——bin/ を入れると
-#     どこからでも plumb-doctor を叩けるようになるぶん、ここを踏みやすくなった。
-echo "— 成果物の置き場"
+# 5b. Can the artifact location be resolved
+#     plumb-path.sh resolves from the git repository at cwd. Run doctor from outside a git
+#     repository and the answer is "cannot check", not "broken" — putting bin/ on PATH lets you
+#     call plumb-doctor from anywhere, which makes this easier to hit.
+echo "— where the artifacts go"
 if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
-  note "--" "確認できない（git リポジトリの外。対象リポジトリの中で doctor を回す）"
+  note "--" "cannot check (outside a git repository. Run doctor inside the repository you mean)"
 elif r=$(bash "$root/scripts/plumb-path.sh" root 2>/dev/null); then
-  note "ok" "解決できる（${r/#$HOME/~}）"
-  # 追跡する側と捨てる側が入れ替わっていないか。
-  # specs が ignore されていたら、正本が working tree と一緒に消える。
+  note "ok" "resolves (${r/#$HOME/~})"
+  # Have the tracked side and the discarded side been swapped?
+  # If specs is ignored, the source of truth disappears with the working tree.
   if [ -d "$r" ]; then
-    # 存在しないディレクトリには末尾スラッシュのパターンが一致しない。
-    # 「まだ作られていない」を「追跡されている」と報告しないこと。
+    # A trailing-slash pattern matches no directory that does not exist.
+    # Do not report "not created yet" as "tracked".
     if [ ! -d "$r/run" ]; then
-      note "--" "run/: まだ作られていない（使うときに --mkdir で作られる）"
+      note "--" "run/: not created yet (it gets created with --mkdir when you use it)"
     elif git -C "$(dirname "$r")" check-ignore -q "$r/run" 2>/dev/null; then
-      note "ok" "run/ は追跡外"
+      note "ok" "run/ is untracked"
     else
-      bad "run/ が追跡されている（台帳が正本に混ざる）"
+      bad "run/ is tracked (the ledger gets mixed into the source of truth)"
     fi
     for k in specs plans; do
       git -C "$(dirname "$r")" check-ignore -q "$r/$k" 2>/dev/null \
-        && bad "$k/ が ignore されている（正本が working tree と一緒に消える）" \
-        || note "ok" "$k/ は追跡対象"
+        && bad "$k/ is ignored (the source of truth disappears with the working tree)" \
+        || note "ok" "$k/ is tracked"
     done
   else
-    note "--" "この場所にはまだ実体が無い（使うときに --mkdir で作られる）"
+    note "--" "nothing at this location yet (it gets created with --mkdir when you use it)"
   fi
 else
-  bad "scripts/plumb-path.sh が解決できない"
+  bad "scripts/plumb-path.sh cannot resolve"
 fi
 
-# 6. プラグインとして読み込まれているか
-#    claude が PATH に無いのは「確認できない」であって「壊れている」ではない。
-#    ここを混同すると、claude を CLI として使わない環境まで NG になる。
-echo "— 読み込み"
+# 6. Is it loaded as a plugin
+#    claude not being on PATH is "cannot check", not "broken". Confuse the two and an environment
+#    that simply does not use claude as a CLI goes NG.
+echo "— loading"
 if ! command -v claude >/dev/null 2>&1; then
-  note "--" "plumb がプラグイン一覧にあるか: 確認できない（claude が PATH に無い）"
+  note "--" "is plumb in the plugin list: cannot check (claude is not on PATH)"
 elif claude plugin list 2>/dev/null | grep -q 'plumb'; then
-  note "ok" "plumb がプラグイン一覧にある"
+  note "ok" "plumb is in the plugin list"
 else
-  bad "plumb がプラグイン一覧に出ない。新しいセッションで claude plugin list を確認する"
+  bad "plumb does not show up in the plugin list. Check claude plugin list in a new session"
 fi
 
 echo
-if [ $fail -eq 0 ]; then echo "  → 健全"; else echo "  → 要対応（上の NG）"; fi
+if [ $fail -eq 0 ]; then echo "  → healthy"; else echo "  → needs attention (the NG lines above)"; fi
 exit $fail
