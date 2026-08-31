@@ -21,8 +21,7 @@ idle, a defect that will not reproduce. **What you produce is a diagnosis, not a
    or holds the reservation.
 
 Do not fix it (**principle-fix-root-causes**). Once the cause is known, hand debugging to
-"What plumb has no playbook for" in SKILL.md, or to `playbooks/shaping-the-work.md` if it needs
-a rebuild.
+`playbooks/fixing-a-bug.md`, or to `playbooks/shaping-the-work.md` if it needs a rebuild.
 
 **What you return:** the signal you captured, the cut-down result, how you proved the
 mechanism, the location in the source, the artifact paths.

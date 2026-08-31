@@ -98,7 +98,7 @@ Then **take the set difference.**
 | In the body, not in the diff | Unimplemented, or claimed and then taken back. It misleads the approver | Medium |
 | **In the diff, not in the body** | **An undeclared change** | **Always high** |
 
-`pr-drift.sh`'s "commits after the body was last edited" is a mechanical lower bound on the second one.
+`plumb-pr-drift`'s "commits after the body was last edited" is a mechanical lower bound on the second one.
 Zero does not clear you (the body can have been incomplete from the start), but non-zero means something
 is there for certain.
 
@@ -199,8 +199,9 @@ timeline, the blast radius or the permanence wrong. One was corrected in the **h
 Shipped as written, it would have been thrown out as factually wrong.
 **Refutation is not only a process for killing things.**
 
-**Give the refuter's output a section for "other things found along the way".** In real use a refuter
-turned up, as a by-product, a finding none of the four axes produced (an alert log line with no monitoring
+**The refuter's output carries a section for "other things found along the way".** It is in
+`agents/pr-refuter.md`'s output spec, so you do not have to ask for it. In real use a refuter turned
+up, as a by-product, a finding none of the four axes produced (an alert log line with no monitoring
 attached to it). Keep it purely on killing and that by-product gets discarded.
 
 ```

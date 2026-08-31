@@ -120,7 +120,7 @@ checkpoints belong there.
 | The local tier (the flow you are changing exists, and the shape ran to a few lines) | Implement without a plan. **The plan would run longer than the implementation** |
 | The nodes split and go parallel | `plumb:graph`. **The graph definition doubles as the plan. Do not write it twice** |
 | A structural change that does not change behavior | `playbooks/refactoring.md` already carries the ordering |
-| Fixing something that is failing | **Get a repro first** (**principle-fix-root-causes**). Do not start from design. Go to "What plumb has no playbook for" in SKILL.md |
+| Fixing something that is failing | **Get a repro first** (**principle-fix-root-causes**). Do not start from design. Go to `playbooks/fixing-a-bug.md` |
 
 **What you return:** the plan path, how many tasks and each one's artifact, the table mapping
 spec requirements to tasks, and the handoff that was chosen. Add the note that **the plan is

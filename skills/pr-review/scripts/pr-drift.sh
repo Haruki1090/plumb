@@ -3,8 +3,10 @@
 #
 # Usage: plumb-pr-drift <owner/repo> <PR number>
 #
-# Always compare timestamps as UTC ISO8601. git's %cI carries a local timezone offset, which breaks
-# string comparison, so the comparison happens on the Python side after parsing into datetime.
+# Timestamps come from the GraphQL API as ISO8601, not from git. They are still parsed into
+# datetime before being compared, rather than compared as strings: an offset form and a Z form
+# denote the same instant while sorting differently as text, and the failure is silent - the
+# ordering just comes out wrong, with nothing to catch it.
 
 set -euo pipefail
 
@@ -26,6 +28,7 @@ meta="$(gh api graphql -f query="
       deletions
       changedFiles
       commits(last: 250) {
+        totalCount
         nodes { commit { oid committedDate messageHeadline } }
       }
     }
@@ -47,6 +50,9 @@ def ts(s):
 head = pr["headRefOid"]
 edited = pr["lastEditedAt"] or pr["createdAt"]
 commits = [c["commit"] for c in pr["commits"]["nodes"]]
+# The query takes the last 250. Past that the oldest are dropped, which is exactly where `base`
+# is looked for below, so a big PR would silently lose the diff command instead of reporting it.
+truncated = pr["commits"]["totalCount"] - len(commits)
 
 print("=" * 68)
 print(f"  {pr['title']}")
@@ -73,6 +79,11 @@ else:
     if base:
         print()
         print(f"   To see the undeclared changes:  git diff --stat {base[:8]}..{head[:8]}")
+    elif truncated:
+        print()
+        print(f"   !! Cannot pin the base: this PR has {pr['commits']['totalCount']} commits and only")
+        print(f"      the last 250 were fetched, so the {truncated} oldest are not here. Get the base")
+        print( "      from the PR's own commit list instead of trusting this section.")
 
 # --- when an approval gets dismissed ---------------------------------------
 print()

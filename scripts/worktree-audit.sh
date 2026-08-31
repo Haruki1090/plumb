@@ -8,6 +8,17 @@
 # git worktree list returns everything registered, whichever root it sits under.
 set -u
 
+# stat and date take opposite flags on BSD (macOS) and GNU (Linux), and the collision is silent:
+# `date -r` reads an epoch on BSD and a *file* on GNU, so on Linux the old call did not error, it
+# reported the wrong day. Probe once and bind the two calls rather than guessing from `uname`.
+if stat -f '%m' . >/dev/null 2>&1; then
+  mtimes()    { xargs stat -f '%m %N' 2>/dev/null; }   # BSD
+  epoch_day() { date -r "$1" '+%Y-%m-%d' 2>/dev/null; }
+else
+  mtimes()    { xargs stat -c '%Y %n' 2>/dev/null; }   # GNU
+  epoch_day() { date -d "@$1" '+%Y-%m-%d' 2>/dev/null; }
+fi
+
 repo="${1:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 [ -z "$repo" ] && { echo "run this inside a git repository, or pass the repository path" >&2; exit 1; }
 cd "$repo" 2>/dev/null || { echo "cannot cd: $repo" >&2; exit 1; }
@@ -72,7 +83,7 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt;
     case "$b" in
       __pycache__|.venv|venv|node_modules|.next|.nuxt|dist|build|target|.turbo|.gradle| \
       .pytest_cache|.mypy_cache|.ruff_cache|.dart_tool|coverage|.cache|DerivedData| \
-      .terraform|.hypothesis|.tox|.gradle|next-env.d.ts|*.tsbuildinfo|*.egg-info)
+      .terraform|.hypothesis|.tox|next-env.d.ts|*.tsbuildinfo|*.egg-info)
         regen=$((regen+1)); regenlist="$regenlist $ip" ;;
       *) keep=$((keep+1)); keeplist="$keeplist $ip" ;;
     esac
@@ -109,10 +120,10 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt;
     else
       hits=$(grep -rl -e "${wt}/" -e "${wt}\"" "$d" 2>/dev/null)
     fi
-    f=$(printf '%s\n' "$hits" | grep -v '^$' | xargs stat -f '%m %N' 2>/dev/null | sort -rn | head -1)
+    f=$(printf '%s\n' "$hits" | grep -v '^$' | mtimes | sort -rn | head -1)
     [ -z "$f" ] && continue
     t=$(echo "$f" | awk '{print $1}')
-    [ "$t" -gt "$last_ts" ] 2>/dev/null && { last_ts=$t; last=$(date -r "$t" '+%Y-%m-%d' 2>/dev/null); }
+    [ "$t" -gt "$last_ts" ] 2>/dev/null && { last_ts=$t; last=$(epoch_day "$t"); }
   done
   recent=$([ "$last_ts" -gt 0 ] 2>/dev/null && [ $(( (now - last_ts) / 86400 )) -le 4 ] && echo yes || echo no)
 
