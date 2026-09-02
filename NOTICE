@@ -11,7 +11,7 @@ licensed under the MIT License. pstack is where plumb's shape came from: the ide
 of a router that indexes named principles, the decision to keep principles as
 plain documents rather than skills, and most of the principle names still in use.
 
-principles/ holds 22 files. Of those, 0 are reproduced verbatim from pstack —
+principles/ holds 23 files. Of those, 0 are reproduced verbatim from pstack —
 every one has been rewritten in plumb's own words, stating why the principle is
 hard to keep and how to tell whether it was kept. Each carries `origin: plumb`
 in its frontmatter. The names survive because the playbooks cite them by name.

@@ -25,7 +25,7 @@ writing the tests, and landing the result. It depends on no other plugin.
   reviewer of it: it shares the blind spots that produced the bug. plumb routes
   the adversarial pass to a different model family and treats a same-family-only
   verdict as unreviewed.
-- **A principle index you call by name.** 22 principles, each with a
+- **A principle index you call by name.** 23 principles, each with a
   name. Citing one obliges you to name the specific decision it changed — a
   quotation with no decision attached is treated as proof the leaf was never
   read. Naming turns "be careful" into something a reviewer can check. Each
@@ -34,14 +34,15 @@ writing the tests, and landing the result. It depends on no other plugin.
 - **A harness that checks its own claims.** Documentation rots silently: a
   playbook names a script that was since renamed, the router indexes a principle
   that was deleted, an agent definition points at a skill that moved.
-  `scripts/check-harness.sh` fails on the first two; `scripts/doctor.sh` catches
-  the third and checks the outer edge besides — whether the tools and skills the
-  docs name still exist on this machine. Both have caught real breakage, including
-  a frontmatter flag that had made the entire harness unreachable from the model.
+  `scripts/check-harness.sh` fails on the first two; `scripts/doctor.sh` checks the
+  documents and the outer edge besides — whether the tools and skills the docs name
+  still exist on this machine. `plumb-session-audit` checks the sessions themselves.
+  The harness has caught real breakage, including a frontmatter flag that had made
+  it unreachable from the model.
 
 ## What's bundled
 
-Beyond the router, the 22 playbooks and the 22 principles, plumb ships these skills
+Beyond the router, the 22 playbooks and the 23 principles, plumb ships these skills
 (all called under the `plumb:` namespace) and their supporting agents:
 
 - **`plumb:pr-review`** — adversarial PR review: cross-checks the PR body against

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Follow $0 to the real file even when it is a symlink. macOS has no readlink -f, so resolve it in a loop.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir=$(cd -P "$(dirname "$src")" && pwd)
+  src=$(readlink "$src")
+  case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+exec python3 "$(cd -P "$(dirname "$src")/.." && pwd)/scripts/session-audit.py" "$@"

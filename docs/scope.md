@@ -4,7 +4,7 @@ plumb starts from the playbooks in pstack (`pstack/` in `github.com/cursor/plugi
 **13 playbooks come from pstack**, broken down in the table below. **The rest did not come
 from pstack** (see "Written outside pstack" below).
 
-**On 2026-08-31 the last verbatim asset went away.** 21 of the 22 principles still carried
+**On 2026-08-31 the last verbatim asset went away.** 21 of the 22 principles then carried
 pstack's English body text; all 21 were rewritten in plumb's own words (466 → 1,010 lines).
 **These are not translations.** The upstream text was read only to grasp what failure each
 principle exists to prevent, then closed, and what got written was **the mechanism that makes
@@ -94,7 +94,7 @@ above.**
 **Do not treat it as a second source of truth and delete it.** `/loop` is mechanism; it
 carried no discipline.
 
-## Written outside pstack (9 playbooks + 1 principle + 1 tool)
+## Written outside pstack (9 playbooks + 2 principles + 2 tools)
 
 **Problems pstack did not have, and that the existing assets held in another form**, written
 from scratch in plumb's vocabulary. These are not ports, so they sit outside the breakdown
@@ -112,13 +112,13 @@ above.
 | `playbooks/writing-tests.md` | The content of the tests themselves. A test you never watched fail protects nothing | **Gave five names to tests that protect nothing and banned them** (the whiff, the mirror, the transcript, the stand-in check, the loosened test). Ends with "**break one place in the product and say which test fails**", to put it in a form you can judge instead of assert |
 | `playbooks/being-reviewed.md` | Asking for review as the author, and answering what comes back | **Puts the asking side and the receiving side in one document.** Asks for the answer in the same **two axes** as `plumb:pr-review` (confidence × blocking), and does not bring in a single-axis severity |
 | `principles/gate-claims-on-evidence.md` | Passing a gate before you claim done | **The method belongs to `prove-it-works`.** This principle owns the **trigger point** only, so it does not become a second source of truth |
+| `principles/spend-on-the-outcome.md` | Connecting session cost to finished work | Names the three controllable terms between reach and price, requires a measured term for every claimed saving, and makes cost per unit of work the comparison |
 
 **A principle written from scratch carries `origin: plumb` in its frontmatter.** `NOTICE`
 claims how many files in `principles/` are verbatim copies of pstack, and rule 13 of
 `scripts/check-harness.sh` checks that number against the directory. **Forget the mark or
 forget to fix NOTICE, and either one goes red**
-(**principle-encode-lessons-in-structure**). Since 2026-08-31 the number has been fixed at
-22 / 0.
+(**principle-encode-lessons-in-structure**). The count is now 23 / 0.
 
 **The same rot had reached README.** "the 13 playbooks" (actually 22), "Twenty-one principles"
 (actually 22). Rule 13 guarded NOTICE, but nobody was watching README. **Rule 14 was added,
@@ -140,12 +140,18 @@ of the breakage got dug out one level. And **the judgment**: the question, gate,
 lets you say afterwards whether it was kept. Those two additions are why the line count runs
 higher than upstream. **Getting shorter is not the goal.**
 
-One tool was added as well. `scripts/isolate-pollution.sh` (`plumb-isolate-pollution`) picks
+Two tools were added as well. `scripts/isolate-pollution.sh` (`plumb-isolate-pollution`) picks
 out the polluter one case at a time when things pass alone and fail together. **The upstream
 script of the same kind is hardwired to npm, and if residue is already there before the run it
 reports the first case as the culprit.** It was rewritten to take the check command and the
 run command as arguments, and **to exit 2 on pre-existing pollution**, so an innocent case
 does not get named.
+
+`scripts/session-audit.py` (`plumb-session-audit`) streams one project's Claude Code
+transcripts and measures context per request, oversized tool results, and cache rebuilds after
+idle resumes without printing transcript content. Its six-term cost decomposition follows
+Uber Engineering's 2026 write-up on running a software factory; its thresholds are plumb's
+own, measured on 2026-09-02.
 
 **What was dropped** is either something each playbook already holds in another form, or a
 step riding machinery this environment does not have: the menu boilerplate, the opening
