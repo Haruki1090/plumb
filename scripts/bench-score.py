@@ -43,6 +43,14 @@ def locations(value: str) -> list[dict[str, Any]]:
     return parsed
 
 
+def first_cell_locations(cells: list[str]) -> list[dict[str, Any]]:
+    for cell in cells:
+        parsed = locations(cell)
+        if parsed:
+            return parsed
+    return []
+
+
 def heading_text(line: str) -> str | None:
     match = HEADING.match(line)
     if match is None:
@@ -124,15 +132,20 @@ def parse_verdict(text: str, include_note: bool = False) -> list[list[dict[str, 
     nearest_heading = None
     table_heading = None
     where_column: int | None = None
+    table_without_where = False
     free_form_finding: list[dict[str, Any]] | None = None
     free_form_where_seen = False
     note_section = False
     lines = text.splitlines()
+    has_english_table_heading = any(
+        heading is not None and heading.startswith(("blockers", "fix before merge"))
+        for heading in (heading_text(line) for line in lines)
+    )
     for index, line in enumerate(lines):
         heading = heading_text(line)
         if heading is not None:
             nearest_heading = heading
-            table_heading, where_column = None, None
+            table_heading, where_column, table_without_where = None, None, False
             free_form_finding = None
             free_form_where_seen = False
             template_section = heading.startswith(
@@ -156,7 +169,7 @@ def parse_verdict(text: str, include_note: bool = False) -> list[list[dict[str, 
         if cells is not None:
             folded_cells = [cell.casefold() for cell in cells]
             if table_separator(next_cells):
-                table_heading, where_column = None, None
+                table_heading, where_column, table_without_where = None, None, False
                 if "where" in folded_cells:
                     if (
                         free_form_finding is not None
@@ -167,8 +180,21 @@ def parse_verdict(text: str, include_note: bool = False) -> list[list[dict[str, 
                         free_form_finding = None
                     table_heading = nearest_heading
                     where_column = folded_cells.index("where")
+                elif not has_english_table_heading and any(folded_cells) and (
+                    finding_heading(nearest_heading)
+                    or (include_note and note_heading(nearest_heading))
+                ):
+                    if (
+                        free_form_finding is not None
+                        and not free_form_finding
+                        and not free_form_where_seen
+                    ):
+                        findings.pop()
+                        free_form_finding = None
+                    table_heading = nearest_heading
+                    table_without_where = True
                 continue
-            if where_column is not None:
+            if where_column is not None or table_without_where:
                 if table_separator(cells):
                     continue
                 row_is_note = note_heading(table_heading)
@@ -176,10 +202,15 @@ def parse_verdict(text: str, include_note: bool = False) -> list[list[dict[str, 
                     FREE_FORM_SEVERITY.search(cell.casefold()) for cell in cells
                 )
                 if include_note or (row_is_finding and not row_is_note):
-                    findings.append(locations(cells[where_column]) if where_column < len(cells) else [])
+                    if where_column is None:
+                        findings.append(first_cell_locations(cells))
+                    else:
+                        findings.append(
+                            locations(cells[where_column]) if where_column < len(cells) else []
+                        )
                 continue
         else:
-            table_heading, where_column = None, None
+            table_heading, where_column, table_without_where = None, None, False
 
         if free_form_finding is not None and not free_form_where_seen and WHERE_LINE.match(line.casefold()):
             free_form_finding.extend(locations(line))

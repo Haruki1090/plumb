@@ -331,6 +331,32 @@ print("{}/{}|{}/{}".format(rows["00041-00042"]["findings"], rows["00041-00042"][
 eq "bench-score accepts multi-location level-2 sections and free-form findings" \
   "$tolerant_numbers" "1/1|2/1"
 
+translated_item="00321-00332"
+mkdir -p "$score_tolerant_corpus/$translated_item" "$score_tolerant_run/$translated_item"
+printf '%s\n' '{"repo":"example/repo","number":321,"sha":"head","base_sha":"base","title":"translated table","fixed_by":332,"grade":"easy"}' \
+  > "$score_tolerant_corpus/$translated_item/pr.json"
+printf '%s\n' '[
+  {"file":".github/workflows/pr-gate.yml","lines":[64,70],"source":"fix#332","reviewed":true,"note":"first translated row"},
+  {"file":".github/workflows/pr-gate.yml","lines":[72,78],"source":"fix#332","reviewed":true,"note":"second translated row"}
+]' > "$score_tolerant_corpus/$translated_item/truth.json"
+printf '%s\n' \
+  '## ブロッカー（BLOCK）' \
+  '| # | 確度 | 箇所 | 壊れ方 |' \
+  '|---|---|---|---|' \
+  '| 1 | CONFIRMED | `.github/workflows/pr-gate.yml:60` | first |' \
+  '## マージ前に直す（FIX）' \
+  '| # | 確度 | 箇所 | 壊れ方 |' \
+  '|---|---|---|---|' \
+  '| 1 | CONFIRMED | `.github/workflows/pr-gate.yml:53-67` | second |' \
+  > "$score_tolerant_run/$translated_item/verdict.md"
+translated_numbers=$("$root/bin/plumb-bench-score" --corpus "$score_tolerant_corpus" \
+  --run "tolerant=$score_tolerant_run" --json | python3 -c 'import json, sys
+rows={row["id"]: row for row in json.load(sys.stdin)["runs"][0]["items"]}
+row=rows["00321-00332"]
+print("{}/{}".format(row["findings"], row["matched"]))')
+eq "bench-score reads locations from translated tables without a Where column" \
+  "$translated_numbers" "2/2"
+
 summary_item="00225-00234"
 mkdir -p "$score_tolerant_corpus/$summary_item" "$score_tolerant_run/$summary_item"
 printf '%s\n' '{"repo":"example/repo","number":225,"sha":"head","base_sha":"base","title":"summary and details","fixed_by":234,"grade":"medium"}' \

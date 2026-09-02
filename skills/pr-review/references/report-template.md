@@ -2,6 +2,10 @@
 
 Shaped so it pastes straight into a GitHub review comment. If you visualize it in HTML instead, do not
 lose the information in these six sections (visualizing is for readability, not for summarizing).
+The structure is never translated: keep `Blockers (BLOCK)`, `Fix before merge (FIX)`, `Recorded only
+(NOTE)`, `Residual risk accepted`, `What I did not look at`, the table columns `#`, `Confidence`,
+`Where`, `How it breaks`, and confidence words `CONFIRMED` and `PLAUSIBLE` in English whatever
+language the prose uses, because tools read the structure.
 
 ---
 

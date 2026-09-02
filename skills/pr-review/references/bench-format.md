@@ -39,6 +39,7 @@ Candidates receive only the repository, PR number, and pinned SHA from `pr.json`
 
 Template section headings may use any Markdown heading level from `#` through `######`.
 Every backticked `path:line` or `path:start-end` in a finding's `Where` cell is part of that one finding, and any overlapping location can match truth.
+In a findings table without a `Where` header, locations come from the first cell, left to right, that contains a backticked `path:line` or `path:start-end`; a row without one remains a locationless finding, while tables with `Where` keep their normal column behavior.
 Outside template sections, a heading containing the whole-word severity `BLOCK` or `FIX` opens a finding (`NOTE` does so only with `--include-note`), whose locations come from its first `Where` row or paragraph.
 If a summary row and a later free-form finding share at least one identical parsed location (file and exact start/end), they count as one finding and their location sets are merged.
 A BLOCK or FIX row whose `Where` cell has no parseable `path:line` still counts as a false positive
