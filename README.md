@@ -12,7 +12,7 @@ step leaves a `skip: <reason>` line you cannot delete.
 
 ## What it adds
 
-plumb is self-contained: 23 playbooks covering the whole arc of a unit of work —
+plumb is self-contained: 24 playbooks covering the whole arc of a unit of work —
 shaping it, planning it, running the plan task by task, fixing what breaks,
 writing the tests, and landing the result. It depends on no other plugin.
 
@@ -42,7 +42,7 @@ writing the tests, and landing the result. It depends on no other plugin.
 
 ## What's bundled
 
-Beyond the router, the 23 playbooks and the 23 principles, plumb ships these skills
+Beyond the router, the 24 playbooks and the 23 principles, plumb ships these skills
 (all called under the `plumb:` namespace) and their supporting agents:
 
 - **`plumb:pr-review`** — adversarial PR review: cross-checks the PR body against
@@ -58,6 +58,9 @@ Beyond the router, the 23 playbooks and the 23 principles, plumb ships these ski
   wall of prose.
 - **`plumb:doctor`** — checks whether the environment plumb's docs claim (routed
   tools, bundled agents, dependency plugins) actually exists on this machine.
+
+The `plumb-bench-extract` and `plumb-bench-score` commands build a pruned review corpus and compare
+agent configurations by precision, recall, F1, and tokens per review.
 
 ## Install
 
@@ -84,6 +87,7 @@ To route a role elsewhere, write `~/.claude/plumb/config`:
     role.bulk    = <command>   # mechanical fan-out
     pane.driver  = <command>   # terminal multiplexer for long-running work
     stack.tool   = gh-stack    # stacked-PR tooling
+    bench.corpus = <directory> # private evaluation corpus (see playbooks/evaluating-an-agent.md)
 
 Run `plumb-doctor` from a shell to see what is wired and what is unset (installing the
 plugin puts it on your PATH). Unset reads `--`, never `NG` — plumb does not report a
@@ -92,7 +96,7 @@ covers the same ground.
 
 ## Language
 
-plumb is written in English throughout — SKILL.md, the 23 playbooks, the 23
+plumb is written in English throughout — SKILL.md, the 24 playbooks, the 23
 principles, the bundled skills and agents, the scripts and the docs/ files.
 
 It was written in Japanese through v0.5.0 and rewritten in English for release.

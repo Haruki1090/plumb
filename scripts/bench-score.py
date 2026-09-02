@@ -1,0 +1,415 @@
+#!/usr/bin/env python3
+"""Score review verdicts against a pruned benchmark corpus."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from collections import defaultdict
+from pathlib import Path
+from typing import Any, Iterable
+
+
+LOCATION = re.compile(r"`([^`\r\n]+?):([0-9]+)(?:-([0-9]+))?`")
+HEADING = re.compile(r"^#{1,6}\s+")
+TABLE_SEPARATOR = re.compile(r"^:?-{3,}:?$")
+TOKEN_ALIASES = {
+    "input": ("input", "input_tokens"),
+    "cache_read": ("cache_read", "cache_read_tokens", "cache_read_input_tokens"),
+    "cache_creation": ("cache_creation", "cache_creation_tokens", "cache_creation_input_tokens"),
+    "output": ("output", "output_tokens"),
+}
+
+
+class ScoreError(Exception):
+    """A user-facing scoring failure."""
+
+
+def location(value: str) -> dict[str, Any] | None:
+    match = LOCATION.search(value)
+    if not match:
+        return None
+    start = int(match.group(2))
+    end = int(match.group(3)) if match.group(3) else start
+    return {"file": match.group(1), "lines": [min(start, end), max(start, end)]}
+
+
+def table_cells(line: str) -> list[str] | None:
+    if not line.lstrip().startswith("|"):
+        return None
+    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+
+def parse_verdict(text: str, include_note: bool = False) -> list[dict[str, Any] | None]:
+    findings: list[dict[str, Any] | None] = []
+    section = None
+    where_column = None
+    for line in text.splitlines():
+        lowered = line.strip().casefold()
+        if lowered.startswith("### blockers (block)"):
+            section, where_column = "table", None
+            continue
+        if lowered.startswith("### fix before merge (fix)"):
+            section, where_column = "table", None
+            continue
+        if lowered.startswith("### recorded only (note)"):
+            section, where_column = "note", None
+            continue
+        if HEADING.match(line) and not lowered.startswith(("### blockers", "### fix before", "### recorded only")):
+            section, where_column = None, None
+            continue
+
+        if section == "table":
+            cells = table_cells(line)
+            if cells is None:
+                continue
+            if where_column is None:
+                try:
+                    where_column = [cell.casefold() for cell in cells].index("where")
+                except ValueError:
+                    continue
+                continue
+            if all(TABLE_SEPARATOR.match(cell.replace(" ", "")) for cell in cells):
+                continue
+            findings.append(location(cells[where_column]) if where_column < len(cells) else None)
+        elif section == "note" and include_note and re.match(r"^\s*[-*]\s+", line):
+            parsed = location(line)
+            if parsed is not None:
+                findings.append(parsed)
+    return findings
+
+
+def reviewed_truth(entries: Any, source: Path) -> list[dict[str, Any]]:
+    if not isinstance(entries, list):
+        raise ScoreError(f"truth is not a JSON array: {source}")
+    truth = []
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("reviewed") is not True:
+            continue
+        lines = entry.get("lines")
+        path = entry.get("file")
+        if (
+            not isinstance(path, str)
+            or not isinstance(lines, list)
+            or len(lines) != 2
+            or any(isinstance(value, bool) or not isinstance(value, int) for value in lines)
+        ):
+            raise ScoreError(f"reviewed truth has an invalid location: {source}")
+        truth.append({"file": path, "lines": [min(lines), max(lines)]})
+    return truth
+
+
+def overlaps(finding: dict[str, Any], truth: dict[str, Any], granularity: str, slack: int) -> bool:
+    if finding["file"] != truth["file"]:
+        return False
+    if granularity == "file":
+        return True
+    finding_start, finding_end = finding["lines"]
+    truth_start, truth_end = truth["lines"]
+    return finding_end >= truth_start - slack and finding_start <= truth_end + slack
+
+
+def maximum_matches(
+    findings: list[dict[str, Any] | None],
+    truth: list[dict[str, Any]],
+    granularity: str,
+    slack: int,
+) -> int:
+    edges = [
+        [index for index, entry in enumerate(truth) if finding is not None and overlaps(finding, entry, granularity, slack)]
+        for finding in findings
+    ]
+    owners: dict[int, int] = {}
+
+    def place(finding_index: int, visited: set[int]) -> bool:
+        for truth_index in edges[finding_index]:
+            if truth_index in visited:
+                continue
+            visited.add(truth_index)
+            if truth_index not in owners or place(owners[truth_index], visited):
+                owners[truth_index] = finding_index
+                return True
+        return False
+
+    return sum(place(index, set()) for index in range(len(findings)))
+
+
+def metric(findings: int, truth: int, matched: int) -> dict[str, Any]:
+    precision = matched / findings if findings else 0.0
+    recall = matched / truth if truth else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    return {
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "f1": round(f1, 4),
+        "findings": findings,
+        "truth_entries": truth,
+        "matched": matched,
+    }
+
+
+def numeric(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        return None
+    return float(value)
+
+
+def usage_total(usage: Any) -> tuple[float | None, str | None]:
+    if not isinstance(usage, dict):
+        return None, "is not an object"
+    total = 0.0
+    for canonical, aliases in TOKEN_ALIASES.items():
+        present = [name for name in aliases if name in usage]
+        if not present:
+            return None, f"missing {canonical}"
+        value = usage[present[0]]
+        parsed = numeric(value)
+        if parsed is None:
+            return None, f"invalid {canonical}"
+        total += parsed
+    return total, None
+
+
+def session_tokens(path: Path) -> tuple[float | None, str | None]:
+    if not path.is_file():
+        return None, "session.json missing"
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except OSError:
+        return None, "session.json unreadable"
+    except json.JSONDecodeError:
+        return None, "session.json is invalid JSON"
+    if not isinstance(report, dict):
+        return None, "session.json is not an object"
+    for key in ("token_usage", "token_totals", "usage"):
+        if key in report:
+            total, problem = usage_total(report[key])
+            return total, f"{key} {problem}" if problem is not None else None
+    return None, "token totals missing"
+
+
+def load_json(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise ScoreError(f"cannot read {path}: {error}") from error
+    except json.JSONDecodeError as error:
+        raise ScoreError(f"invalid JSON in {path}: {error}") from error
+
+
+def load_corpus(corpus: Path) -> tuple[list[dict[str, Any]], list[str]]:
+    if not corpus.is_dir():
+        raise ScoreError(f"corpus directory not found: {corpus}")
+    items = []
+    skipped = []
+    for item_dir in sorted(path for path in corpus.iterdir() if path.is_dir()):
+        pr_path = item_dir / "pr.json"
+        truth_path = item_dir / "truth.json"
+        if not pr_path.is_file() or not truth_path.is_file():
+            continue
+        pr = load_json(pr_path)
+        if not isinstance(pr, dict):
+            raise ScoreError(f"PR metadata is not a JSON object: {pr_path}")
+        truth = reviewed_truth(load_json(truth_path), truth_path)
+        if not truth:
+            skipped.append(item_dir.name)
+            continue
+        items.append({"id": item_dir.name, "grade": pr.get("grade"), "truth": truth})
+    if not items:
+        raise ScoreError("corpus is unpruned: no item has a reviewed truth entry")
+    return items, skipped
+
+
+def aggregate(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    rows = list(rows)
+    result = metric(
+        sum(row["findings"] for row in rows),
+        sum(row["truth_entries"] for row in rows),
+        sum(row["matched"] for row in rows),
+    )
+    costs = [row["tokens_per_review"] for row in rows if row["tokens_per_review"] is not None]
+    result["tokens_per_review"] = round(sum(costs) / len(costs), 1) if len(costs) == len(rows) and rows else None
+    result["costed_reviews"] = len(costs)
+    reasons = list(dict.fromkeys(
+        row["tokens_unavailable"] for row in rows if row["tokens_unavailable"] is not None
+    ))
+    result["tokens_unavailable"] = "; ".join(reasons) if reasons else None
+    return result
+
+
+def score_run(
+    name: str,
+    run_dir: Path,
+    items: list[dict[str, Any]],
+    granularity: str,
+    slack: int,
+    include_note: bool,
+) -> dict[str, Any]:
+    if not run_dir.is_dir():
+        raise ScoreError(f"run directory not found: {run_dir}")
+    rows = []
+    for item in items:
+        verdict_path = run_dir / item["id"] / "verdict.md"
+        no_verdict = not verdict_path.is_file()
+        if no_verdict:
+            verdict = ""
+        else:
+            try:
+                verdict = verdict_path.read_text(encoding="utf-8")
+            except OSError as error:
+                raise ScoreError(f"cannot read {verdict_path}: {error}") from error
+        findings = parse_verdict(verdict, include_note)
+        matched = maximum_matches(findings, item["truth"], granularity, slack)
+        row = {"id": item["id"], "grade": item["grade"] if item["grade"] in ("easy", "medium", "hard") else "ungraded"}
+        row.update(metric(len(findings), len(item["truth"]), matched))
+        row["tokens_per_review"], row["tokens_unavailable"] = session_tokens(
+            run_dir / item["id"] / "session.json"
+        )
+        row["no_verdict"] = no_verdict
+        rows.append(row)
+
+    by_grade: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        by_grade[row["grade"]].append(row)
+    return {
+        "name": name,
+        "items": rows,
+        "grades": {grade: aggregate(grade_rows) for grade, grade_rows in sorted(by_grade.items())},
+        "overall": aggregate(rows),
+        "no_verdict": [row["id"] for row in rows if row["no_verdict"]],
+    }
+
+
+def pareto_frontier(runs: list[dict[str, Any]]) -> list[str]:
+    comparable = [run for run in runs if run["overall"]["tokens_per_review"] is not None]
+    frontier = []
+    for candidate in comparable:
+        c_f1 = candidate["overall"]["f1"]
+        c_cost = candidate["overall"]["tokens_per_review"]
+        dominated = any(
+            other is not candidate
+            and other["overall"]["f1"] >= c_f1
+            and other["overall"]["tokens_per_review"] <= c_cost
+            and (other["overall"]["f1"] > c_f1 or other["overall"]["tokens_per_review"] < c_cost)
+            for other in comparable
+        )
+        if not dominated:
+            frontier.append(candidate["name"])
+    return frontier
+
+
+def not_compared(runs: list[dict[str, Any]]) -> list[dict[str, str]]:
+    return [
+        {
+            "name": run["name"],
+            "reason": run["overall"]["tokens_unavailable"] or "tokens unavailable",
+        }
+        for run in runs
+        if run["overall"]["tokens_per_review"] is None
+    ]
+
+
+def display_ratio(value: float) -> str:
+    return f"{value:.3f}"
+
+
+def display_tokens(value: float | None) -> str:
+    if value is None:
+        return "--"
+    return f"{value:,.0f}" if value.is_integer() else f"{value:,.1f}"
+
+
+def print_text(report: dict[str, Any]) -> None:
+    skipped = report["not_pruned_yet"]
+    print("not pruned yet: " + (", ".join(skipped) if skipped else "--"))
+    missing = [
+        f"{run['name']}/{item_id}"
+        for run in report["runs"]
+        for item_id in run["no_verdict"]
+    ]
+    print("no verdict: " + (", ".join(missing) if missing else "--"))
+    print("run              item          grade     precision  recall  f1     findings  truth  matched  tokens/review")
+    for run in report["runs"]:
+        for row in run["items"]:
+            print(
+                f"{run['name']:<16} {row['id']:<13} {row['grade']:<9} "
+                f"{display_ratio(row['precision']):>9}  {display_ratio(row['recall']):>6}  {display_ratio(row['f1']):>5}  "
+                f"{row['findings']:>8}  {row['truth_entries']:>5}  {row['matched']:>7}  {display_tokens(row['tokens_per_review']):>13}"
+            )
+        for grade, row in run["grades"].items():
+            print(
+                f"{run['name']:<16} {'grade:' + grade:<13} {grade:<9} "
+                f"{display_ratio(row['precision']):>9}  {display_ratio(row['recall']):>6}  {display_ratio(row['f1']):>5}  "
+                f"{row['findings']:>8}  {row['truth_entries']:>5}  {row['matched']:>7}  {display_tokens(row['tokens_per_review']):>13}"
+            )
+        row = run["overall"]
+        print(
+            f"{run['name']:<16} {'overall':<13} {'all':<9} "
+            f"{display_ratio(row['precision']):>9}  {display_ratio(row['recall']):>6}  {display_ratio(row['f1']):>5}  "
+            f"{row['findings']:>8}  {row['truth_entries']:>5}  {row['matched']:>7}  {display_tokens(row['tokens_per_review']):>13}"
+        )
+    if report["pareto"]:
+        print("pareto: " + ", ".join(report["pareto"]))
+    else:
+        print("pareto: -- (tokens per review unavailable)")
+    for excluded in report["not_compared"]:
+        print(
+            f"not compared: {excluded['name']} "
+            f"(tokens/review unavailable; {excluded['reason']})"
+        )
+
+
+def run_argument(value: str) -> tuple[str, Path]:
+    if "=" not in value:
+        raise argparse.ArgumentTypeError("run must be NAME=DIR")
+    name, directory = value.split("=", 1)
+    if not name or not directory:
+        raise argparse.ArgumentTypeError("run must be NAME=DIR")
+    return name, Path(directory)
+
+
+def parser() -> argparse.ArgumentParser:
+    command = argparse.ArgumentParser(description="Score review verdicts against reviewed truth.")
+    command.add_argument("--corpus", required=True, type=Path)
+    command.add_argument("--run", required=True, action="append", type=run_argument, dest="runs")
+    command.add_argument("--granularity", choices=("hunk", "file"), default="hunk")
+    command.add_argument("--slack", type=int, default=5)
+    command.add_argument("--include-note", action="store_true")
+    command.add_argument("--json", action="store_true", dest="as_json")
+    return command
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parser().parse_args(argv)
+    if args.slack < 0:
+        parser().error("--slack cannot be negative")
+    names = [name for name, _ in args.runs]
+    if len(names) != len(set(names)):
+        parser().error("run names must be unique")
+    try:
+        items, skipped = load_corpus(args.corpus)
+        runs = [score_run(name, directory, items, args.granularity, args.slack, args.include_note) for name, directory in args.runs]
+    except ScoreError as error:
+        print(f"plumb-bench-score: {error}", file=sys.stderr)
+        return 2
+    report = {
+        "granularity": args.granularity,
+        "slack": args.slack,
+        "include_note": args.include_note,
+        "not_pruned_yet": skipped,
+        "runs": runs,
+        "pareto": pareto_frontier(runs),
+        "not_compared": not_compared(runs),
+    }
+    if args.as_json:
+        json.dump(report, sys.stdout, indent=2, sort_keys=True)
+        print()
+    else:
+        print_text(report)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

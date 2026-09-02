@@ -94,6 +94,7 @@ Playbooks name principles. A named principle means you read the leaf in full.
 | Add a different model family's axis to that review | `plumb:interrogate` |
 | Check whether the environment plumb claims still exists | `plumb:doctor` |
 | See what a session spent its context on | `plumb-session-audit` |
+| Decide which configuration of a playbook to run, with a number | `playbooks/evaluating-an-agent.md` |
 
 ### Decide, and design
 
