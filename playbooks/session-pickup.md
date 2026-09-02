@@ -9,6 +9,14 @@ stopped", or inheriting a pushed branch.
 repro, and choose the design. Redoing it burns the context and throws away the check on that
 bias as well. **Resist the pull to re-derive it. Read it.**
 
+0. **Fold before you resume.** After more than 60 minutes, resuming in place rebuilds the prompt
+   cache from the whole context at full write price (`IDLE-REBUILD`); on 2026-09-02, all 4 of 4
+   idle gaps over 60 minutes were followed by rebuilds of more than 20K tokens.
+   Before a pickup after 60 minutes, write the resume point into the step 1 resume note and start
+   from that note instead of the full transcript. The cache still rebuilds, but it writes the note
+   instead of the whole transcript. If you cannot fold and must resume in place, say so; that is a
+   visible skip, not a fault.
+   Follow `playbooks/pause-safely.md` for the 60-minute fold itself.
 1. Find the previous session's traces: the transcript, the pushed branch, a `wip:` commit, a
    resume note. `docs/path-map.md` is the source of truth for where transcripts live.
    **Do not glob `~/.claude/projects/*/`** — that reads private conversations from other

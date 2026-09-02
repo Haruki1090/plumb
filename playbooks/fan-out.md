@@ -35,6 +35,19 @@ Every brief carries:
 - **What must not be touched.** Leave it out and a refactor of the surroundings comes back
 - **The shape of the answer.** What you want back, and at what granularity
 
+## 2a. Hand it to the cheapest role that can do it
+
+**A job you can brief precisely is a job that does not need the frontier.** Decomposition and
+judging stay in the main session; execution of the bounded brief goes to `role.bulk`.
+
+**An unset `role.bulk` is a visible skip.** Say `skip: role.bulk unset` and run the job in the main
+session. Do not call that a fan-out.
+
+**Section 2 is the four-part bulk-ready test.** A brief with the range, the material, what not to
+touch and the shape of the answer is ready for `role.bulk`. Leave a part out because you do not
+know it yet and the job is exploration, which stays with you. The `model (sidechain)` line of
+`plumb-session-audit` shows where handed-out work actually ran.
+
 ## 3. Put them all out in one reply
 
 **Only what you line up in the same reply runs at the same time.** One brief per reply is fanning out

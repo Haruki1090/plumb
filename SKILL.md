@@ -65,6 +65,7 @@ Playbooks name principles. A named principle means you read the leaf in full.
 | Write tests, or repair existing ones | `playbooks/writing-tests.md` |
 | Buy a design decision with an implementation you throw away | `playbooks/prototype.md` |
 | Hand independent work out to parallel roles | `playbooks/fan-out.md` |
+| Call a tool that needs several calls per answer, or the same call over many items | `playbooks/batching-chatty-tools.md` |
 
 ### Ship
 

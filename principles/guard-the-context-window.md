@@ -34,6 +34,20 @@ Put the request, the brief and the material in a file and **hand over the path a
 Cut the range you hand over as well: give someone a document that also covers the
 neighboring job and they will start on the neighboring job.
 
+## A tool result you will not read twice does not come back raw
+
+**A result past 40KB never enters the main session as a payload.** The 40KB line is the
+`TOOL-RESULT-OVER` threshold, exposed as an option and set as plumb's default; put the raw result
+in a file, then return its pointer and the two or three facts that change a decision.
+
+**The 40KB line is a gate, not advice.** A result loaded once is re-sent on every request that
+follows; on 2026-09-02, 455 results crossed the line in 25 sessions whose p90 context was 704K
+against a 400K compaction window.
+
+**Submit, poll, poll, fetch is a loop you run outside the model.** Each step adds a request and its
+response is re-sent afterwards, so put the loop in a script and return only its summary
+under the 40KB line; `playbooks/batching-chatty-tools.md` owns that `TOOL-RESULT-OVER` lever.
+
 ## Count the price of moving it out
 
 **Fanning out is not free.** It adds the time to write the handoff, the time to read what
@@ -47,6 +61,9 @@ again costs more.
 Of everything loaded into the main session right now, **can you count the parts you will
 refer to again?** Count them, and if a lot is left over, you are loading it wrong. Before you
 load the same kind of thing next time, **ask once whether a pointer would do instead.**
+
+Run `plumb-session-audit --last 1` after the session; `TOOL-RESULT-OVER 0 results` is the pass
+condition for the 40KB gate.
 
 **Who you fan out to, and how, is `playbooks/fan-out.md`.** This principle owns only the
 decision of whether it goes into the main session.

@@ -12,7 +12,7 @@ step leaves a `skip: <reason>` line you cannot delete.
 
 ## What it adds
 
-plumb is self-contained: 22 playbooks covering the whole arc of a unit of work —
+plumb is self-contained: 23 playbooks covering the whole arc of a unit of work —
 shaping it, planning it, running the plan task by task, fixing what breaks,
 writing the tests, and landing the result. It depends on no other plugin.
 
@@ -42,7 +42,7 @@ writing the tests, and landing the result. It depends on no other plugin.
 
 ## What's bundled
 
-Beyond the router, the 22 playbooks and the 23 principles, plumb ships these skills
+Beyond the router, the 23 playbooks and the 23 principles, plumb ships these skills
 (all called under the `plumb:` namespace) and their supporting agents:
 
 - **`plumb:pr-review`** — adversarial PR review: cross-checks the PR body against
@@ -92,7 +92,7 @@ covers the same ground.
 
 ## Language
 
-plumb is written in English throughout — SKILL.md, the 22 playbooks, the 22
+plumb is written in English throughout — SKILL.md, the 23 playbooks, the 23
 principles, the bundled skills and agents, the scripts and the docs/ files.
 
 It was written in Japanese through v0.5.0 and rewritten in English for release.
