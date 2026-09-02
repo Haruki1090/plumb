@@ -331,6 +331,93 @@ print("{}/{}|{}/{}".format(rows["00041-00042"]["findings"], rows["00041-00042"][
 eq "bench-score accepts multi-location level-2 sections and free-form findings" \
   "$tolerant_numbers" "1/1|2/1"
 
+summary_item="00225-00234"
+mkdir -p "$score_tolerant_corpus/$summary_item" "$score_tolerant_run/$summary_item"
+printf '%s\n' '{"repo":"example/repo","number":225,"sha":"head","base_sha":"base","title":"summary and details","fixed_by":234,"grade":"medium"}' \
+  > "$score_tolerant_corpus/$summary_item/pr.json"
+printf '%s\n' '[{"file":"frontend/src/lib/db/auth-repo.ts","lines":[10,12],"source":"fix#234","reviewed":true,"note":"one overlap"}]' \
+  > "$score_tolerant_corpus/$summary_item/truth.json"
+printf '%s\n' \
+  '## 2. Findings' \
+  '| # | 確度 | ブロッキング | 件名 | Where |' \
+  '|---|---|---|---|---|' \
+  '| F1 | CONFIRMED | FIX | first | `frontend/src/lib/db/auth-repo.ts:11` |' \
+  '| F2 | CONFIRMED | BLOCK | second | `frontend/src/lib/db/repo.ts:20` |' \
+  '| F3 | CONFIRMED | FIX | third | `frontend/src/lib/db/repo.ts:30` |' \
+  '| F4 | CONFIRMED | FIX | fourth | `frontend/src/db/migrations/0028.sql:40` / `terraform/production/cloudrun.tf:41` |' \
+  '| F5 | CONFIRMED | FIX | fifth | `frontend/src/app/admin/tenant.tsx:50` |' \
+  '### F1 — first' \
+  '- **Where**: `frontend/src/lib/db/auth-repo.ts:11`' \
+  '### F-2 — second' \
+  '* Where - `frontend/src/lib/db/repo.ts:20`' \
+  '### f 3 — third' \
+  '| Where | `frontend/src/lib/db/repo.ts:30` |' \
+  '### F4 — fourth' \
+  'Where: `frontend/src/db/migrations/0028.sql:40` / `terraform/production/cloudrun.tf:41`' \
+  '### f-5 — fifth' \
+  '- __Where__: `frontend/src/app/admin/tenant.tsx:50`' \
+  '## 3. NOTE（記録のみ・今回は直さない）' \
+  '| # | 内容 | Where |' \
+  '|---|---|---|' \
+  '| N1 | first note | `notes/one.md:1` |' \
+  '| N2 | says FIX but remains a note | `notes/two.md:2` |' \
+  '| N3 | third note | `notes/three.md:3` |' \
+  '### N1 — first note detail' \
+  '- **Where**: `notes/one.md:1`' \
+  > "$score_tolerant_run/$summary_item/verdict.md"
+summary_numbers=$(
+  "$root/bin/plumb-bench-score" --corpus "$score_tolerant_corpus" \
+    --run "tolerant=$score_tolerant_run" --json | python3 -c 'import json, sys
+rows={row["id"]: row for row in json.load(sys.stdin)["runs"][0]["items"]}
+row=rows["00225-00234"]
+print("{}/{}".format(row["findings"], row["matched"]), end="")'
+  "$root/bin/plumb-bench-score" --corpus "$score_tolerant_corpus" \
+    --run "tolerant=$score_tolerant_run" --include-note --json | python3 -c 'import json, sys
+rows={row["id"]: row for row in json.load(sys.stdin)["runs"][0]["items"]}
+row=rows["00225-00234"]
+print("|{}/{}".format(row["findings"], row["matched"]))'
+)
+eq "bench-score deduplicates 00225-shaped tables and headings while gating NOTE rows" \
+  "$summary_numbers" "5/1|8/1"
+
+table_rules_item="00045-00046"
+mkdir -p "$score_tolerant_corpus/$table_rules_item" "$score_tolerant_run/$table_rules_item"
+printf '%s\n' '{"repo":"example/repo","number":45,"sha":"head","base_sha":"base","title":"table rules","fixed_by":46,"grade":"easy"}' \
+  > "$score_tolerant_corpus/$table_rules_item/pr.json"
+printf '%s\n' '[{"file":"target.py","lines":[4,6],"source":"fix#46","reviewed":true,"note":"severity row"}]' \
+  > "$score_tolerant_corpus/$table_rules_item/truth.json"
+printf '%s\n' \
+  '## Context' \
+  '| Status | wHeRe |' \
+  '|---|---|' \
+  '| BLOCK | `target.py:5` |' \
+  '| informational | `context.md:2` |' \
+  '## Findings from scan' \
+  '| Detail | Where |' \
+  '|---|---|' \
+  '| no severity word | `finding.py:3` |' \
+  '## Appendix NOTE' \
+  '| Status | Where |' \
+  '|---|---|' \
+  '| FIX | `note-table.md:4` |' \
+  '### N-1 — numbered note' \
+  'Where: `note-heading.md:5`' \
+  > "$score_tolerant_run/$table_rules_item/verdict.md"
+table_rule_numbers=$(
+  "$root/bin/plumb-bench-score" --corpus "$score_tolerant_corpus" \
+    --run "tolerant=$score_tolerant_run" --json | python3 -c 'import json, sys
+rows={row["id"]: row for row in json.load(sys.stdin)["runs"][0]["items"]}
+row=rows["00045-00046"]
+print("{}/{}".format(row["findings"], row["matched"]), end="")'
+  "$root/bin/plumb-bench-score" --corpus "$score_tolerant_corpus" \
+    --run "tolerant=$score_tolerant_run" --include-note --json | python3 -c 'import json, sys
+rows={row["id"]: row for row in json.load(sys.stdin)["runs"][0]["items"]}
+row=rows["00045-00046"]
+print("|{}/{}".format(row["findings"], row["matched"]))'
+)
+eq "bench-score applies generic table headings, row severity, and numbered NOTE rules" \
+  "$table_rule_numbers" "2/1|5/1"
+
 pareto_noisy="$sandbox_root/pareto-noisy"; pareto_tie="$sandbox_root/pareto-tie"
 pareto_uncosted="$sandbox_root/pareto-uncosted"; missing_run="$sandbox_root/missing-run"
 mkdir -p "$pareto_noisy/$score_item" "$pareto_tie/$score_item" \

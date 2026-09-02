@@ -17,7 +17,11 @@ HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*$")
 TABLE_SEPARATOR = re.compile(r"^:?-{3,}:?$")
 FREE_FORM_SEVERITY = re.compile(r"\b(?:block|fix)\b")
 FREE_FORM_NOTE = re.compile(r"\bnote\b")
-WHERE_LINE = re.compile(r"^(?:\s*[|*:])*\s*where\b")
+NUMBERED_FINDING = re.compile(r"^f(?:[- ]?\d+)\b")
+NUMBERED_NOTE = re.compile(r"^n(?:[- ]?\d+)\b")
+WHERE_LINE = re.compile(
+    r"^\s*(?:(?:[-*+])\s+)?(?:\|\s*)?(?:\*\*|__)?where(?=(?:\*\*|__)|\W|$)"
+)
 TOKEN_ALIASES = {
     "input": ("input", "input_tokens"),
     "cache_read": ("cache_read", "cache_read_tokens", "cache_read_input_tokens"),
@@ -52,49 +56,139 @@ def table_cells(line: str) -> list[str] | None:
     return [cell.strip() for cell in line.strip().strip("|").split("|")]
 
 
-def parse_verdict(text: str, include_note: bool = False) -> list[list[dict[str, Any]]]:
-    findings: list[list[dict[str, Any]]] = []
-    section = None
-    where_column = None
-    free_form_finding = None
-    free_form_where_seen = False
-    for line in text.splitlines():
-        heading = heading_text(line)
-        if heading is not None:
-            free_form_finding = None
-            free_form_where_seen = False
-            if heading.startswith(("blockers (block)", "fix before merge (fix)")):
-                section, where_column = "table", None
-            elif heading.startswith("recorded only (note)"):
-                section, where_column = "note", None
-            else:
-                section, where_column = None, None
-                if FREE_FORM_SEVERITY.search(heading) or (include_note and FREE_FORM_NOTE.search(heading)):
-                    findings.append([])
-                    free_form_finding = findings[-1]
+def table_separator(cells: list[str] | None) -> bool:
+    return cells is not None and bool(cells) and all(
+        TABLE_SEPARATOR.match(cell.replace(" ", "")) for cell in cells
+    )
+
+
+def finding_heading(text: str | None) -> bool:
+    return text is not None and (
+        FREE_FORM_SEVERITY.search(text) is not None
+        or text.startswith(("blockers", "fix before merge", "findings"))
+    )
+
+
+def note_heading(text: str | None) -> bool:
+    return text is not None and (
+        FREE_FORM_NOTE.search(text) is not None or text.startswith("recorded only")
+    )
+
+
+def location_key(location: dict[str, Any]) -> tuple[str, int, int]:
+    return location["file"], location["lines"][0], location["lines"][1]
+
+
+def deduplicate_findings(findings: list[list[dict[str, Any]]]) -> list[list[dict[str, Any]]]:
+    deduplicated: list[list[dict[str, Any]]] = []
+    location_sets: list[set[tuple[str, int, int]]] = []
+    for finding in findings:
+        unique = []
+        keys: set[tuple[str, int, int]] = set()
+        for location in finding:
+            key = location_key(location)
+            if key not in keys:
+                unique.append(location)
+                keys.add(key)
+
+        duplicates = [
+            index for index, existing in enumerate(location_sets) if keys and keys & existing
+        ]
+        if not duplicates:
+            deduplicated.append(unique)
+            location_sets.append(keys)
             continue
 
-        if section == "table":
-            cells = table_cells(line)
-            if cells is None:
+        first = duplicates[0]
+        merged = deduplicated[first]
+        merged_keys = location_sets[first]
+        for index in duplicates[1:]:
+            for location in deduplicated[index]:
+                key = location_key(location)
+                if key not in merged_keys:
+                    merged.append(location)
+                    merged_keys.add(key)
+        for location in unique:
+            key = location_key(location)
+            if key not in merged_keys:
+                merged.append(location)
+                merged_keys.add(key)
+        for index in reversed(duplicates[1:]):
+            del deduplicated[index]
+            del location_sets[index]
+    return deduplicated
+
+
+def parse_verdict(text: str, include_note: bool = False) -> list[list[dict[str, Any]]]:
+    findings: list[list[dict[str, Any]]] = []
+    nearest_heading = None
+    table_heading = None
+    where_column: int | None = None
+    free_form_finding: list[dict[str, Any]] | None = None
+    free_form_where_seen = False
+    note_section = False
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        heading = heading_text(line)
+        if heading is not None:
+            nearest_heading = heading
+            table_heading, where_column = None, None
+            free_form_finding = None
+            free_form_where_seen = False
+            template_section = heading.startswith(
+                ("blockers", "fix before merge", "recorded only")
+            )
+            note_section = heading.startswith("recorded only")
+            if (
+                not template_section
+                and (
+                    FREE_FORM_SEVERITY.search(heading)
+                    or NUMBERED_FINDING.match(heading)
+                    or (include_note and (FREE_FORM_NOTE.search(heading) or NUMBERED_NOTE.match(heading)))
+                )
+            ):
+                findings.append([])
+                free_form_finding = findings[-1]
+            continue
+
+        cells = table_cells(line)
+        next_cells = table_cells(lines[index + 1]) if index + 1 < len(lines) else None
+        if cells is not None:
+            folded_cells = [cell.casefold() for cell in cells]
+            if table_separator(next_cells):
+                table_heading, where_column = None, None
+                if "where" in folded_cells:
+                    if (
+                        free_form_finding is not None
+                        and not free_form_finding
+                        and not free_form_where_seen
+                    ):
+                        findings.pop()
+                        free_form_finding = None
+                    table_heading = nearest_heading
+                    where_column = folded_cells.index("where")
                 continue
-            if where_column is None:
-                try:
-                    where_column = [cell.casefold() for cell in cells].index("where")
-                except ValueError:
+            if where_column is not None:
+                if table_separator(cells):
                     continue
+                row_is_note = note_heading(table_heading)
+                row_is_finding = finding_heading(table_heading) or any(
+                    FREE_FORM_SEVERITY.search(cell.casefold()) for cell in cells
+                )
+                if include_note or (row_is_finding and not row_is_note):
+                    findings.append(locations(cells[where_column]) if where_column < len(cells) else [])
                 continue
-            if all(TABLE_SEPARATOR.match(cell.replace(" ", "")) for cell in cells):
-                continue
-            findings.append(locations(cells[where_column]) if where_column < len(cells) else [])
-        elif section == "note" and include_note and re.match(r"^\s*[-*]\s+", line):
+        else:
+            table_heading, where_column = None, None
+
+        if free_form_finding is not None and not free_form_where_seen and WHERE_LINE.match(line.casefold()):
+            free_form_finding.extend(locations(line))
+            free_form_where_seen = True
+        elif note_section and include_note and re.match(r"^\s*[-*]\s+", line):
             parsed = locations(line)
             if parsed:
                 findings.append(parsed)
-        elif free_form_finding is not None and not free_form_where_seen and WHERE_LINE.match(line.casefold()):
-            free_form_finding.extend(locations(line))
-            free_form_where_seen = True
-    return findings
+    return deduplicate_findings(findings)
 
 
 def reviewed_truth(entries: Any, source: Path) -> list[dict[str, Any]]:
