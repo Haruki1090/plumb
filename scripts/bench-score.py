@@ -13,8 +13,11 @@ from typing import Any, Iterable
 
 
 LOCATION = re.compile(r"`([^`\r\n]+?):([0-9]+)(?:-([0-9]+))?`")
-HEADING = re.compile(r"^#{1,6}\s+")
+HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*$")
 TABLE_SEPARATOR = re.compile(r"^:?-{3,}:?$")
+FREE_FORM_SEVERITY = re.compile(r"\b(?:block|fix)\b")
+FREE_FORM_NOTE = re.compile(r"\bnote\b")
+WHERE_LINE = re.compile(r"^(?:\s*[|*:])*\s*where\b")
 TOKEN_ALIASES = {
     "input": ("input", "input_tokens"),
     "cache_read": ("cache_read", "cache_read_tokens", "cache_read_input_tokens"),
@@ -27,13 +30,20 @@ class ScoreError(Exception):
     """A user-facing scoring failure."""
 
 
-def location(value: str) -> dict[str, Any] | None:
-    match = LOCATION.search(value)
-    if not match:
+def locations(value: str) -> list[dict[str, Any]]:
+    parsed = []
+    for match in LOCATION.finditer(value):
+        start = int(match.group(2))
+        end = int(match.group(3)) if match.group(3) else start
+        parsed.append({"file": match.group(1), "lines": [min(start, end), max(start, end)]})
+    return parsed
+
+
+def heading_text(line: str) -> str | None:
+    match = HEADING.match(line)
+    if match is None:
         return None
-    start = int(match.group(2))
-    end = int(match.group(3)) if match.group(3) else start
-    return {"file": match.group(1), "lines": [min(start, end), max(start, end)]}
+    return match.group(1).casefold().strip()
 
 
 def table_cells(line: str) -> list[str] | None:
@@ -42,23 +52,26 @@ def table_cells(line: str) -> list[str] | None:
     return [cell.strip() for cell in line.strip().strip("|").split("|")]
 
 
-def parse_verdict(text: str, include_note: bool = False) -> list[dict[str, Any] | None]:
-    findings: list[dict[str, Any] | None] = []
+def parse_verdict(text: str, include_note: bool = False) -> list[list[dict[str, Any]]]:
+    findings: list[list[dict[str, Any]]] = []
     section = None
     where_column = None
+    free_form_finding = None
+    free_form_where_seen = False
     for line in text.splitlines():
-        lowered = line.strip().casefold()
-        if lowered.startswith("### blockers (block)"):
-            section, where_column = "table", None
-            continue
-        if lowered.startswith("### fix before merge (fix)"):
-            section, where_column = "table", None
-            continue
-        if lowered.startswith("### recorded only (note)"):
-            section, where_column = "note", None
-            continue
-        if HEADING.match(line) and not lowered.startswith(("### blockers", "### fix before", "### recorded only")):
-            section, where_column = None, None
+        heading = heading_text(line)
+        if heading is not None:
+            free_form_finding = None
+            free_form_where_seen = False
+            if heading.startswith(("blockers (block)", "fix before merge (fix)")):
+                section, where_column = "table", None
+            elif heading.startswith("recorded only (note)"):
+                section, where_column = "note", None
+            else:
+                section, where_column = None, None
+                if FREE_FORM_SEVERITY.search(heading) or (include_note and FREE_FORM_NOTE.search(heading)):
+                    findings.append([])
+                    free_form_finding = findings[-1]
             continue
 
         if section == "table":
@@ -73,11 +86,14 @@ def parse_verdict(text: str, include_note: bool = False) -> list[dict[str, Any] 
                 continue
             if all(TABLE_SEPARATOR.match(cell.replace(" ", "")) for cell in cells):
                 continue
-            findings.append(location(cells[where_column]) if where_column < len(cells) else None)
+            findings.append(locations(cells[where_column]) if where_column < len(cells) else [])
         elif section == "note" and include_note and re.match(r"^\s*[-*]\s+", line):
-            parsed = location(line)
-            if parsed is not None:
+            parsed = locations(line)
+            if parsed:
                 findings.append(parsed)
+        elif free_form_finding is not None and not free_form_where_seen and WHERE_LINE.match(line.casefold()):
+            free_form_finding.extend(locations(line))
+            free_form_where_seen = True
     return findings
 
 
@@ -112,13 +128,17 @@ def overlaps(finding: dict[str, Any], truth: dict[str, Any], granularity: str, s
 
 
 def maximum_matches(
-    findings: list[dict[str, Any] | None],
+    findings: list[list[dict[str, Any]]],
     truth: list[dict[str, Any]],
     granularity: str,
     slack: int,
 ) -> int:
     edges = [
-        [index for index, entry in enumerate(truth) if finding is not None and overlaps(finding, entry, granularity, slack)]
+        [
+            index
+            for index, entry in enumerate(truth)
+            if any(overlaps(location, entry, granularity, slack) for location in finding)
+        ]
         for finding in findings
     ]
     owners: dict[int, int] = {}

@@ -295,6 +295,42 @@ r=json.load(sys.stdin)["runs"][0]["overall"]
 print("{:.4f}/{:.4f}/{:.4f}/{}".format(r["precision"], r["recall"], r["f1"], r["findings"]))')
 eq "bench-score include-note adds the located NOTE finding" "$note_numbers" "0.3333/0.5000/0.4000/3"
 
+score_tolerant_corpus="$sandbox_root/score-tolerant-corpus"
+score_tolerant_run="$sandbox_root/score-tolerant-run"
+template_item="00041-00042"; free_form_item="00043-00044"
+mkdir -p "$score_tolerant_corpus/$template_item" "$score_tolerant_run/$template_item" \
+  "$score_tolerant_corpus/$free_form_item" "$score_tolerant_run/$free_form_item"
+printf '%s\n' '{"repo":"example/repo","number":41,"sha":"head","base_sha":"base","title":"template","fixed_by":42,"grade":"easy"}' \
+  > "$score_tolerant_corpus/$template_item/pr.json"
+printf '%s\n' '[{"file":"scripts/e2e-lib.mjs","lines":[45,49],"source":"fix#42","reviewed":true,"note":"middle location"}]' \
+  > "$score_tolerant_corpus/$template_item/truth.json"
+printf '%s\n' \
+  '## Fix before merge (FIX):' \
+  '| # | Confidence | Where | How it breaks |' \
+  '|---|---|---|---|' \
+  '| 1 | CONFIRMED | `scripts/e2e-core.mjs:184`, `scripts/e2e-lib.mjs:47`, `terraform/staging/README.md:160` | three places |' \
+  > "$score_tolerant_run/$template_item/verdict.md"
+printf '%s\n' '{"repo":"example/repo","number":43,"sha":"head","base_sha":"base","title":"free form","fixed_by":44,"grade":"easy"}' \
+  > "$score_tolerant_corpus/$free_form_item/pr.json"
+printf '%s\n' '[{"file":".github/workflows/pr-gate.yml","lines":[72,78],"source":"fix#44","reviewed":true,"note":"free form"}]' \
+  > "$score_tolerant_corpus/$free_form_item/truth.json"
+printf '%s\n' \
+  '### F-1 — [CONFIRMED / **BLOCK**] first finding' \
+  '| | |' \
+  '| --- | --- |' \
+  '| Where | `.github/workflows/pr-gate.yml:75`（regex）／ `.github/pull_request_template.md:23` |' \
+  '| 確度 | CONFIRMED |' \
+  '### F-2 — [PLAUSIBLE / FIX] second finding' \
+  'This finding deliberately has no Where line.' \
+  > "$score_tolerant_run/$free_form_item/verdict.md"
+tolerant_numbers=$("$root/bin/plumb-bench-score" --corpus "$score_tolerant_corpus" \
+  --run "tolerant=$score_tolerant_run" --json | python3 -c 'import json, sys
+rows={row["id"]: row for row in json.load(sys.stdin)["runs"][0]["items"]}
+print("{}/{}|{}/{}".format(rows["00041-00042"]["findings"], rows["00041-00042"]["matched"],
+                         rows["00043-00044"]["findings"], rows["00043-00044"]["matched"]))')
+eq "bench-score accepts multi-location level-2 sections and free-form findings" \
+  "$tolerant_numbers" "1/1|2/1"
+
 pareto_noisy="$sandbox_root/pareto-noisy"; pareto_tie="$sandbox_root/pareto-tie"
 pareto_uncosted="$sandbox_root/pareto-uncosted"; missing_run="$sandbox_root/missing-run"
 mkdir -p "$pareto_noisy/$score_item" "$pareto_tie/$score_item" \
