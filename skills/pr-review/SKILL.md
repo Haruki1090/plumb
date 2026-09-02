@@ -285,6 +285,10 @@ the way**, before you verify the links.
 ### 6. Returning it
 
 Return it in the shape of `references/report-template.md`. Four elements are required.
+The structure is never translated: keep `Blockers (BLOCK)`, `Fix before merge (FIX)`, `Recorded only
+(NOTE)`, `Residual risk accepted`, `What I did not look at`, the table columns `#`, `Confidence`,
+`Where`, `How it breaks`, and confidence words `CONFIRMED` and `PLAUSIBLE` in English whatever
+language the prose uses, because tools read the structure.
 
 1. **The SHA under review** (write out "this approval is against `<sha>`")
 2. **The approval decision**
