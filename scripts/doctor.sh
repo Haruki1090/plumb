@@ -37,13 +37,13 @@ echo "— routing targets"
 for c in git gh; do
   command -v "$c" >/dev/null 2>&1 && note "ok" "$c" || bad "$c is not on PATH (every plumb playbook assumes it)"
 done
-# python3 is used by plumb-pr-drift (skills/pr-review/scripts/pr-drift.sh) and
-# plumb-session-audit (scripts/session-audit.py).
+# python3 is used by plumb-pr-drift (skills/pr-review/scripts/pr-drift.sh),
+# plumb-session-audit (scripts/session-audit.py), plumb-bench-extract and plumb-bench-score.
 # No other playbook assumes it, so it does not rank as required alongside git and gh. To keep the
 # first experience from reading as "broken" for someone without it, missing stays an info line (--).
 command -v python3 >/dev/null 2>&1 \
   && note "ok" "python3" \
-  || note "--" "python3 is not on PATH (needed only when you use plumb-pr-drift or plumb-session-audit)"
+  || note "--" "python3 is not on PATH (needed only when you use plumb-pr-drift, plumb-session-audit, plumb-bench-extract or plumb-bench-score)"
 
 cfg() { bash "$root/scripts/plumb-config.sh" "$1" ""; }
 for k in role.judge role.bulk pane.driver; do

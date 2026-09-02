@@ -59,7 +59,7 @@ down here on purpose.
 
 | Playbook | What carried over, what was dropped |
 |---|---|
-| `eval` | What carried over is only **putting the judge role in a different family** (`docs/role-map.md`, `plumb:interrogate`). **There is no blinding rule**: no keeping evaluation language, the rubric, or the existence of rival candidates away from a candidate, no neutralizing directory names, no judge role that sees labels only. **plumb has no playbook for evaluating agent behavior.** When one is needed, it gets built from here |
+| `eval` | What now exists is the **blinding rule and corpus/score loop** in `playbooks/evaluating-an-agent.md`, on top of putting the judge role in a different family (`docs/role-map.md`, `plumb:interrogate`). A candidate sees only the repository, PR number, and pinned SHA; truth, fixing PR, evaluation wording, and rival verdicts stay out. **What is still missing is hiding repository history after that SHA.** The run instruction forbids reading later history and discards a verdict that cites it, but plumb cannot make those commits invisible |
 | `visual-parity` | What carried over is only **taking the before shot first** and **not touching the baseline** (the UI section of `playbooks/opening-a-pr.md`). **There is no pixel-diff regression harness and no zero-diff pass condition.** An eyeballed screenshot is not proof that nothing changed visually. **plumb stops at eyeballing, knowing that** |
 
 **Do not delete these two rows.** Delete them and the gap starts to read as handed off.
@@ -94,7 +94,7 @@ above.**
 **Do not treat it as a second source of truth and delete it.** `/loop` is mechanism; it
 carried no discipline.
 
-## Written outside pstack (10 playbooks + 2 principles + 2 tools)
+## Written outside pstack (11 playbooks + 2 principles + 4 tools)
 
 **Problems pstack did not have, and that the existing assets held in another form**, written
 from scratch in plumb's vocabulary. These are not ports, so they sit outside the breakdown
@@ -106,6 +106,7 @@ above.
 | `playbooks/worktree-setup.md` | Creating an isolated workspace | `docs/path-map.md` is the source of truth for where they go (**the roots run in more than one line**). Makes explicit that **ignored files do not get copied in**, as the mirror image of the cleanup gate |
 | `playbooks/fan-out.md` | Handing independent work out to parallel roles | The role is `role.bulk` in `docs/role-map.md` (unset: a visible skip). Connects the test for independence to **principle-separate-before-serializing-shared-state** |
 | `playbooks/batching-chatty-tools.md` | Moving several calls per answer, or the same call over N items, out of the model loop | The 40KB line and `plumb-session-audit` as the pass condition for `TOOL-RESULT-OVER` |
+| `playbooks/evaluating-an-agent.md` | Choosing which configuration of a playbook or agent to run | A pruned follow-up-fix corpus, a pinned-SHA blinding rule, precision / recall / F1 / tokens per review, and a Pareto decision that is re-measured when the frontier moves |
 | `playbooks/shaping-the-work.md` | Deciding the shape before you build, and taking it to the owner for approval | **Draws the stopping line inside `principle-never-block-on-the-human`**: the shape (what to build) stops, the method (how to build it) does not. Folds the gate into **one pass rather than one per section**, and keeps work that does not depend on the branch moving while you wait. Before you ask, buy whatever branches `playbooks/prototype.md` can buy. **Asks in rounds rather than one question at a time**: the questions are ordered by what they rest on, and only the ones resting on nothing — the open edge — go out together, each carrying its own recommendation so the owner answers by exception. The edge splits first, so a question the repository can answer goes to the explorer role and never costs a round trip. **The gate is tier-independent**: local used to go straight to implementation, which left the shortest shapes as the only ones nobody confirmed |
 | `playbooks/writing-a-plan.md` | Turning an approved shape into steps someone else can execute | `plumb-path plan` is the source of truth for where it goes. **The difference in rank between spec and plan, and the freezing discipline, belong to SKILL.md and are not copied here.** The exception that copies whole-project constraints verbatim out of the spec now carries its reason: **the implementer role never opens the spec** |
 | `playbooks/running-a-plan.md` | Landing a plan one task at a time (both handing it out and slicing commits in the main session) | **Cut the ceiling from 5 rounds to 3** (rounds 1-2 the same role, round 3 a different role, then stop). **Moved the base commit out of a shell variable and into a column of the ledger**: a variable does not survive a compaction. Dropped the model-selection section (`docs/role-map.md`'s territory). Added no workspace-creation mechanism either (`plumb-path run` has it) |
@@ -141,7 +142,7 @@ of the breakage got dug out one level. And **the judgment**: the question, gate,
 lets you say afterwards whether it was kept. Those two additions are why the line count runs
 higher than upstream. **Getting shorter is not the goal.**
 
-Two tools were added as well. `scripts/isolate-pollution.sh` (`plumb-isolate-pollution`) picks
+Four tools were added as well. `scripts/isolate-pollution.sh` (`plumb-isolate-pollution`) picks
 out the polluter one case at a time when things pass alone and fail together. **The upstream
 script of the same kind is hardwired to npm, and if residue is already there before the run it
 reports the first case as the culprit.** It was rewritten to take the check command and the
@@ -153,6 +154,12 @@ transcripts and measures context per request, oversized tool results, and cache 
 idle resumes without printing transcript content. Its six-term cost decomposition follows
 Uber Engineering's 2026 write-up on running a software factory; its thresholds are plumb's
 own, measured on 2026-09-02.
+
+`scripts/bench-extract.py` (`plumb-bench-extract`) turns a fixing PR's overlapping hunks into draft
+truth without overwriting a person's reviewed pruning. `scripts/bench-score.py`
+(`plumb-bench-score`) matches review locations against that truth and compares configurations by F1
+and tokens per review. The corpus stays private; only its format and one repository-owned example
+ship with plumb.
 
 **What was dropped** is either something each playbook already holds in another form, or a
 step riding machinery this environment does not have: the menu boilerplate, the opening
