@@ -171,49 +171,89 @@ pairs = module.find_pairs(prs, 20)
 fix = """diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n@@ -8 +10,2 @@\n-old\n+new\n+line\ndiff --git a/docs.md b/docs.md\n--- a/docs.md\n+++ b/docs.md\n@@ -1 +1 @@\n-old\n+new\n"""
 buggy = """diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/other.py b/other.py\n--- a/other.py\n+++ b/other.py\n@@ -1 +1 @@\n-old\n+new\n"""
 hunks = module.filter_fix_hunks(fix, buggy, 30)
-print(f"{len(pairs)}|{len(hunks)}|{hunks[0][chr(102)+chr(105)+chr(108)+chr(101)]}|{hunks[0][chr(108)+chr(105)+chr(110)+chr(101)+chr(115)][0]}|{hunks[0][chr(108)+chr(105)+chr(110)+chr(101)+chr(115)][1]}")' \
+insertion = module.parse_diff_hunks("""diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n@@ -20,0 +22,2 @@\n+one\n+two\n""")["app.py"][0]
+print("{}|{}|{}|{}|{}|{}|{}|{}|{}".format(
+    len(pairs), len(hunks), hunks[0]["file"], *hunks[0]["lines"], *hunks[0]["fix_lines"],
+    *insertion["lines"]))' \
   "$root/scripts/bench-extract.py" "$extract_fixture")
-eq "bench-extract pairs references and filters fix hunks to buggy files" "$extract_unit" "2|1|app.py|10|11"
+eq "bench-extract uses old-side truth coordinates, including pure insertions" "$extract_unit" "2|1|app.py|8|8|10|11|20|20"
 
-extract_keep="$sandbox_root/extract-keep"; mkdir -p "$extract_keep/0001"
-printf '%s\n' '[{"file":"kept.py","lines":[7,8],"source":"fix#30","reviewed":true,"note":"human work"}]' \
-  > "$extract_keep/0001/truth.json"
-printf '%s\n' '{"repo":"example/repo","number":21,"sha":"head","base_sha":"base","title":"feature","fixed_by":30,"grade":"easy"}' \
-  > "$extract_keep/0001/pr.json"
-keep_before=$(cksum "$extract_keep/0001/truth.json")
+extract_keep="$sandbox_root/extract-keep"; mkdir -p "$extract_keep/00021-00030"
+printf '%s\n' '[{"file":"kept.py","lines":[7,8],"fix_lines":[9,10],"source":"fix#30","reviewed":false,"note":"human draft"}]' \
+  > "$extract_keep/00021-00030/truth.json"
+printf '%s\n' '{"repo":"example/repo","number":21,"sha":"fix-base","buggy_sha":"head","base_sha":"base","title":"feature","fixed_by":30,"grade":null}' \
+  > "$extract_keep/00021-00030/pr.json"
+keep_before=$(cksum "$extract_keep/00021-00030/truth.json")
 fake_bin="$sandbox_root/bench-bin"; mkdir -p "$fake_bin"
 fake_list="$sandbox_root/fake-list.json"
 printf '%s\n' '[
   {"number":21,"title":"feature","body":"","baseRefOid":"base","headRefOid":"head","mergedAt":"2026-01-01T00:00:00Z"},
   {"number":30,"title":"fix regression","body":"Fixes #21","baseRefOid":"base2","headRefOid":"head2","mergedAt":"2026-01-02T00:00:00Z"}
 ]' > "$fake_list"
+fake_diff="$sandbox_root/fake.diff"
+printf '%s\n' \
+  'diff --git a/kept.py b/kept.py' \
+  '--- a/kept.py' \
+  '+++ b/kept.py' \
+  '@@ -7,2 +9,2 @@' \
+  '-old' \
+  '+new' > "$fake_diff"
 printf '%s\n' '#!/bin/sh' \
   'if [ "$1 $2" = "pr list" ]; then /bin/cat "$BENCH_FAKE_LIST"; exit 0; fi' \
-  'echo "diff should not be fetched for reviewed truth" >&2; exit 19' > "$fake_bin/gh"
+  'if [ "$1" = "api" ]; then printf "%s\n" "fix-merge-base"; exit 0; fi' \
+  'if [ "$1 $2" = "pr diff" ]; then /bin/cat "$BENCH_FAKE_DIFF"; exit 0; fi' \
+  'echo "unexpected gh call: $*" >&2; exit 19' > "$fake_bin/gh"
 chmod +x "$fake_bin/gh"
-keep_out=$(BENCH_FAKE_LIST="$fake_list" PATH="$fake_bin:$PATH" \
+keep_out=$(BENCH_FAKE_LIST="$fake_list" BENCH_FAKE_DIFF="$fake_diff" PATH="$fake_bin:$PATH" \
   "$root/bin/plumb-bench-extract" --repo example/repo --out "$extract_keep")
-keep_after=$(cksum "$extract_keep/0001/truth.json")
-printf '%s\n' "$keep_out" | grep -q 'wrote 0 item(s), kept 1' \
+keep_after=$(cksum "$extract_keep/00021-00030/truth.json")
+printf '%s\n' "$keep_out" | grep -q 'kept 00021-00030 (existing truth)' \
+  && printf '%s\n' "$keep_out" | grep -q 'wrote 0 item(s), kept 1' \
   && [ "$keep_before" = "$keep_after" ] \
-  && ok "bench-extract keeps an existing reviewed truth unchanged" \
-  || ng "bench-extract overwrote reviewed truth or fetched its diffs: [$keep_out]"
+  && ok "bench-extract keeps an existing unreviewed truth at its stable pair id" \
+  || ng "bench-extract rewrote an existing draft or used a positional id: [$keep_out]"
+
+refresh_out=$(BENCH_FAKE_LIST="$fake_list" BENCH_FAKE_DIFF="$fake_diff" PATH="$fake_bin:$PATH" \
+  "$root/bin/plumb-bench-extract" --repo example/repo --out "$extract_keep" --refresh 00021-00030)
+refresh_check=$(python3 -c 'import json, sys
+pr=json.load(open(sys.argv[1], encoding="utf-8")); truth=json.load(open(sys.argv[2], encoding="utf-8"))
+ok=(pr["sha"] == "fix-merge-base" and pr["buggy_sha"] == "head"
+    and truth[0]["lines"] == [7, 8] and truth[0]["fix_lines"] == [9, 10]
+    and truth[0]["note"] == "" and truth[0]["reviewed"] is False)
+print("ok" if ok else "wrong")' \
+  "$extract_keep/00021-00030/pr.json" "$extract_keep/00021-00030/truth.json")
+eq "bench-extract refreshes one unreviewed item in the fix-base coordinate system" "$refresh_check" "ok"
+
+printf '%s\n' '[{"file":"kept.py","lines":[7,8],"fix_lines":[9,10],"source":"fix#30","reviewed":true,"note":"human work"}]' \
+  > "$extract_keep/00021-00030/truth.json"
+reviewed_before=$(cksum "$extract_keep/00021-00030/truth.json")
+reviewed_out=$(BENCH_FAKE_LIST="$fake_list" BENCH_FAKE_DIFF="$fake_diff" PATH="$fake_bin:$PATH" \
+  "$root/bin/plumb-bench-extract" --repo example/repo --out "$extract_keep" --refresh 00021-00030 2>&1)
+reviewed_code=$?
+reviewed_after=$(cksum "$extract_keep/00021-00030/truth.json")
+if [ "$reviewed_code" = 2 ] && [ "$reviewed_before" = "$reviewed_after" ] \
+    && printf '%s\n' "$reviewed_out" | grep -q 'refusing --refresh.*reviewed truth'; then
+  ok "bench-extract refuses to refresh reviewed truth"
+else
+  ng "bench-extract refreshed reviewed truth or returned the wrong error: code=$reviewed_code output=[$reviewed_out]"
+fi
 
 # bench-score: one reviewed item has one hit, one missed truth entry, one BLOCK false positive,
 # and one NOTE false positive. A second item is deliberately unpruned and must stay out of every
 # denominator. Keeping both locations in the same file separates hunk from file granularity.
 score_corpus="$sandbox_root/score-corpus"; score_run="$sandbox_root/score-run"
-mkdir -p "$score_corpus/0001" "$score_corpus/0002" "$score_run/0001"
+score_item="00021-00030"; unpruned_item="00022-00031"
+mkdir -p "$score_corpus/$score_item" "$score_corpus/$unpruned_item" "$score_run/$score_item"
 printf '%s\n' '{"repo":"example/repo","number":21,"sha":"head","base_sha":"base","title":"feature","fixed_by":30,"grade":"easy"}' \
-  > "$score_corpus/0001/pr.json"
+  > "$score_corpus/$score_item/pr.json"
 printf '%s\n' '[
   {"file":"app.py","lines":[10,12],"source":"fix#30","reviewed":true,"note":"first"},
   {"file":"app.py","lines":[100,102],"source":"fix#30","reviewed":true,"note":"second"}
-]' > "$score_corpus/0001/truth.json"
+]' > "$score_corpus/$score_item/truth.json"
 printf '%s\n' '{"repo":"example/repo","number":22,"sha":"head2","base_sha":"base","title":"feature 2","fixed_by":31,"grade":null}' \
-  > "$score_corpus/0002/pr.json"
+  > "$score_corpus/$unpruned_item/pr.json"
 printf '%s\n' '[{"file":"later.py","lines":[1,1],"source":"fix#31","reviewed":false,"note":""}]' \
-  > "$score_corpus/0002/truth.json"
+  > "$score_corpus/$unpruned_item/truth.json"
 printf '%s\n' \
   '## Review result' \
   '### Blockers (BLOCK)' \
@@ -226,9 +266,9 @@ printf '%s\n' \
   '|---|---|---|---|' \
   '### Recorded only (NOTE)' \
   '- `note.py:5` is a note false positive' \
-  > "$score_run/0001/verdict.md"
+  > "$score_run/$score_item/verdict.md"
 printf '%s\n' '{"token_usage":{"input":100,"cache_read":20,"cache_creation":30,"output":10}}' \
-  > "$score_run/0001/session.json"
+  > "$score_run/$score_item/session.json"
 
 hunk_text=$("$root/bin/plumb-bench-score" --corpus "$score_corpus" --run "demo=$score_run")
 hunk_json=$("$root/bin/plumb-bench-score" --corpus "$score_corpus" --run "demo=$score_run" --json)
@@ -240,7 +280,7 @@ print("{:.3f}/{:.3f}/{:.3f}/{}/{}/{}/{:.0f}".format(
     r["matched"], r["tokens_per_review"]))')
 eq "bench-score hunk precision/recall/F1 and JSON parity" "$hunk_json_numbers" "0.500/0.500/0.500/2/2/1/160"
 eq "bench-score text carries the JSON numbers" "$hunk_text_numbers" "$hunk_json_numbers"
-printf '%s\n' "$hunk_text" | grep -q '^not pruned yet: 0002$' \
+printf '%s\n' "$hunk_text" | grep -q '^not pruned yet: 00022-00031$' \
   && ok "bench-score lists the item that is not pruned yet" || ng "bench-score hid the unpruned item: [$hunk_text]"
 
 file_numbers=$("$root/bin/plumb-bench-score" --corpus "$score_corpus" --run "demo=$score_run" \
@@ -255,8 +295,60 @@ r=json.load(sys.stdin)["runs"][0]["overall"]
 print("{:.4f}/{:.4f}/{:.4f}/{}".format(r["precision"], r["recall"], r["f1"], r["findings"]))')
 eq "bench-score include-note adds the located NOTE finding" "$note_numbers" "0.3333/0.5000/0.4000/3"
 
-unpruned="$sandbox_root/unpruned-corpus"; mkdir -p "$unpruned/0002"
-cp "$score_corpus/0002/pr.json" "$score_corpus/0002/truth.json" "$unpruned/0002/"
+pareto_noisy="$sandbox_root/pareto-noisy"; pareto_tie="$sandbox_root/pareto-tie"
+pareto_uncosted="$sandbox_root/pareto-uncosted"; missing_run="$sandbox_root/missing-run"
+mkdir -p "$pareto_noisy/$score_item" "$pareto_tie/$score_item" \
+  "$pareto_uncosted/$score_item" "$missing_run/$score_item"
+printf '%s\n' \
+  '### Blockers (BLOCK)' \
+  '| # | Confidence | Where | How it breaks |' \
+  '|---|---|---|---|' \
+  '| 1 | CONFIRMED | `app.py:11` | hit |' \
+  '| 2 | PLAUSIBLE | `app.py:70` | false positive |' \
+  '| 3 | PLAUSIBLE | `other.py:1` | false positive |' \
+  '### Fix before merge (FIX)' \
+  '| # | Confidence | Where | How it breaks |' \
+  '|---|---|---|---|' \
+  > "$pareto_noisy/$score_item/verdict.md"
+cp "$score_run/$score_item/session.json" "$pareto_noisy/$score_item/session.json"
+cp "$score_run/$score_item/verdict.md" "$pareto_tie/$score_item/verdict.md"
+cp "$score_run/$score_item/session.json" "$pareto_tie/$score_item/session.json"
+printf '%s\n' \
+  '### Blockers (BLOCK)' \
+  '| # | Confidence | Where | How it breaks |' \
+  '|---|---|---|---|' \
+  '| 1 | CONFIRMED | `app.py:11` | first hit |' \
+  '| 2 | CONFIRMED | `app.py:101` | second hit |' \
+  '### Fix before merge (FIX)' \
+  '| # | Confidence | Where | How it breaks |' \
+  '|---|---|---|---|' \
+  > "$pareto_uncosted/$score_item/verdict.md"
+printf '%s\n' '{"token_totals":{"input":100,"cache_creation":30,"output":10}}' \
+  > "$pareto_uncosted/$score_item/session.json"
+
+pareto_out=$("$root/bin/plumb-bench-score" --corpus "$score_corpus" \
+  --run "demo=$score_run" --run "noisy=$pareto_noisy" --run "tie=$pareto_tie" \
+  --run "uncosted=$pareto_uncosted")
+if printf '%s\n' "$pareto_out" | grep -q '^pareto: demo, tie$' \
+    && printf '%s\n' "$pareto_out" | grep -q \
+      '^not compared: uncosted (tokens/review unavailable; token_totals missing cache_read)$'; then
+  ok "bench-score reports dominance, ties, and why an uncosted run was not compared"
+else
+  ng "bench-score Pareto disclosure is wrong: [$pareto_out]"
+fi
+
+missing_out=$("$root/bin/plumb-bench-score" --corpus "$score_corpus" --run "missing=$missing_run" 2>&1)
+missing_code=$?
+if [ "$missing_code" = 0 ] && printf '%s\n' "$missing_out" | grep -q \
+    '^no verdict: missing/00021-00030$' && printf '%s\n' "$missing_out" | grep -Eq \
+    '^missing[[:space:]]+overall[[:space:]]+all[[:space:]]+0\.000[[:space:]]+0\.000[[:space:]]+0\.000[[:space:]]+0[[:space:]]+2[[:space:]]+0'; then
+  ok "bench-score lists a missing verdict and scores it as zero findings"
+else
+  ng "bench-score mishandled a missing verdict: code=$missing_code output=[$missing_out]"
+fi
+
+unpruned="$sandbox_root/unpruned-corpus"; mkdir -p "$unpruned/$unpruned_item"
+cp "$score_corpus/$unpruned_item/pr.json" "$score_corpus/$unpruned_item/truth.json" "$unpruned/$unpruned_item/"
 "$root/bin/plumb-bench-score" --corpus "$unpruned" --run "demo=$score_run" >/dev/null 2>&1
 eq "bench-score refuses a fully unpruned corpus with exit 2" "$?" "2"
 

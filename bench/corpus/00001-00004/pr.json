@@ -2,6 +2,7 @@
   "repo": "Haruki1090/plumb",
   "number": 1,
   "sha": "76970035242a357449fd710ca9c426dab3173d71",
+  "buggy_sha": "76970035242a357449fd710ca9c426dab3173d71",
   "base_sha": "d276765b77185718335d98909d70e2f2f3821646",
   "title": "docs(i18n): rewrite plumb in English for open-source release",
   "fixed_by": 4,

@@ -17,7 +17,10 @@ from typing import Any, Iterable
 
 FIX_TITLE = re.compile(r"^(?:fix|hotfix|revert)\b", re.IGNORECASE)
 PR_REFERENCE = re.compile(r"(?<![A-Za-z0-9_])#([0-9]+)\b")
-HUNK_HEADER = re.compile(r"^@@\s+-[0-9]+(?:,[0-9]+)?\s+\+([0-9]+)(?:,([0-9]+))?\s+@@")
+HUNK_HEADER = re.compile(
+    r"^@@\s+-([0-9]+)(?:,([0-9]+))?\s+\+([0-9]+)(?:,([0-9]+))?\s+@@"
+)
+ITEM_ID = re.compile(r"^[0-9]{5}-[0-9]{5}$")
 
 
 class BenchError(Exception):
@@ -75,9 +78,15 @@ def decode_diff_path(value: str) -> str | None:
     return decoded[2:] if decoded.startswith(("a/", "b/")) else decoded
 
 
-def parse_diff_hunks(diff_text: str) -> dict[str, list[list[int]]]:
-    """Parse new-side line ranges from a unified diff, grouped by path."""
-    result: dict[str, list[list[int]]] = {}
+def line_range(start: str, count: str | None) -> list[int]:
+    first = int(start)
+    length = int(count) if count is not None else 1
+    return [first, first if length == 0 else first + length - 1]
+
+
+def parse_diff_hunks(diff_text: str) -> dict[str, list[dict[str, list[int]]]]:
+    """Parse old- and new-side line ranges from a unified diff, grouped by old path."""
+    result: dict[str, list[dict[str, list[int]]]] = {}
     current_path = None
     old_path = None
     for line in diff_text.splitlines():
@@ -87,16 +96,17 @@ def parse_diff_hunks(diff_text: str) -> dict[str, list[list[int]]]:
         elif line.startswith("--- "):
             old_path = decode_diff_path(line[4:].split("\t", 1)[0])
         elif line.startswith("+++ "):
-            current_path = decode_diff_path(line[4:].split("\t", 1)[0]) or old_path
+            new_path = decode_diff_path(line[4:].split("\t", 1)[0])
+            current_path = old_path or new_path
             if current_path is not None:
                 result.setdefault(current_path, [])
         elif current_path is not None:
             match = HUNK_HEADER.match(line)
             if match:
-                start = int(match.group(1))
-                count = int(match.group(2)) if match.group(2) is not None else 1
-                end = start if count == 0 else start + count - 1
-                result[current_path].append([start, end])
+                result[current_path].append({
+                    "lines": line_range(match.group(1), match.group(2)),
+                    "fix_lines": line_range(match.group(3), match.group(4)),
+                })
     return result
 
 
@@ -107,14 +117,15 @@ def filter_fix_hunks(fix_diff: str, buggy_diff: str, fix_number: int) -> list[di
     return [
         {
             "file": path,
-            "lines": lines,
+            "lines": hunk["lines"],
+            "fix_lines": hunk["fix_lines"],
             "source": f"fix#{fix_number}",
             "reviewed": False,
             "note": "",
         }
         for path in sorted(fix_hunks)
         if path in buggy_files
-        for lines in fix_hunks[path]
+        for hunk in fix_hunks[path]
     ]
 
 
@@ -176,6 +187,7 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--limit", type=int, default=600, help="merged PRs to inspect (default: 600)")
     command.add_argument("--min-number", type=int, default=20, help="lowest referenced PR number (default: 20)")
     command.add_argument("--only", type=int, nargs="+", help="extract only these fix PR numbers")
+    command.add_argument("--refresh", help="rewrite this unreviewed item id")
     return command
 
 
@@ -193,42 +205,59 @@ def extract(args: argparse.Namespace) -> tuple[int, int]:
         raise BenchError("gh returned a PR list that is not a JSON array")
 
     pairs = find_pairs(pull_requests, args.min_number, args.only)
+    pair_ids = {
+        f"{buggy['number']:05d}-{fix['number']:05d}": (buggy, fix)
+        for buggy, fix in pairs
+    }
+    if args.refresh is not None:
+        if not ITEM_ID.match(args.refresh):
+            raise BenchError("--refresh must be an item id such as 00021-00030")
+        if args.refresh not in pair_ids:
+            raise BenchError(f"--refresh item is not in the extracted pairs: {args.refresh}")
+        refresh_truth = args.out / args.refresh / "truth.json"
+        if refresh_truth.is_file() and has_reviewed_truth(refresh_truth):
+            raise BenchError(f"refusing --refresh {args.refresh}: it contains reviewed truth")
+
     args.out.mkdir(parents=True, exist_ok=True)
     rows = []
     written = 0
     kept = 0
-    for sequence, (buggy, fix) in enumerate(pairs, 1):
-        item_id = f"{sequence:04d}"
+    for buggy, fix in pairs:
+        item_id = f"{buggy['number']:05d}-{fix['number']:05d}"
         item_dir = args.out / item_id
         truth_path = item_dir / "truth.json"
-        if has_reviewed_truth(truth_path):
-            pr_path = item_dir / "pr.json"
-            try:
-                existing_pr = json.loads(pr_path.read_text(encoding="utf-8")) if pr_path.is_file() else None
-            except (OSError, json.JSONDecodeError) as error:
-                raise BenchError(f"cannot read existing metadata {pr_path}: {error}") from error
-            if not isinstance(existing_pr, dict) or (
-                existing_pr.get("number"), existing_pr.get("fixed_by")
-            ) != (buggy["number"], fix["number"]):
-                raise BenchError(
-                    f"reviewed item {item_id} belongs to a different PR pair; keep it and choose a new output directory"
-                )
+        if truth_path.is_file() and args.refresh != item_id:
             files, hunks = read_truth_counts(truth_path)
             kept += 1
             rows.append((item_id, buggy["number"], fix["number"], files, hunks, "kept"))
+            print(f"kept {item_id} (existing truth)")
             continue
 
         base_sha = buggy.get("baseRefOid")
-        head_sha = buggy.get("headRefOid")
-        if not isinstance(base_sha, str) or not base_sha or not isinstance(head_sha, str) or not head_sha:
+        buggy_sha = buggy.get("headRefOid")
+        fix_base_sha = fix.get("baseRefOid")
+        fix_head_sha = fix.get("headRefOid")
+        if not isinstance(base_sha, str) or not base_sha or not isinstance(buggy_sha, str) or not buggy_sha:
             raise BenchError(f"PR #{buggy['number']} has no base/head SHA in the gh response")
+        if (
+            not isinstance(fix_base_sha, str) or not fix_base_sha
+            or not isinstance(fix_head_sha, str) or not fix_head_sha
+        ):
+            raise BenchError(f"PR #{fix['number']} has no base/head SHA in the gh response")
+        pinned_sha = gh([
+            "api", f"repos/{args.repo}/compare/{fix_base_sha}...{fix_head_sha}",
+            "--jq", ".merge_base_commit.sha",
+        ]).strip()
+        if not pinned_sha:
+            raise BenchError(f"GitHub returned no merge base for fix PR #{fix['number']}")
         fix_diff = gh(["pr", "diff", "--repo", args.repo, str(fix["number"])])
         buggy_diff = gh(["pr", "diff", "--repo", args.repo, str(buggy["number"])])
         truth = filter_fix_hunks(fix_diff, buggy_diff, fix["number"])
         pr = {
             "repo": args.repo,
             "number": buggy["number"],
-            "sha": head_sha,
+            "sha": pinned_sha,
+            "buggy_sha": buggy_sha,
             "base_sha": base_sha,
             "title": str(buggy.get("title") or ""),
             "fixed_by": fix["number"],

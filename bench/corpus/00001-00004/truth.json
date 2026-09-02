@@ -3,6 +3,10 @@
     "file": "agents/pr-refuter.md",
     "lines": [
       53,
+      58
+    ],
+    "fix_lines": [
+      53,
       64
     ],
     "source": "fix#4",
@@ -12,6 +16,10 @@
   {
     "file": "playbooks/landing-a-stack.md",
     "lines": [
+      77,
+      84
+    ],
+    "fix_lines": [
       77,
       86
     ],
@@ -23,6 +31,10 @@
     "file": "playbooks/opening-a-pr.md",
     "lines": [
       65,
+      72
+    ],
+    "fix_lines": [
+      65,
       77
     ],
     "source": "fix#4",
@@ -32,6 +44,10 @@
   {
     "file": "playbooks/runtime-forensics.md",
     "lines": [
+      21,
+      28
+    ],
+    "fix_lines": [
       21,
       27
     ],
@@ -45,6 +61,10 @@
       120,
       126
     ],
+    "fix_lines": [
+      120,
+      126
+    ],
     "source": "fix#4",
     "reviewed": true,
     "note": "The plan exception sent failing work to an obsolete router section instead of the bundled bug-fixing playbook."
@@ -52,6 +72,10 @@
   {
     "file": "scripts/host-shots.sh",
     "lines": [
+      49,
+      55
+    ],
+    "fix_lines": [
       49,
       58
     ],
@@ -63,6 +87,10 @@
     "file": "scripts/worktree-audit.sh",
     "lines": [
       8,
+      13
+    ],
+    "fix_lines": [
+      8,
       24
     ],
     "source": "fix#4",
@@ -72,6 +100,10 @@
   {
     "file": "scripts/worktree-audit.sh",
     "lines": [
+      109,
+      118
+    ],
+    "fix_lines": [
       120,
       129
     ],
@@ -85,6 +117,10 @@
       142,
       150
     ],
+    "fix_lines": [
+      142,
+      150
+    ],
     "source": "fix#4",
     "reviewed": true,
     "note": "The graph delegated to an undefined system, advertised the wrong retry cap, and put role selection in the wrong source of truth."
@@ -92,6 +128,10 @@
   {
     "file": "skills/pr-review/SKILL.md",
     "lines": [
+      98,
+      104
+    ],
+    "fix_lines": [
       98,
       104
     ],
@@ -103,6 +143,10 @@
     "file": "skills/pr-review/SKILL.md",
     "lines": [
       199,
+      206
+    ],
+    "fix_lines": [
+      199,
       207
     ],
     "source": "fix#4",
@@ -113,6 +157,10 @@
     "file": "skills/pr-review/scripts/pr-drift.sh",
     "lines": [
       3,
+      10
+    ],
+    "fix_lines": [
+      3,
       12
     ],
     "source": "fix#4",
@@ -122,6 +170,10 @@
   {
     "file": "skills/pr-review/scripts/pr-drift.sh",
     "lines": [
+      26,
+      31
+    ],
+    "fix_lines": [
       28,
       34
     ],
@@ -132,6 +184,10 @@
   {
     "file": "skills/pr-review/scripts/pr-drift.sh",
     "lines": [
+      47,
+      52
+    ],
+    "fix_lines": [
       50,
       58
     ],
@@ -142,6 +198,10 @@
   {
     "file": "skills/pr-review/scripts/pr-drift.sh",
     "lines": [
+      73,
+      78
+    ],
+    "fix_lines": [
       79,
       89
     ],

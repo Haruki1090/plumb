@@ -156,47 +156,38 @@ def numeric(value: Any) -> float | None:
     return float(value)
 
 
-def usage_total(usage: Any) -> float | None:
+def usage_total(usage: Any) -> tuple[float | None, str | None]:
     if not isinstance(usage, dict):
-        return None
+        return None, "is not an object"
     total = 0.0
-    for aliases in TOKEN_ALIASES.values():
-        value = next((usage[name] for name in aliases if name in usage), None)
+    for canonical, aliases in TOKEN_ALIASES.items():
+        present = [name for name in aliases if name in usage]
+        if not present:
+            return None, f"missing {canonical}"
+        value = usage[present[0]]
         parsed = numeric(value)
         if parsed is None:
-            return None
+            return None, f"invalid {canonical}"
         total += parsed
-    return total
+    return total, None
 
 
-def session_tokens(path: Path) -> float | None:
+def session_tokens(path: Path) -> tuple[float | None, str | None]:
     if not path.is_file():
-        return None
+        return None, "session.json missing"
     try:
         report = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
+    except OSError:
+        return None, "session.json unreadable"
+    except json.JSONDecodeError:
+        return None, "session.json is invalid JSON"
+    if not isinstance(report, dict):
+        return None, "session.json is not an object"
     for key in ("token_usage", "token_totals", "usage"):
-        total = usage_total(report.get(key) if isinstance(report, dict) else None)
-        if total is not None:
-            return total
-    requests = report.get("requests") if isinstance(report, dict) else None
-    if not isinstance(requests, list):
-        return None
-    total = 0.0
-    for request in requests:
-        if not isinstance(request, dict):
-            return None
-        direct = usage_total(request.get("usage"))
-        if direct is not None:
-            total += direct
-            continue
-        context = numeric(request.get("context"))
-        output = numeric(request.get("output"))
-        if context is None or output is None:
-            return None
-        total += context + output
-    return total
+        if key in report:
+            total, problem = usage_total(report[key])
+            return total, f"{key} {problem}" if problem is not None else None
+    return None, "token totals missing"
 
 
 def load_json(path: Path) -> Any:
@@ -241,6 +232,10 @@ def aggregate(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     costs = [row["tokens_per_review"] for row in rows if row["tokens_per_review"] is not None]
     result["tokens_per_review"] = round(sum(costs) / len(costs), 1) if len(costs) == len(rows) and rows else None
     result["costed_reviews"] = len(costs)
+    reasons = list(dict.fromkeys(
+        row["tokens_unavailable"] for row in rows if row["tokens_unavailable"] is not None
+    ))
+    result["tokens_unavailable"] = "; ".join(reasons) if reasons else None
     return result
 
 
@@ -257,17 +252,22 @@ def score_run(
     rows = []
     for item in items:
         verdict_path = run_dir / item["id"] / "verdict.md"
-        if not verdict_path.is_file():
-            raise ScoreError(f"verdict not found: {verdict_path}")
-        try:
-            verdict = verdict_path.read_text(encoding="utf-8")
-        except OSError as error:
-            raise ScoreError(f"cannot read {verdict_path}: {error}") from error
+        no_verdict = not verdict_path.is_file()
+        if no_verdict:
+            verdict = ""
+        else:
+            try:
+                verdict = verdict_path.read_text(encoding="utf-8")
+            except OSError as error:
+                raise ScoreError(f"cannot read {verdict_path}: {error}") from error
         findings = parse_verdict(verdict, include_note)
         matched = maximum_matches(findings, item["truth"], granularity, slack)
         row = {"id": item["id"], "grade": item["grade"] if item["grade"] in ("easy", "medium", "hard") else "ungraded"}
         row.update(metric(len(findings), len(item["truth"]), matched))
-        row["tokens_per_review"] = session_tokens(run_dir / item["id"] / "session.json")
+        row["tokens_per_review"], row["tokens_unavailable"] = session_tokens(
+            run_dir / item["id"] / "session.json"
+        )
+        row["no_verdict"] = no_verdict
         rows.append(row)
 
     by_grade: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -278,6 +278,7 @@ def score_run(
         "items": rows,
         "grades": {grade: aggregate(grade_rows) for grade, grade_rows in sorted(by_grade.items())},
         "overall": aggregate(rows),
+        "no_verdict": [row["id"] for row in rows if row["no_verdict"]],
     }
 
 
@@ -299,6 +300,17 @@ def pareto_frontier(runs: list[dict[str, Any]]) -> list[str]:
     return frontier
 
 
+def not_compared(runs: list[dict[str, Any]]) -> list[dict[str, str]]:
+    return [
+        {
+            "name": run["name"],
+            "reason": run["overall"]["tokens_unavailable"] or "tokens unavailable",
+        }
+        for run in runs
+        if run["overall"]["tokens_per_review"] is None
+    ]
+
+
 def display_ratio(value: float) -> str:
     return f"{value:.3f}"
 
@@ -312,6 +324,12 @@ def display_tokens(value: float | None) -> str:
 def print_text(report: dict[str, Any]) -> None:
     skipped = report["not_pruned_yet"]
     print("not pruned yet: " + (", ".join(skipped) if skipped else "--"))
+    missing = [
+        f"{run['name']}/{item_id}"
+        for run in report["runs"]
+        for item_id in run["no_verdict"]
+    ]
+    print("no verdict: " + (", ".join(missing) if missing else "--"))
     print("run              item          grade     precision  recall  f1     findings  truth  matched  tokens/review")
     for run in report["runs"]:
         for row in run["items"]:
@@ -336,6 +354,11 @@ def print_text(report: dict[str, Any]) -> None:
         print("pareto: " + ", ".join(report["pareto"]))
     else:
         print("pareto: -- (tokens per review unavailable)")
+    for excluded in report["not_compared"]:
+        print(
+            f"not compared: {excluded['name']} "
+            f"(tokens/review unavailable; {excluded['reason']})"
+        )
 
 
 def run_argument(value: str) -> tuple[str, Path]:
@@ -378,6 +401,7 @@ def main(argv: list[str] | None = None) -> int:
         "not_pruned_yet": skipped,
         "runs": runs,
         "pareto": pareto_frontier(runs),
+        "not_compared": not_compared(runs),
     }
     if args.as_json:
         json.dump(report, sys.stdout, indent=2, sort_keys=True)

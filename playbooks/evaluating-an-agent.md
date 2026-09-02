@@ -31,8 +31,8 @@ part of the bug, and set `reviewed: true` on every hunk that remains. Then set `
 - `medium`: a mismatch that crosses files
 - `hard`: behavior that needs the surrounding system to see
 
-Start with 10 items, split 3-4 per grade. A rerun keeps any truth with a reviewed entry because the
-person's pruning outranks extraction (**principle-make-operations-idempotent**).
+Start with 10 items, split 3-4 per grade. On rerun, existing items are kept and new pairs are added;
+`--refresh <id>` alone rewrites one, and refuses reviewed truth because the person's pruning outranks extraction (**principle-make-operations-idempotent**).
 
 An unpruned corpus scores nothing. The scorer refuses a corpus in which no item has a reviewed truth
 entry, and skips individual items that have not been pruned yet.
@@ -41,6 +41,7 @@ entry, and skips individual items that have not been pruned yet.
 
 Start a fresh session for each item and configuration. Give the candidate only `pr.json`'s `repo`,
 `number`, and `sha`, and require the review to stay pinned to that SHA.
+Truth ranges are line numbers in the tree at `pr.json.sha`, so findings and labels share coordinates.
 
 The candidate must not see:
 
@@ -106,5 +107,4 @@ not a permanent ranking.
 Can you name the configuration running today, its F1, its tokens per review, and the date those two
 numbers were last measured on this corpus? If not, the configuration is a habit, not a decision.
 
-**What you return:** the corpus revision, every run's precision / recall / F1 / tokens per review,
-the Pareto configurations, the chosen move, the decision-log path, and the next re-run trigger.
+**What you return:** the corpus revision, every run's precision / recall / F1 / tokens per review, the Pareto configurations, the chosen move, the decision-log path, and the next re-run trigger.
