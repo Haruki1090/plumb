@@ -1,0 +1,152 @@
+[
+  {
+    "file": "agents/pr-refuter.md",
+    "lines": [
+      53,
+      64
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The refuter contract omitted the by-product section the review playbook required, so unrelated discoveries were discarded."
+  },
+  {
+    "file": "playbooks/landing-a-stack.md",
+    "lines": [
+      77,
+      86
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The portability rule relied on a false claim about this repository's remote and branch and did not explain the delayed failure mode."
+  },
+  {
+    "file": "playbooks/opening-a-pr.md",
+    "lines": [
+      65,
+      77
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The before-shot recipe hard-coded a remote and branch even though the playbook forbids both."
+  },
+  {
+    "file": "playbooks/runtime-forensics.md",
+    "lines": [
+      21,
+      27
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The handoff pointed bug fixing at an obsolete router section instead of the bundled bug-fixing playbook."
+  },
+  {
+    "file": "playbooks/writing-a-plan.md",
+    "lines": [
+      120,
+      126
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The plan exception sent failing work to an obsolete router section instead of the bundled bug-fixing playbook."
+  },
+  {
+    "file": "scripts/host-shots.sh",
+    "lines": [
+      49,
+      58
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The help command used a fixed line range that leaked executable code and went stale whenever the header changed."
+  },
+  {
+    "file": "scripts/worktree-audit.sh",
+    "lines": [
+      8,
+      24
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The audit assumed BSD stat and date flags, making the date calculation silently wrong on GNU systems."
+  },
+  {
+    "file": "scripts/worktree-audit.sh",
+    "lines": [
+      120,
+      129
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The later audit path bypassed the new platform adapters and continued calling BSD-only commands directly."
+  },
+  {
+    "file": "skills/graph/SKILL.md",
+    "lines": [
+      142,
+      150
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The graph delegated to an undefined system, advertised the wrong retry cap, and put role selection in the wrong source of truth."
+  },
+  {
+    "file": "skills/pr-review/SKILL.md",
+    "lines": [
+      98,
+      104
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The review playbook named the drift tool as an internal script instead of its checked public command."
+  },
+  {
+    "file": "skills/pr-review/SKILL.md",
+    "lines": [
+      199,
+      207
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The review playbook required refuter by-products without ensuring that the refuter's output contract contained them."
+  },
+  {
+    "file": "skills/pr-review/scripts/pr-drift.sh",
+    "lines": [
+      3,
+      12
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The drift script's explanation claimed timestamps came from git even though its data came from the API."
+  },
+  {
+    "file": "skills/pr-review/scripts/pr-drift.sh",
+    "lines": [
+      28,
+      34
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The query omitted the total commit count, so it could not detect when its 250-commit window was truncated."
+  },
+  {
+    "file": "skills/pr-review/scripts/pr-drift.sh",
+    "lines": [
+      50,
+      58
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "The drift calculation did not measure how many old commits the query had omitted."
+  },
+  {
+    "file": "skills/pr-review/scripts/pr-drift.sh",
+    "lines": [
+      79,
+      89
+    ],
+    "source": "fix#4",
+    "reviewed": true,
+    "note": "A truncated commit list silently omitted the comparison base instead of warning that the result could not be pinned."
+  }
+]
