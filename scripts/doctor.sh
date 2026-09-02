@@ -37,12 +37,13 @@ echo "— routing targets"
 for c in git gh; do
   command -v "$c" >/dev/null 2>&1 && note "ok" "$c" || bad "$c is not on PATH (every plumb playbook assumes it)"
 done
-# python3 is used by plumb-pr-drift (skills/pr-review/scripts/pr-drift.sh) alone.
+# python3 is used by plumb-pr-drift (skills/pr-review/scripts/pr-drift.sh) and
+# plumb-session-audit (scripts/session-audit.py).
 # No other playbook assumes it, so it does not rank as required alongside git and gh. To keep the
 # first experience from reading as "broken" for someone without it, missing stays an info line (--).
 command -v python3 >/dev/null 2>&1 \
   && note "ok" "python3" \
-  || note "--" "python3 is not on PATH (needed only when you use plumb-pr-drift)"
+  || note "--" "python3 is not on PATH (needed only when you use plumb-pr-drift or plumb-session-audit)"
 
 cfg() { bash "$root/scripts/plumb-config.sh" "$1" ""; }
 for k in role.judge role.bulk pane.driver; do
@@ -151,12 +152,18 @@ elif r=$(bash "$root/scripts/plumb-path.sh" root 2>/dev/null); then
       bad "run/ is tracked (the ledger gets mixed into the source of truth)"
     fi
     for k in specs plans; do
-      git -C "$(dirname "$r")" check-ignore -q "$r/$k" 2>/dev/null \
-        && bad "$k/ is ignored (the source of truth disappears with the working tree)" \
-        || note "ok" "$k/ is tracked"
+      if [ ! -d "$r/$k" ]; then
+        note "--" "$k/: not created yet"
+      elif git -C "$(dirname "$r")" check-ignore -q "$r/$k" 2>/dev/null; then
+        bad "$k/ is ignored (the source of truth disappears with the working tree)"
+      else
+        note "ok" "$k/ is tracked"
+      fi
     done
   else
     note "--" "nothing at this location yet (it gets created with --mkdir when you use it)"
+    note "--" "specs/: not created yet"
+    note "--" "plans/: not created yet"
   fi
 else
   bad "scripts/plumb-path.sh cannot resolve"

@@ -92,6 +92,7 @@ Playbooks name principles. A named principle means you read the leaf in full.
 | **Ask for review and answer what comes back** (as the author) | `playbooks/being-reviewed.md` |
 | Add a different model family's axis to that review | `plumb:interrogate` |
 | Check whether the environment plumb claims still exists | `plumb:doctor` |
+| See what a session spent its context on | `plumb-session-audit` |
 
 ### Decide, and design
 
@@ -208,6 +209,7 @@ Read the full text of a principle you are applying. A summary is not enough.
 - **principle-fix-root-causes** — Trace a symptom to its root cause. Reproduce it first
 - **principle-sequence-verifiable-units** — Verify each unit before you move to the next. The ordering is itself your proof to the reviewer
 - **principle-gate-claims-on-evidence** — Put a gate immediately before you write "done". If you did not run it, do not claim it
+- **principle-spend-on-the-outcome** — Name the cost term a lever moved, measure it from the session, and state the spend per unit of finished work
 
 ### Delegation
 
