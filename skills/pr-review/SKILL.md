@@ -183,6 +183,7 @@ What confidence cannot cover, cover by raising blocking.
 
 **Put `pr-refuter` on every finding. On a BLOCK candidate, without exception.**
 When in doubt, fall to the refuting side.
+Each refuter has a 30-tool-call budget; `PLAUSIBLE - budget spent` counts as no refutation, so the finding keeps its confidence and the verdict's confidence section states that the refuter spent its budget.
 
 **Name the most promising line of refutation for the refuter.** Say only "refute this" and it tries the
 general case and comes back with "could not refute". Naming **the weakest point of your own finding,

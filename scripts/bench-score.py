@@ -9,6 +9,7 @@ import re
 import sys
 from collections import defaultdict
 from pathlib import Path
+from statistics import median
 from typing import Any, Iterable
 
 
@@ -375,7 +376,9 @@ def aggregate(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
         sum(row["matched"] for row in rows),
     )
     costs = [row["tokens_per_review"] for row in rows if row["tokens_per_review"] is not None]
-    result["tokens_per_review"] = round(sum(costs) / len(costs), 1) if len(costs) == len(rows) and rows else None
+    all_costed = len(costs) == len(rows) and bool(rows)
+    result["tokens_per_review"] = round(sum(costs) / len(costs), 1) if all_costed else None
+    result["tokens_per_review_median"] = round(median(costs), 1) if all_costed else None
     result["costed_reviews"] = len(costs)
     reasons = list(dict.fromkeys(
         row["tokens_unavailable"] for row in rows if row["tokens_unavailable"] is not None
@@ -412,6 +415,7 @@ def score_run(
         row["tokens_per_review"], row["tokens_unavailable"] = session_tokens(
             run_dir / item["id"] / "session.json"
         )
+        row["tokens_per_review_median"] = row["tokens_per_review"]
         row["no_verdict"] = no_verdict
         rows.append(row)
 
@@ -428,16 +432,21 @@ def score_run(
 
 
 def pareto_frontier(runs: list[dict[str, Any]]) -> list[str]:
-    comparable = [run for run in runs if run["overall"]["tokens_per_review"] is not None]
+    comparable = [
+        run for run in runs if run["overall"]["tokens_per_review_median"] is not None
+    ]
     frontier = []
     for candidate in comparable:
         c_f1 = candidate["overall"]["f1"]
-        c_cost = candidate["overall"]["tokens_per_review"]
+        c_cost = candidate["overall"]["tokens_per_review_median"]
         dominated = any(
             other is not candidate
             and other["overall"]["f1"] >= c_f1
-            and other["overall"]["tokens_per_review"] <= c_cost
-            and (other["overall"]["f1"] > c_f1 or other["overall"]["tokens_per_review"] < c_cost)
+            and other["overall"]["tokens_per_review_median"] <= c_cost
+            and (
+                other["overall"]["f1"] > c_f1
+                or other["overall"]["tokens_per_review_median"] < c_cost
+            )
             for other in comparable
         )
         if not dominated:
@@ -452,7 +461,7 @@ def not_compared(runs: list[dict[str, Any]]) -> list[dict[str, str]]:
             "reason": run["overall"]["tokens_unavailable"] or "tokens unavailable",
         }
         for run in runs
-        if run["overall"]["tokens_per_review"] is None
+        if run["overall"]["tokens_per_review_median"] is None
     ]
 
 
@@ -475,30 +484,36 @@ def print_text(report: dict[str, Any]) -> None:
         for item_id in run["no_verdict"]
     ]
     print("no verdict: " + (", ".join(missing) if missing else "--"))
-    print("run              item          grade     precision  recall  f1     findings  truth  matched  tokens/review")
+    print(
+        "run              item          grade     precision  recall  f1     findings  truth  matched  "
+        "tokens/review  tokens/review (med)"
+    )
     for run in report["runs"]:
         for row in run["items"]:
             print(
                 f"{run['name']:<16} {row['id']:<13} {row['grade']:<9} "
                 f"{display_ratio(row['precision']):>9}  {display_ratio(row['recall']):>6}  {display_ratio(row['f1']):>5}  "
-                f"{row['findings']:>8}  {row['truth_entries']:>5}  {row['matched']:>7}  {display_tokens(row['tokens_per_review']):>13}"
+                f"{row['findings']:>8}  {row['truth_entries']:>5}  {row['matched']:>7}  "
+                f"{display_tokens(row['tokens_per_review']):>13}  {display_tokens(row['tokens_per_review_median']):>19}"
             )
         for grade, row in run["grades"].items():
             print(
                 f"{run['name']:<16} {'grade:' + grade:<13} {grade:<9} "
                 f"{display_ratio(row['precision']):>9}  {display_ratio(row['recall']):>6}  {display_ratio(row['f1']):>5}  "
-                f"{row['findings']:>8}  {row['truth_entries']:>5}  {row['matched']:>7}  {display_tokens(row['tokens_per_review']):>13}"
+                f"{row['findings']:>8}  {row['truth_entries']:>5}  {row['matched']:>7}  "
+                f"{display_tokens(row['tokens_per_review']):>13}  {display_tokens(row['tokens_per_review_median']):>19}"
             )
         row = run["overall"]
         print(
             f"{run['name']:<16} {'overall':<13} {'all':<9} "
             f"{display_ratio(row['precision']):>9}  {display_ratio(row['recall']):>6}  {display_ratio(row['f1']):>5}  "
-            f"{row['findings']:>8}  {row['truth_entries']:>5}  {row['matched']:>7}  {display_tokens(row['tokens_per_review']):>13}"
+            f"{row['findings']:>8}  {row['truth_entries']:>5}  {row['matched']:>7}  "
+            f"{display_tokens(row['tokens_per_review']):>13}  {display_tokens(row['tokens_per_review_median']):>19}"
         )
     if report["pareto"]:
-        print("pareto: " + ", ".join(report["pareto"]))
+        print("pareto: " + ", ".join(report["pareto"]) + " (by median tokens/review)")
     else:
-        print("pareto: -- (tokens per review unavailable)")
+        print("pareto: -- (median tokens/review unavailable)")
     for excluded in report["not_compared"]:
         print(
             f"not compared: {excluded['name']} "

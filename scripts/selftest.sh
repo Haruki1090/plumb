@@ -272,13 +272,13 @@ printf '%s\n' '{"token_usage":{"input":100,"cache_read":20,"cache_creation":30,"
 
 hunk_text=$("$root/bin/plumb-bench-score" --corpus "$score_corpus" --run "demo=$score_run")
 hunk_json=$("$root/bin/plumb-bench-score" --corpus "$score_corpus" --run "demo=$score_run" --json)
-hunk_text_numbers=$(printf '%s\n' "$hunk_text" | awk '$1 == "demo" && $2 == "overall" {print $4 "/" $5 "/" $6 "/" $7 "/" $8 "/" $9 "/" $10}')
+hunk_text_numbers=$(printf '%s\n' "$hunk_text" | awk '$1 == "demo" && $2 == "overall" {print $4 "/" $5 "/" $6 "/" $7 "/" $8 "/" $9 "/" $10 "/" $11}')
 hunk_json_numbers=$(printf '%s\n' "$hunk_json" | python3 -c 'import json, sys
 r=json.load(sys.stdin)["runs"][0]["overall"]
-print("{:.3f}/{:.3f}/{:.3f}/{}/{}/{}/{:.0f}".format(
+print("{:.3f}/{:.3f}/{:.3f}/{}/{}/{}/{:.0f}/{:.0f}".format(
     r["precision"], r["recall"], r["f1"], r["findings"], r["truth_entries"],
-    r["matched"], r["tokens_per_review"]))')
-eq "bench-score hunk precision/recall/F1 and JSON parity" "$hunk_json_numbers" "0.500/0.500/0.500/2/2/1/160"
+    r["matched"], r["tokens_per_review"], r["tokens_per_review_median"]))')
+eq "bench-score hunk precision/recall/F1 and JSON parity" "$hunk_json_numbers" "0.500/0.500/0.500/2/2/1/160/160"
 eq "bench-score text carries the JSON numbers" "$hunk_text_numbers" "$hunk_json_numbers"
 printf '%s\n' "$hunk_text" | grep -q '^not pruned yet: 00022-00031$' \
   && ok "bench-score lists the item that is not pruned yet" || ng "bench-score hid the unpruned item: [$hunk_text]"
@@ -445,9 +445,10 @@ eq "bench-score applies generic table headings, row severity, and numbered NOTE 
   "$table_rule_numbers" "2/1|5/1"
 
 pareto_noisy="$sandbox_root/pareto-noisy"; pareto_tie="$sandbox_root/pareto-tie"
+pareto_outlier="$sandbox_root/pareto-outlier"
 pareto_uncosted="$sandbox_root/pareto-uncosted"; missing_run="$sandbox_root/missing-run"
 mkdir -p "$pareto_noisy/$score_item" "$pareto_tie/$score_item" \
-  "$pareto_uncosted/$score_item" "$missing_run/$score_item"
+  "$pareto_outlier/$score_item" "$pareto_uncosted/$score_item" "$missing_run/$score_item"
 printf '%s\n' \
   '### Blockers (BLOCK)' \
   '| # | Confidence | Where | How it breaks |' \
@@ -475,16 +476,57 @@ printf '%s\n' \
 printf '%s\n' '{"token_totals":{"input":100,"cache_creation":30,"output":10}}' \
   > "$pareto_uncosted/$score_item/session.json"
 
+# Give the Pareto comparison three reviews per run. The outlier run has a higher mean than demo
+# but a lower median, so it belongs on the frontier only when median tokens/review drives cost.
+pareto_item_two="00031-00032"; pareto_item_three="00033-00034"
+for item in "$pareto_item_two" "$pareto_item_three"; do
+  mkdir -p "$score_corpus/$item" "$score_run/$item" "$pareto_noisy/$item" \
+    "$pareto_tie/$item" "$pareto_outlier/$item" "$pareto_uncosted/$item"
+  cp "$score_corpus/$score_item/pr.json" "$score_corpus/$item/pr.json"
+  cp "$score_corpus/$score_item/truth.json" "$score_corpus/$item/truth.json"
+  cp "$score_run/$score_item/verdict.md" "$score_run/$item/verdict.md"
+  cp "$score_run/$score_item/session.json" "$score_run/$item/session.json"
+  cp "$pareto_noisy/$score_item/verdict.md" "$pareto_noisy/$item/verdict.md"
+  cp "$pareto_noisy/$score_item/session.json" "$pareto_noisy/$item/session.json"
+  cp "$pareto_tie/$score_item/verdict.md" "$pareto_tie/$item/verdict.md"
+  cp "$pareto_tie/$score_item/session.json" "$pareto_tie/$item/session.json"
+  cp "$pareto_uncosted/$score_item/verdict.md" "$pareto_uncosted/$item/verdict.md"
+  cp "$pareto_uncosted/$score_item/session.json" "$pareto_uncosted/$item/session.json"
+done
+for item in "$score_item" "$pareto_item_two" "$pareto_item_three"; do
+  cp "$score_run/$score_item/verdict.md" "$pareto_outlier/$item/verdict.md"
+done
+printf '%s\n' '{"token_usage":{"input":1000,"cache_read":0,"cache_creation":0,"output":0}}' \
+  > "$pareto_outlier/$score_item/session.json"
+for item in "$pareto_item_two" "$pareto_item_three"; do
+  printf '%s\n' '{"token_usage":{"input":10,"cache_read":0,"cache_creation":0,"output":0}}' \
+    > "$pareto_outlier/$item/session.json"
+done
+
 pareto_out=$("$root/bin/plumb-bench-score" --corpus "$score_corpus" \
   --run "demo=$score_run" --run "noisy=$pareto_noisy" --run "tie=$pareto_tie" \
-  --run "uncosted=$pareto_uncosted")
-if printf '%s\n' "$pareto_out" | grep -q '^pareto: demo, tie$' \
+  --run "outlier=$pareto_outlier" --run "uncosted=$pareto_uncosted")
+pareto_json=$("$root/bin/plumb-bench-score" --corpus "$score_corpus" \
+  --run "demo=$score_run" --run "noisy=$pareto_noisy" --run "tie=$pareto_tie" \
+  --run "outlier=$pareto_outlier" --run "uncosted=$pareto_uncosted" --json)
+pareto_median_check=$(printf '%s\n' "$pareto_json" | python3 -c 'import json, sys
+r=json.load(sys.stdin)
+runs={run["name"]: run["overall"] for run in r["runs"]}
+outlier=runs["outlier"]
+ok=(outlier["tokens_per_review"] > runs["demo"]["tokens_per_review"]
+    and outlier["tokens_per_review_median"] < runs["demo"]["tokens_per_review_median"]
+    and r["pareto"] == ["outlier"])
+print("ok" if ok else "wrong")')
+if printf '%s\n' "$pareto_out" | grep -q '^pareto: outlier (by median tokens/review)$' \
     && printf '%s\n' "$pareto_out" | grep -q \
-      '^not compared: uncosted (tokens/review unavailable; token_totals missing cache_read)$'; then
-  ok "bench-score reports dominance, ties, and why an uncosted run was not compared"
+      '^not compared: uncosted (tokens/review unavailable; token_totals missing cache_read)$' \
+    && [ "$pareto_median_check" = "ok" ]; then
+  ok "bench-score uses median cost for Pareto despite an inflated mean"
 else
   ng "bench-score Pareto disclosure is wrong: [$pareto_out]"
 fi
+
+rm -rf "$score_corpus/$pareto_item_two" "$score_corpus/$pareto_item_three"
 
 missing_out=$("$root/bin/plumb-bench-score" --corpus "$score_corpus" --run "missing=$missing_run" 2>&1)
 missing_code=$?

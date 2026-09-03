@@ -59,22 +59,23 @@ SHA. Discard a verdict that cites a later commit; do not score a run whose blind
 Name a run for the configuration, not for the candidate. Record what varied: depth, judge on or off,
 and the relevant config-file values. Do not put implementation names in the run name.
 
-Each corpus item gets its own session and these artifacts:
+Run each corpus item as one review in its own dedicated project directory, and save these artifacts:
 
 ```text
 <run>/<id>/verdict.md
 <run>/<id>/session.json
 ```
 
-Save the `plumb:pr-review` return in `verdict.md`. Record the session id, then save the audit beside
-it:
+Save the `plumb:pr-review` return in `verdict.md`, then audit the whole dedicated project directory
+beside it:
 
 ```bash
-plumb-session-audit --session <uuid> --json > <run>/<id>/session.json
+plumb-session-audit --transcripts <the dedicated project directory> --all --json > <run>/<id>/session.json
 ```
 
-One session per item keeps tokens per review attributable. Reusing a session carries prior items and
-their hints into the next review, breaking both the cost unit and the blind.
+One dedicated directory per item keeps tokens per review attributable. A review that spawns teammates
+is several sessions, so `--session` or `--last 1` would report only one of them. Reusing a directory
+carries prior items and their hints into the next review, breaking both the cost unit and the blind.
 
 ## Score and decide
 
