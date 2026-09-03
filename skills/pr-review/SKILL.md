@@ -80,6 +80,12 @@ permanently out of date. Treat it as a structural problem with the PR, the same 
 - **Dump the diff to a file** (stage 1 uses it):
   `git diff <base>...<head> > <scratch>/pr<n>.diff`
 
+**Reading the tree, in every stage below.** Three or more greps over the same tree become one
+sweep script; its output goes to a file, and what comes back is the pointer plus the deciding lines
+(`playbooks/batching-chatty-tools.md`). Measured on 2026-09-03: two reviews of the same PR at the
+same depth cost 37 and 62 requests, every one a shell call, with the bytes returned flat
+(138KB and 141KB) - the request count was the whole difference.
+
 ### 1. Bidirectional inventory
 
 Build **two independent** sets of claims.
@@ -240,7 +246,7 @@ Classify the surviving findings on **two axes**. Do not collapse them into a sin
 |---|---|
 | **BLOCK** | Stops the approval |
 | **FIX** | Does not stop it, but gets fixed before merge |
-| **NOTE** | Recorded only. Not fixed this time |
+| **NOTE** | Recorded only. Not fixed this time. **A defect the PR touches or widens is FIX even if it predates the PR**: "already there" is a fact about history, not a reason to leave it |
 
 Before you write CONFIRMED, pass the gate of **principle-gate-claims-on-evidence**
 — did you run the command that proves it, this turn? If not, it is PLAUSIBLE.

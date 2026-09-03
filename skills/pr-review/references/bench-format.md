@@ -45,3 +45,8 @@ Outside template sections, a heading containing the whole-word severity `BLOCK` 
 If a summary row and a later free-form finding share at least one identical parsed location (file and exact start/end), they count as one finding and their location sets are merged.
 A BLOCK or FIX row whose `Where` cell has no parseable `path:line` still counts as a false positive
 with no location; it cannot match truth.
+NOTE rows are recorded, never scored: the template defines NOTE as "not fixed this time", and a
+defect the PR touches or widens is FIX under `plumb:pr-review` stage 5 even when it predates the
+PR. `--include-note` exists to inspect what a run put there, not to compare runs. Measured on
+2026-09-03: counting NOTE moved one run's precision from 0.222 to 0.140 because NOTE also carries
+body-versus-diff mismatches and test-fixture remarks that are not defects.
