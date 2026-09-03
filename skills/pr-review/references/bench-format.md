@@ -27,7 +27,8 @@ existing truth file; `--refresh <id>` rewrites one unreviewed item and refuses r
 item with no reviewed entries is not scored.
 
 A run mirrors corpus ids. `verdict.md` is the return shape in `report-template.md`; `session.json` is
-the JSON output of `plumb-session-audit --session <uuid>`:
+the JSON output of `plumb-session-audit --transcripts <the dedicated project directory> --all --json`,
+because a review that spawns teammates is several sessions and auditing one session would omit them:
 
 ```text
 <run>/00001-00004/verdict.md
