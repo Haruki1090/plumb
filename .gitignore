@@ -3,3 +3,5 @@ node_modules/
 *.log
 .superpowers/
 .plumb/run/
+__pycache__/
+*.pyc
