@@ -1,0 +1,28 @@
+{
+  "name": "plumb",
+  "version": "0.7.0",
+  "description": "A Claude-first engineering harness with an additive Codex adapter for disciplined planning, implementation, and adversarial review.",
+  "author": {
+    "name": "Haruki1090",
+    "url": "https://github.com/Haruki1090"
+  },
+  "homepage": "https://github.com/Haruki1090/plumb",
+  "repository": "https://github.com/Haruki1090/plumb",
+  "license": "MIT",
+  "keywords": ["workflow", "discipline", "code-review", "planning", "codex"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "plumb",
+    "shortDescription": "Disciplined engineering workflows for Claude and Codex",
+    "longDescription": "Use named engineering principles, visible skips, execution graphs, and adversarial review from either Claude Code or Codex while keeping Claude as the canonical harness.",
+    "developerName": "Haruki1090",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write", "Subagents"],
+    "websiteURL": "https://github.com/Haruki1090/plumb",
+    "defaultPrompt": [
+      "Use plumb to shape this work before implementation.",
+      "Use plumb to run this plan with independent verification.",
+      "Use plumb to review this pull request adversarially."
+    ]
+  }
+}

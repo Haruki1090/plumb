@@ -556,6 +556,72 @@ PLUMB_CONFIG=/nonexistent bash "$root/scripts/plumb-config.sh" role.judge >/dev/
 # A key holding regex metacharacters does not mismatch onto another line
 eq "a key with metacharacters does not mismatch" "$(PLUMB_CONFIG="$cfg" bash "$root/scripts/plumb-config.sh" 'role.[judge' DEFAULT)" "DEFAULT"
 
+# Codex installation is additive and idempotent. Exercise it only against the temporary home.
+codex_home="$sandbox_root/codex-home"
+CODEX_HOME="$codex_home" "$root/bin/plumb-codex-install" --user >/dev/null 2>&1
+eq "Codex user profile is installed" "$?" "0"
+cmp -s "$root/.codex/config.toml" "$codex_home/plumb.config.toml" \
+  && ok "Codex profile matches the project source" \
+  || ng "Codex profile differs from the project source"
+installed_agents=$(find "$codex_home/agents" -name '*.toml' -type f | wc -l | tr -d ' ')
+eq "Codex custom agents are installed" "$installed_agents" "10"
+CODEX_HOME="$codex_home" "$root/bin/plumb-codex-install" --user --check >/dev/null 2>&1
+eq "Codex install check accepts an exact installation" "$?" "0"
+CODEX_HOME="$codex_home" "$root/bin/plumb-codex-install" --user >/dev/null 2>&1
+eq "Codex installer is idempotent" "$?" "0"
+printf '# local change\n' >> "$codex_home/agents/plumb-explorer.toml"
+CODEX_HOME="$codex_home" "$root/bin/plumb-codex-install" --user >/dev/null 2>&1
+eq "Codex installer refuses a differing destination" "$?" "1"
+CODEX_HOME="$codex_home" "$root/bin/plumb-codex-install" --user --force >/dev/null 2>&1
+eq "Codex installer force restores plumb-owned files" "$?" "0"
+cmp -s "$root/.codex/agents/plumb-explorer.toml" "$codex_home/agents/plumb-explorer.toml" \
+  && ok "Codex force install restored the agent" \
+  || ng "Codex force install did not restore the agent"
+
+# Preflight must make a conflicting install all-or-nothing, and --force must not follow a target link.
+conflict_home="$sandbox_root/codex-conflict-home"
+mkdir -p "$conflict_home"
+printf '# owner configuration\n' > "$conflict_home/plumb.config.toml"
+CODEX_HOME="$conflict_home" "$root/bin/plumb-codex-install" --user >/dev/null 2>&1
+eq "Codex conflict fails before installation" "$?" "1"
+[ ! -e "$conflict_home/agents/plumb-worker.toml" ] \
+  && ok "Codex conflict leaves no mixed agent state" \
+  || ng "Codex conflict installed agents before failing"
+
+link_home="$sandbox_root/codex-link-home"
+mkdir -p "$link_home"
+external_config="$sandbox_root/external-codex-config"
+printf '# external data\n' > "$external_config"
+ln -s "$external_config" "$link_home/plumb.config.toml"
+CODEX_HOME="$link_home" "$root/bin/plumb-codex-install" --user --force >/dev/null 2>&1
+eq "Codex force install rejects a symbolic-link destination" "$?" "1"
+eq "Codex force install leaves the link target untouched" "$(cat "$external_config")" "# external data"
+
+directory_home="$sandbox_root/codex-directory-home"
+mkdir -p "$directory_home/plumb.config.toml"
+CODEX_HOME="$directory_home" "$root/bin/plumb-codex-install" --user --force >/dev/null 2>&1
+eq "Codex force install rejects a directory destination" "$?" "1"
+[ ! -e "$directory_home/plumb.config.toml/config.toml" ] \
+  && ok "Codex directory destination receives no nested config" \
+  || ng "Codex installer copied into a destination directory"
+
+# Atomic per-file replacement means an interrupted run cannot leave a truncated target. Exact installed
+# files plus a missing destination are the recoverable state; a normal rerun must converge from it.
+rm "$codex_home/agents/plumb-worker.toml"
+CODEX_HOME="$codex_home" "$root/bin/plumb-codex-install" --user >/dev/null 2>&1
+eq "Codex install converges when one destination is missing" "$?" "0"
+cmp -s "$root/.codex/agents/plumb-worker.toml" "$codex_home/agents/plumb-worker.toml" \
+  && ok "Codex rerun restored the missing agent" \
+  || ng "Codex rerun did not restore the missing agent"
+
+project_install="$sandbox_root/codex-project"
+mkdir -p "$project_install"
+"$root/bin/plumb-codex-install" --project "$project_install" >/dev/null 2>&1
+eq "Codex project configuration is installed" "$?" "0"
+cmp -s "$root/.codex/config.toml" "$project_install/.codex/config.toml" \
+  && ok "Codex project profile matches the source" \
+  || ng "Codex project profile differs from the source"
+
 # isolate-pollution: separating out "it passes alone but fails as a set".
 # What matters is not **finding** the culprit but never silently returning 0 when it was not
 # found and when the premise is broken (**principle-gate-claims-on-evidence**).

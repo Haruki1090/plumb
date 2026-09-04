@@ -1,8 +1,8 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "plumb",
-  "version": "0.6.0",
-  "description": "A harness for Claude Code: an index of principles you call by name, judgment routed to a different model family, visible skip (skipping is allowed but never silent), and a harness that checks whether its own claims still exist. Ships adversarial PR review with six bundled agents, execution-graph design, and decision-brief for handing a branching decision back to the owner.",
+  "version": "0.7.0",
+  "description": "A Claude-first engineering harness with an additive Codex adapter: named principles, cross-family judgment, visible skips, adversarial PR review, and execution-graph design.",
   "author": {
     "name": "Haruki1090"
   },

@@ -5,6 +5,13 @@ description: The entry point to plumb - an index of named principles that puts d
 
 # plumb
 
+## Runtime adapter
+
+Claude Code remains the canonical runtime for this harness. When the current session is an OpenAI
+coding agent, read `docs/openai-runtime.md` before applying any instruction about roles, agent return
+values, tools, configuration paths, or command lookup. That document translates the execution surface;
+it does not replace the playbooks or principles below.
+
 ## How to use this
 
 When you start non-trivial work, **make your first todo "read the principle index below"**.

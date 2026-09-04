@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# Install plumb's Codex profile and native custom agents without changing the Claude installation.
+set -u
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+scope=user
+target=""
+force=0
+check_only=0
+
+usage() {
+  cat <<'EOF'
+usage: plumb-codex-install [--user | --project DIR] [--force] [--check]
+
+  --user         install ~/.codex/plumb.config.toml and ~/.codex/agents/ (default)
+  --project DIR  install DIR/.codex/config.toml and DIR/.codex/agents/
+  --force        replace differing regular plumb-owned destination files
+  --check        verify destinations without writing
+
+Set CODEX_HOME to override ~/.codex for a user installation.
+This command installs configuration only. Install the plugin separately with `codex plugin`.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --user) scope=user; target=""; shift ;;
+    --project)
+      [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+      scope=project; target=$2; shift 2 ;;
+    --force) force=1; shift ;;
+    --check) check_only=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) printf 'unknown argument: %s\n' "$1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+if [ "$scope" = user ]; then
+  codex_root=${CODEX_HOME:-"$HOME/.codex"}
+  config_dst="$codex_root/plumb.config.toml"
+  agents_dst="$codex_root/agents"
+else
+  [ -n "$target" ] || { usage >&2; exit 2; }
+  case "$target" in
+    /*) project_root=$target ;;
+    *) project_root=$PWD/$target ;;
+  esac
+  config_dst="$project_root/.codex/config.toml"
+  agents_dst="$project_root/.codex/agents"
+fi
+
+sources=("$root/.codex/config.toml")
+destinations=("$config_dst")
+for src in "$root"/.codex/agents/*.toml; do
+  sources+=("$src")
+  destinations+=("$agents_dst/$(basename "$src")")
+done
+
+# Inspect every destination before writing any of them. Symlinks and non-regular targets are never
+# replaced, even with --force: following one would let a configuration install overwrite unrelated
+# data, while copying to a directory would report success without producing the promised file.
+fail=0
+for i in "${!sources[@]}"; do
+  src=${sources[$i]}
+  dst=${destinations[$i]}
+  if [ -L "$dst" ]; then
+    printf 'NG  %s is a symbolic link; refusing to follow it\n' "$dst" >&2
+    fail=1
+  elif [ -e "$dst" ] && [ ! -f "$dst" ]; then
+    printf 'NG  %s exists but is not a regular file\n' "$dst" >&2
+    fail=1
+  elif [ -f "$dst" ] && cmp -s "$src" "$dst"; then
+    printf 'ok  %s\n' "$dst"
+  elif [ "$check_only" -eq 1 ]; then
+    printf 'NG  %s\n' "$dst"
+    fail=1
+  elif [ -e "$dst" ] && [ "$force" -ne 1 ]; then
+    printf 'NG  %s differs; rerun with --force to replace this plumb-owned file\n' "$dst" >&2
+    fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ] || [ "$check_only" -eq 1 ]; then
+  exit "$fail"
+fi
+
+# Stage every changed file beside its final destination before changing any target. The final rename
+# is atomic on the destination filesystem, so an interruption leaves each target either old/missing or
+# fully installed; a normal rerun converges from either state.
+staged=()
+staged_destinations=()
+cleanup_staged() {
+  for tmp in "${staged[@]}"; do
+    [ -n "$tmp" ] && [ -e "$tmp" ] && rm -f "$tmp"
+  done
+}
+trap 'cleanup_staged; exit 130' HUP INT TERM
+
+for i in "${!sources[@]}"; do
+  src=${sources[$i]}
+  dst=${destinations[$i]}
+  if [ -f "$dst" ] && cmp -s "$src" "$dst"; then
+    continue
+  fi
+  dst_dir=$(dirname "$dst")
+  if ! mkdir -p "$dst_dir"; then
+    cleanup_staged
+    exit 1
+  fi
+  if [ -L "$dst_dir" ]; then
+    printf 'NG  %s is a symbolic-link directory; refusing to install through it\n' "$dst_dir" >&2
+    cleanup_staged
+    exit 1
+  fi
+  tmp=$(mktemp "$dst.tmp.XXXXXX") || { cleanup_staged; exit 1; }
+  if ! cp "$src" "$tmp" || ! chmod 0644 "$tmp"; then
+    rm -f "$tmp"
+    cleanup_staged
+    exit 1
+  fi
+  staged+=("$tmp")
+  staged_destinations+=("$dst")
+done
+
+for i in "${!staged[@]}"; do
+  if ! mv -f "${staged[$i]}" "${staged_destinations[$i]}"; then
+    cleanup_staged
+    exit 1
+  fi
+  staged[$i]=""
+  printf 'put %s\n' "${staged_destinations[$i]}"
+done
+trap - HUP INT TERM
+
+if [ "${#staged[@]}" -eq 0 ]; then
+  printf 'ok  all plumb Codex files already match\n'
+fi
+
+if [ "$fail" -ne 0 ]; then
+  exit 1
+fi
+
+if [ "$check_only" -eq 0 ]; then
+  if [ "$scope" = user ]; then
+    printf '\nStart a new session with: codex --profile plumb\n'
+  else
+    printf '\nTrust the project, start a new Codex session in %s, and its .codex/config.toml will load.\n' "$project_root"
+  fi
+fi

@@ -1,0 +1,11 @@
+name = "plumb_pr_diff_reader"
+description = "Read-only blind diff reader that reconstructs behavior without seeing the PR explanation."
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+developer_instructions = """
+Read only the diff artifact and post-change files explicitly supplied by the parent. Do not fetch or use
+the PR body, title, or commit explanation. Return exactly: (1) behavior changes with file evidence,
+(2) dangerous changes involving irreversibility, money, or data loss, and (3) questions the diff cannot
+settle. Attach confidence and do not turn guesses into facts.
+"""
