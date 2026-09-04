@@ -7,8 +7,10 @@ surface.
 ## Start profile
 
 The shipped `.codex/config.toml` is both this repository's project configuration and the source for the
-user profile installed as `~/.codex/plumb.config.toml` (or `$CODEX_HOME/plumb.config.toml`). Start Codex
-with:
+optional user profile installed as `~/.codex/plumb.config.toml` (or `$CODEX_HOME/plumb.config.toml`).
+The marketplace plugin works without this profile. After installing the plugin, invoke `$plumb:setup`
+from a new Codex session to install the profile and native custom agents without locating the plugin
+cache. Then start Codex with:
 
 ```bash
 codex --profile plumb
@@ -33,10 +35,11 @@ job needs more or less depth.
 | Agent `SendMessage` instruction | Ignore it. A Codex subagent returns its final response to the parent automatically |
 | `Workflow` parallel/pipeline | Explicit spawn, wait/barrier, and follow-up calls using the graph's node contracts |
 
-Custom agent files live in `.codex/agents/` and can be installed globally with
-`plumb-codex-install --user`. If a named custom agent is unavailable, spawn a generic subagent with the
-same model and reasoning setting from that file, and include the bounded role instructions in the task.
-Do not silently collapse independent implementation and verification into one thread.
+Custom agent files live in `.codex/agents/`. `$plumb:setup` resolves the installed plugin root and runs
+`bin/plumb-codex-install --user`; direct installer invocation remains available to repository
+maintainers. If a named custom agent is unavailable, spawn a generic subagent with the same model and
+reasoning setting from that file, and include the bounded role instructions in the task. Do not silently
+collapse independent implementation and verification into one thread.
 
 ## PR-review agent mapping
 

@@ -80,33 +80,32 @@ you left unset.
 
 ### Codex (sidecar)
 
-Codex uses the same playbooks and principles, but needs its own plugin manifest, profile, and native
-custom-agent files. From a clone of this repository:
+Codex uses the same playbooks and principles. Install the plugin directly from its GitHub marketplace:
 
 ```bash
-codex plugin marketplace add /absolute/path/to/plumb
+codex plugin marketplace add Haruki1090/plumb
 codex plugin add plumb@plumb
-/absolute/path/to/plumb/bin/plumb-codex-install --user
+```
+
+These commands download and register the universal plugin; no clone or local path is required. Start a
+new ordinary Codex session and invoke `$plumb:plumb-codex` to use it.
+
+The bundled profile and native custom agents are an optional enhancement. In a new Codex session, invoke
+`$plumb:setup`; it resolves the installed plugin automatically and adds only
+`~/.codex/plumb.config.toml` and the `plumb-*` agents under `~/.codex/agents/`. It does not edit or
+remove the Claude installation, and it refuses to overwrite differing files without explicit approval.
+After setup, start the enhanced profile:
+
+```bash
 codex --profile plumb
 ```
 
-The first command registers this repository's existing `plumb` marketplace; the second installs its
-universal plugin. The installer adds only `~/.codex/plumb.config.toml` and the `plumb-*` custom agents
-under `~/.codex/agents/`. It does not edit or remove the Claude installation, and it refuses to overwrite
-differing files unless you pass `--force`.
+For project-scoped configuration instead, ask `$plumb:setup` to install into the active project. Codex
+loads project `.codex/` configuration only for trusted projects. See
+[`docs/openai-runtime.md`](docs/openai-runtime.md) for the runtime mapping and model-family caveat.
 
-For one project instead of your user account:
-
-```bash
-/absolute/path/to/plumb/bin/plumb-codex-install --project /absolute/path/to/project
-```
-
-Codex loads project `.codex/` configuration only for trusted projects. Start a new session after
-installation. See [`docs/openai-runtime.md`](docs/openai-runtime.md) for the runtime mapping and
-model-family caveat.
-
-Invoke the harness as `$plumb:plumb-codex`. That plugin-qualified entrypoint reads the unchanged root router and then
-applies the Codex execution adapter.
+The plugin-qualified `$plumb:plumb-codex` entrypoint reads the unchanged root router and then applies
+the Codex execution adapter.
 
 The included profile uses a high-reasoning Sol main thread, medium-reasoning Luna subagents by default,
 and a concurrency cap of four. Named agents spend Luna `max` only on bounded judgment and refutation;
