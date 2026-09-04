@@ -1,15 +1,15 @@
 {
   "name": "plumb",
-  "description": "Marketplace for plumb, a harness for Claude Code that names discipline and routes judgment to another model family.",
+  "description": "Marketplace for plumb, a Claude-first harness with an additive Codex adapter that names discipline and routes judgment to another model family.",
   "owner": {
     "name": "Haruki1090"
   },
   "plugins": [
     {
       "name": "plumb",
-      "description": "A harness for Claude Code: a principle index you call by name, judgment routed to another model family, and skipping that is allowed but never silent.",
+      "description": "A Claude-first harness with Codex support: named principles, cross-family judgment, and skipping that is allowed but never silent.",
       "category": "development",
-      "tags": ["workflow", "discipline", "code-review", "planning"],
+      "tags": ["workflow", "discipline", "code-review", "planning", "codex"],
       "source": "./"
     }
   ]

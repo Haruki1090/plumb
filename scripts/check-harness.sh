@@ -211,13 +211,14 @@ fi
 #     Name one and the document becomes a lie for anyone who does not have that tool. Where a
 #     role runs is decided by `~/.claude/plumb/config`; the body names the key (pane.driver and
 #     the rest).
-#     Scan bodies() only. docs/path-map.md states which tool puts worktrees where — a fact, not an
-#     instruction — and scripts/ holds test values plus the external skill names doctor looks at.
+#     Scan portable bodies only. The one exception is skills/plumb-codex/SKILL.md: naming its runtime
+#     is the entire purpose of that thin adapter. docs/path-map.md states which tool puts worktrees
+#     where — a fact, not an instruction — and scripts/ holds test values plus external skill names.
 tool=0
 while IFS= read -r f; do
   hit=$(grep -oIE 'herdr|cursor-agent|codex' "$f" | sort -u | tr '\n' ' ')
   [ -n "$hit" ] && { tool=$((tool+1)); note "NG" "names a routing target directly [${hit%% }]: ${f#$root/}"; }
-done < <(bodies)
+done < <(bodies | grep -vF "$root/skills/plumb-codex/SKILL.md")
 check "body text naming a routing target" "$tool" 0
 
 # 11. Every plumb-* command the body text names exists in bin/
@@ -229,7 +230,14 @@ check "body text naming a routing target" "$tool" 0
 #     the existing rules use it. bin_ref_sources() is held separately for this rule alone).
 BIN_DIR="$root/bin"
 nobin=0
+skill_names=$(while IFS= read -r f; do
+  sed -n 's/^name:[[:space:]]*//p' "$f" | head -1
+done < <(targets))
 while IFS= read -r cmd; do
+  # A skill can legitimately share the plumb-* lexical shape without being a command. This became
+  # visible when the additive runtime entry was named plumb-codex. Subtract declared skill names
+  # before checking executable references; do not hard-code one exception.
+  printf '%s\n' "$skill_names" | grep -Fxq "$cmd" && continue
   [ -f "$BIN_DIR/$cmd" ] || { nobin=$((nobin+1)); note "NG" "the body text names a plumb-* command that does not exist: bin/$cmd"; }
 done < <(
   while IFS= read -r f; do
@@ -312,6 +320,73 @@ else
     fail=1
   else
     note "ok" "the README's counts (playbooks ${pbs} / principles ${prs})"
+  fi
+fi
+
+# 15. The additive Codex sidecar is complete and parseable. Keep this outside bodies(): model slugs and
+#     runtime names belong in adapter configuration, not in Claude's portable playbook prose.
+CODEX_MANIFEST="$root/.codex-plugin/plugin.json"
+CODEX_CONFIG="$root/.codex/config.toml"
+CODEX_AGENTS="$root/.codex/agents"
+if [ ! -f "$CODEX_MANIFEST" ]; then
+  note "NG" ".codex-plugin/plugin.json is missing"; fail=1
+elif [ ! -f "$CODEX_CONFIG" ]; then
+  note "NG" ".codex/config.toml is missing"; fail=1
+elif [ ! -d "$CODEX_AGENTS" ]; then
+  note "NG" ".codex/agents/ is missing"; fail=1
+else
+  claude_version=$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json" | head -1)
+  codex_version=$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$CODEX_MANIFEST" | head -1)
+  changelog_version=$(sed -n 's/^## \[\([^]]*\)\].*/\1/p' "$root/CHANGELOG.md" | head -1)
+  if [ -n "$claude_version" ] && [ "$claude_version" = "$codex_version" ] && [ "$codex_version" = "$changelog_version" ]; then
+    note "ok" "release version agrees across both manifests and CHANGELOG (${codex_version})"
+  else
+    note "NG" "release version mismatch (Claude ${claude_version:-missing} / Codex ${codex_version:-missing} / CHANGELOG ${changelog_version:-missing})"; fail=1
+  fi
+  if [ -n "$codex_version" ] && [ -f "$root/docs/releases/v${codex_version}.md" ]; then
+    note "ok" "release notes exist (docs/releases/v${codex_version}.md)"
+  else
+    note "NG" "release notes missing for ${codex_version:-unknown version}"; fail=1
+  fi
+
+  codex_agent_count=$(find "$CODEX_AGENTS" -name '*.toml' -type f | wc -l | tr -d ' ')
+  if [ "$codex_agent_count" -eq 10 ]; then
+    note "ok" "Codex custom agent count (${codex_agent_count})"
+  else
+    note "NG" "Codex custom agent count (expected 10 / measured ${codex_agent_count})"; fail=1
+  fi
+
+  if command -v python3 >/dev/null 2>&1 && python3 -c 'import tomllib' >/dev/null 2>&1; then
+    codex_bad=0
+    python3 -c 'import json, pathlib, sys, tomllib
+root = pathlib.Path(sys.argv[1])
+manifest = json.loads((root / ".codex-plugin/plugin.json").read_text())
+assert manifest["name"] == "plumb"
+assert manifest["skills"] == "./skills/"
+config = tomllib.loads((root / ".codex/config.toml").read_text())
+assert config["model"] == "gpt-5.6-sol"
+assert config["agents"]["default_subagent_model"] == "gpt-5.6-luna"
+assert config["agents"]["max_concurrent_threads_per_session"] == 4
+names = set()
+reasoning = {
+    "gpt-5.6-sol": {"low", "medium", "high", "xhigh", "max", "ultra"},
+    "gpt-5.6-luna": {"low", "medium", "high", "xhigh", "max"},
+}
+for path in sorted((root / ".codex/agents").glob("*.toml")):
+    agent = tomllib.loads(path.read_text())
+    for key in ("name", "description", "developer_instructions", "model", "model_reasoning_effort", "sandbox_mode"):
+        assert agent.get(key), f"{path}: missing {key}"
+    assert agent["name"] == path.stem.replace("-", "_"), f"{path}: name does not match filename"
+    assert agent["name"] not in names, f"{path}: duplicate agent name"
+    names.add(agent["name"])
+    assert agent["model"] in reasoning, f"{path}: unsupported model"
+    assert agent["model_reasoning_effort"] in reasoning[agent["model"]], f"{path}: unsupported reasoning effort"
+    assert agent["sandbox_mode"] in {"read-only", "workspace-write"}, f"{path}: unsupported sandbox mode"
+    assert "SendMessage" not in agent["developer_instructions"]
+' "$root" || codex_bad=1
+    check "Codex JSON/TOML files that fail structural validation" "$codex_bad" 0
+  else
+    note "--" "Codex JSON/TOML parse: skipped, Python 3.11+ with tomllib is unavailable"
   fi
 fi
 

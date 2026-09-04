@@ -1,0 +1,89 @@
+# Codex runtime adapter
+
+This is a sidecar, not a rewrite. `SKILL.md`, `playbooks/`, `principles/`, and `agents/*.md` remain the
+Claude-first source of truth. Apply this document only when those files name a Claude-specific execution
+surface.
+
+## Start profile
+
+The shipped `.codex/config.toml` is both this repository's project configuration and the source for the
+user profile installed as `~/.codex/plumb.config.toml` (or `$CODEX_HOME/plumb.config.toml`). Start Codex
+with:
+
+```bash
+codex --profile plumb
+```
+
+The main thread uses `gpt-5.6-sol` at high reasoning. The default subagent uses `gpt-5.6-luna` at medium
+reasoning, with four spawned threads allowed at once. Named agents override those defaults where their
+job needs more or less depth.
+
+## Role mapping
+
+| Claude-first term | Codex execution |
+|---|---|
+| Main session | The current Sol-led Codex thread |
+| Explorer `Task` | `plumb_explorer` |
+| Implementer `Task` | `plumb_worker` |
+| `role.bulk` when unset | `plumb_bulk`, only after the fan-out independence test passes |
+| Same-family verification | `plumb_judge` |
+| `role.judge` | The command configured by `plumb-config role.judge`; see the family rule below |
+| Several `Agent` calls | Spawn the named agents together, then wait for every required result |
+| `AskUserQuestion` | Use the runtime's structured user-input tool when available; otherwise ask one concise question |
+| Agent `SendMessage` instruction | Ignore it. A Codex subagent returns its final response to the parent automatically |
+| `Workflow` parallel/pipeline | Explicit spawn, wait/barrier, and follow-up calls using the graph's node contracts |
+
+Custom agent files live in `.codex/agents/` and can be installed globally with
+`plumb-codex-install --user`. If a named custom agent is unavailable, spawn a generic subagent with the
+same model and reasoning setting from that file, and include the bounded role instructions in the task.
+Do not silently collapse independent implementation and verification into one thread.
+
+## PR-review agent mapping
+
+| Canonical definition | Codex custom agent |
+|---|---|
+| `agents/pr-diff-reader.md` | `plumb_pr_diff_reader` |
+| `agents/pr-invariant.md` | `plumb_pr_invariant` |
+| `agents/pr-cutover.md` | `plumb_pr_cutover` |
+| `agents/pr-repro.md` | `plumb_pr_repro` |
+| `agents/pr-refuter.md` | `plumb_pr_refuter` |
+| `agents/pr-blindspot.md` | `plumb_pr_blindspot` |
+
+The Markdown definitions remain canonical for the role's questions and output shape. The TOML agents
+translate those roles into native Codex model, reasoning, sandbox, and return-value semantics.
+
+Before starting `plumb_pr_repro`, the parent creates an isolated git worktree and gives the agent its
+absolute path. The agent must restrict edits to that path. A shared working directory is not isolation.
+
+## Model-family rule
+
+Sol and Luna are execution tiers in the same GPT-5.6 family. A `plumb_judge` or Luna refuter is useful
+independent verification, but it does **not** close the harness's different-family judge line.
+
+For the different-family pass:
+
+1. Read `plumb-config role.judge ""`.
+2. If it resolves to a genuinely different-family command, run that bounded review and record it.
+3. Otherwise leave the required todo line as `skip: role.judge unset or not a different model family`.
+
+Never describe a Sol/Luna split as cross-family review.
+
+## Command lookup
+
+Codex plugins do not promise to put a plugin's `bin/` directory on `PATH`. Resolve the plugin root from
+the loaded skill path and execute commands from `<plugin-root>/bin/`. A user installation may also expose
+the wrappers on `PATH`, but the workflow must not depend on that convenience.
+
+## Delegation discipline
+
+- Delegate only when the user explicitly asks for agents or when the active plumb playbook calls for a
+  role. Loading plumb is not permission for unrelated fan-out.
+- Keep requirements, decisions, and final integration in the main Sol thread.
+- Give each subagent a bounded input, writable-file ownership, output contract, and stopping condition.
+- Use Luna low/medium for extraction, exploration, and repetitive work. Use Luna max only for bounded
+  adversarial judgment or refutation. Use Sol high for ambiguous implementation, invariants, cutover
+  reasoning, and final integration.
+- Do not run parallel writers against the same files. Put shared-state changes before the fan-out or run
+  them serially.
+- Wait for all required lanes, then integrate their structured summaries. Do not paste their raw logs
+  into the main context.

@@ -1,5 +1,13 @@
 # What plumb does not have
 
+## Runtime scope
+
+Claude Code remains plumb's canonical runtime and owns the shared router, playbooks, principles, and
+agent definitions. Codex support is an additive execution adapter: `.codex-plugin/`, `.codex/`,
+`skills/plumb-codex/`, and `docs/openai-runtime.md` translate packaging, model placement, delegation,
+and return-value mechanics without forking the shared behavior. A Sol/Luna split is explicitly kept
+separate from the genuinely different-family judge requirement.
+
 plumb starts from the playbooks in pstack (`pstack/` in `github.com/cursor/plugins`, MIT).
 **13 playbooks come from pstack**, broken down in the table below. **The rest did not come
 from pstack** (see "Written outside pstack" below).
@@ -94,7 +102,7 @@ above.**
 **Do not treat it as a second source of truth and delete it.** `/loop` is mechanism; it
 carried no discipline.
 
-## Written outside pstack (11 playbooks + 2 principles + 4 tools)
+## Written outside pstack (11 playbooks + 2 principles + 5 tools)
 
 **Problems pstack did not have, and that the existing assets held in another form**, written
 from scratch in plumb's vocabulary. These are not ports, so they sit outside the breakdown
@@ -142,7 +150,7 @@ of the breakage got dug out one level. And **the judgment**: the question, gate,
 lets you say afterwards whether it was kept. Those two additions are why the line count runs
 higher than upstream. **Getting shorter is not the goal.**
 
-Four tools were added as well. `scripts/isolate-pollution.sh` (`plumb-isolate-pollution`) picks
+Five tools were added as well. `scripts/isolate-pollution.sh` (`plumb-isolate-pollution`) picks
 out the polluter one case at a time when things pass alone and fail together. **The upstream
 script of the same kind is hardwired to npm, and if residue is already there before the run it
 reports the first case as the culprit.** It was rewritten to take the check command and the
@@ -160,6 +168,10 @@ truth without overwriting a person's reviewed pruning. `scripts/bench-score.py`
 (`plumb-bench-score`) matches review locations against that truth and compares configurations by F1
 and tokens per review. The corpus stays private; only its format and one repository-owned example
 ship with plumb.
+
+`bin/plumb-codex-install` installs the Codex profile and native custom-agent definitions at user or
+project scope. It is idempotent, refuses to replace a differing destination by default, and leaves the
+Claude installation untouched.
 
 **What was dropped** is either something each playbook already holds in another form, or a
 step riding machinery this environment does not have: the menu boilerplate, the opening

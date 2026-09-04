@@ -5,7 +5,7 @@
 
 # plumb
 
-A harness for Claude Code that makes discipline *namable*: every principle has a
+A Claude-first harness, with an additive Codex adapter, that makes discipline *namable*: every principle has a
 name you can call it by, judgment is routed to a different model family than the
 one that wrote the code, and **skipping is allowed but never silent** — a skipped
 step leaves a `skip: <reason>` line you cannot delete.
@@ -64,6 +64,8 @@ agent configurations by precision, recall, F1, and tokens per review.
 
 ## Install
 
+### Claude Code (primary)
+
     /plugin marketplace add Haruki1090/plumb
     /plugin install plumb@plumb
 
@@ -76,7 +78,42 @@ Nothing else is required. plumb has no plugin dependencies — `scripts/doctor.s
 checks only the tools you chose to route roles to, and reports `--` for the ones
 you left unset.
 
-## Configuration
+### Codex (sidecar)
+
+Codex uses the same playbooks and principles, but needs its own plugin manifest, profile, and native
+custom-agent files. From a clone of this repository:
+
+```bash
+codex plugin marketplace add /absolute/path/to/plumb
+codex plugin add plumb@plumb
+/absolute/path/to/plumb/bin/plumb-codex-install --user
+codex --profile plumb
+```
+
+The first command registers this repository's existing `plumb` marketplace; the second installs its
+universal plugin. The installer adds only `~/.codex/plumb.config.toml` and the `plumb-*` custom agents
+under `~/.codex/agents/`. It does not edit or remove the Claude installation, and it refuses to overwrite
+differing files unless you pass `--force`.
+
+For one project instead of your user account:
+
+```bash
+/absolute/path/to/plumb/bin/plumb-codex-install --project /absolute/path/to/project
+```
+
+Codex loads project `.codex/` configuration only for trusted projects. Start a new session after
+installation. See [`docs/openai-runtime.md`](docs/openai-runtime.md) for the runtime mapping and
+model-family caveat.
+
+Invoke the harness as `$plumb:plumb-codex`. That plugin-qualified entrypoint reads the unchanged root router and then
+applies the Codex execution adapter.
+
+The included profile uses a high-reasoning Sol main thread, medium-reasoning Luna subagents by default,
+and a concurrency cap of four. Named agents spend Luna `max` only on bounded judgment and refutation;
+ambiguous implementation and integration stay on Sol. Sol and Luna are the same GPT-5.6 family, so this
+does not pretend to satisfy plumb's genuinely different-family judge requirement.
+
+## Claude configuration
 
 plumb works with nothing configured. Unset roles fall back to the main session,
 which says so instead of pretending the pass happened.
@@ -93,6 +130,10 @@ Run `plumb-doctor` from a shell to see what is wired and what is unset (installi
 plugin puts it on your PATH). Unset reads `--`, never `NG` — plumb does not report a
 tool you chose not to install as breakage. From inside Claude Code, the `doctor` skill
 covers the same ground.
+
+Codex model placement lives separately in [`.codex/config.toml`](.codex/config.toml). Keeping the two
+configuration surfaces separate is intentional: Claude remains the primary harness, while Codex reuses
+the shared behavior through a thin adapter.
 
 ## Language
 
