@@ -578,6 +578,32 @@ cmp -s "$root/.codex/agents/plumb-explorer.toml" "$codex_home/agents/plumb-explo
   && ok "Codex force install restored the agent" \
   || ng "Codex force install did not restore the agent"
 
+# The optional setup entrypoint is loaded from an installed plugin, not from the source checkout a
+# person happened to clone. Recreate that package shape and execute the setup skill's own adapter
+# against a clean Codex home. If the skill moves without its adapter or installer, or packaging omits
+# any part of that path, this test goes red.
+plugin_copy="$sandbox_root/plugin-cache/plumb/plumb/0.7.0"
+setup_home="$sandbox_root/setup-home"
+if [ -f "$root/skills/setup/SKILL.md" ]; then
+  mkdir -p "$plugin_copy/skills" "$plugin_copy/bin"
+  cp -R "$root/skills/setup" "$plugin_copy/skills/setup"
+  cp -R "$root/.codex" "$plugin_copy/.codex"
+  cp "$root/bin/plumb-codex-install" "$plugin_copy/bin/plumb-codex-install"
+  setup_adapter="$plugin_copy/skills/setup/scripts/install.sh"
+  CODEX_HOME="$setup_home" "$setup_adapter" --user >/dev/null 2>&1
+  setup_code=$?
+  if [ -x "$setup_adapter" ] \
+      && [ "$setup_code" = 0 ] \
+      && cmp -s "$plugin_copy/.codex/config.toml" "$setup_home/plumb.config.toml" \
+      && [ "$(find "$setup_home/agents" -name '*.toml' -type f | wc -l | tr -d ' ')" = 10 ]; then
+    ok "installed-plugin setup resolves and installs the optional Codex sidecar"
+  else
+    ng "installed-plugin setup failed: code=$setup_code"
+  fi
+else
+  ng "installed-plugin setup skill is missing"
+fi
+
 # Preflight must make a conflicting install all-or-nothing, and --force must not follow a target link.
 conflict_home="$sandbox_root/codex-conflict-home"
 mkdir -p "$conflict_home"

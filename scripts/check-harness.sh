@@ -211,14 +211,17 @@ fi
 #     Name one and the document becomes a lie for anyone who does not have that tool. Where a
 #     role runs is decided by `~/.claude/plumb/config`; the body names the key (pane.driver and
 #     the rest).
-#     Scan portable bodies only. The one exception is skills/plumb-codex/SKILL.md: naming its runtime
-#     is the entire purpose of that thin adapter. docs/path-map.md states which tool puts worktrees
-#     where — a fact, not an instruction — and scripts/ holds test values plus external skill names.
+#     Scan portable bodies only. The exceptions are skills/plumb-codex/SKILL.md and the setup skill:
+#     naming their runtime is the entire purpose of those thin adapters and its executable helper.
+#     docs/path-map.md states which tool puts worktrees where — a fact, not an instruction — and
+#     scripts/ holds test values plus external skill names.
 tool=0
 while IFS= read -r f; do
   hit=$(grep -oIE 'herdr|cursor-agent|codex' "$f" | sort -u | tr '\n' ' ')
   [ -n "$hit" ] && { tool=$((tool+1)); note "NG" "names a routing target directly [${hit%% }]: ${f#$root/}"; }
-done < <(bodies | grep -vF "$root/skills/plumb-codex/SKILL.md")
+done < <(bodies \
+  | grep -vF "$root/skills/plumb-codex/SKILL.md" \
+  | grep -vF "$root/skills/setup/")
 check "body text naming a routing target" "$tool" 0
 
 # 11. Every plumb-* command the body text names exists in bin/
