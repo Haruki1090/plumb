@@ -169,9 +169,10 @@ truth without overwriting a person's reviewed pruning. `scripts/bench-score.py`
 and tokens per review. The corpus stays private; only its format and one repository-owned example
 ship with plumb.
 
-`bin/plumb-codex-install` installs the Codex profile and native custom-agent definitions at user or
-project scope. It is idempotent, refuses to replace a differing destination by default, and leaves the
-Claude installation untouched.
+After marketplace installation, `$plumb:setup` resolves `bin/plumb-codex-install` from the installed
+plugin and installs the optional Codex profile and native custom-agent definitions at user or project
+scope. The installer is idempotent, refuses to replace a differing destination by default, and leaves
+the Claude installation untouched.
 
 **What was dropped** is either something each playbook already holds in another form, or a
 step riding machinery this environment does not have: the menu boilerplate, the opening
