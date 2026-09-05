@@ -2,6 +2,18 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.8.0] - 2026-09-06
+
+### Added
+
+- Normalize Codex-side usage accounting: dedupe cumulative snapshots, avoid double-counting cache
+  reads, and fail closed on counter resets or unknown formats.
+- Add a scoped Codex audit mode that never scans transcripts outside the requested location.
+- Add an explicit baseline/candidate acceptance gate to bench-score: block any precision, recall, or
+  F1 regression (including per-grade) and require a measured token-cost improvement.
+- Add negative-control end-to-end tests proving a cheap-but-worse candidate and an incomplete run
+  cannot pass the gate.
+
 ## [0.7.1] - 2026-09-06
 
 ### Fixed
