@@ -89,6 +89,25 @@ plumb-bench-score --corpus <corpus-directory> \
 Read precision and recall before F1, then read the Pareto line. Move to a configuration on that
 frontier: no other measured run gives it at least as much F1 for no more tokens per review.
 
+Before proposing a lower-token replacement for the current configuration, apply the acceptance gate:
+
+```bash
+plumb-bench-score --corpus <corpus-directory> \
+  --run current=<baseline-directory> --run proposed=<candidate-directory> \
+  --baseline current --candidate proposed
+```
+
+**A cheaper candidate that loses quality is not accepted.** The gate checks precision, recall and F1
+overall and per grade, complete verdict/cost coverage, and both mean and median token improvement.
+Its exit status is the decision input; it never changes the configured role. The detailed contract is
+`skills/pr-review/references/bench-format.md`.
+
+Hold workload, truth revision, and scoring options fixed. Repeat blind runs and reserve holdout cases
+before changing a default. Record completion failures and elapsed time alongside each run: the token
+gate alone does not measure those dimensions. Optimize prompts, retrieval and verification only
+against training examples; use held-out cases to reject overfitting. A new failure becomes a regression
+case before its repair becomes a new default.
+
 Record every move instead of overwriting the last choice:
 
 ```bash

@@ -135,8 +135,8 @@ configuration surfaces separate is intentional: Claude remains the primary harne
 the shared behavior through a thin adapter.
 
 For Codex diagnostics, run `PLUMB_RUNTIME=codex <plugin-root>/bin/plumb-doctor`; the loaded skill's path
-identifies the plugin root. The runtime adapter documents routing configuration and the current
-limitation that session auditing parses Claude transcripts only.
+identifies the plugin root. The runtime adapter documents routing configuration and the explicit
+`--runtime codex` session-audit mode for scoped native transcripts.
 
 ## Language
 

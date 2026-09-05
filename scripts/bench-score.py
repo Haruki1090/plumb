@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from collections import defaultdict
+from fractions import Fraction
 from pathlib import Path
 from statistics import median
 from typing import Any, Iterable
@@ -299,7 +301,11 @@ def metric(findings: int, truth: int, matched: int) -> dict[str, Any]:
 def numeric(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
         return None
-    return float(value)
+    try:
+        parsed = float(value)
+    except OverflowError:
+        return None
+    return parsed if math.isfinite(parsed) else None
 
 
 def usage_total(usage: Any) -> tuple[float | None, str | None]:
@@ -315,6 +321,8 @@ def usage_total(usage: Any) -> tuple[float | None, str | None]:
         if parsed is None:
             return None, f"invalid {canonical}"
         total += parsed
+    if not math.isfinite(total):
+        return None, "nonfinite token sum"
     return total, None
 
 
@@ -377,12 +385,17 @@ def aggregate(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     )
     costs = [row["tokens_per_review"] for row in rows if row["tokens_per_review"] is not None]
     all_costed = len(costs) == len(rows) and bool(rows)
-    result["tokens_per_review"] = round(sum(costs) / len(costs), 1) if all_costed else None
-    result["tokens_per_review_median"] = round(median(costs), 1) if all_costed else None
+    mean_cost = sum(costs) / len(costs) if all_costed else None
+    median_cost = median(costs) if all_costed else None
+    overflowed = all_costed and (not math.isfinite(mean_cost) or not math.isfinite(median_cost))
+    result["tokens_per_review"] = mean_cost if not overflowed else None
+    result["tokens_per_review_median"] = median_cost if not overflowed else None
     result["costed_reviews"] = len(costs)
     reasons = list(dict.fromkeys(
         row["tokens_unavailable"] for row in rows if row["tokens_unavailable"] is not None
     ))
+    if overflowed:
+        reasons.append("nonfinite aggregate token cost")
     result["tokens_unavailable"] = "; ".join(reasons) if reasons else None
     return result
 
@@ -417,6 +430,7 @@ def score_run(
         )
         row["tokens_per_review_median"] = row["tokens_per_review"]
         row["no_verdict"] = no_verdict
+        row["empty_verdict"] = not verdict.strip()
         rows.append(row)
 
     by_grade: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -469,6 +483,36 @@ def display_ratio(value: float) -> str:
     return f"{value:.3f}"
 
 
+def acceptance_gate(runs: list[dict[str, Any]], baseline: str, candidate: str) -> dict[str, Any]:
+    """A measured recommendation, never a model/configuration mutation."""
+    by_name = {run["name"]: run for run in runs}
+    before, after = by_name[baseline], by_name[candidate]
+    reasons = []
+    for run in (before, after):
+        missing = [row["id"] for row in run["items"] if row["empty_verdict"]]
+        if missing:
+            reasons.append(f"{run['name']}: missing or empty verdicts: {', '.join(missing)}")
+        if run["overall"]["tokens_per_review"] is None:
+            reasons.append(f"{run['name']}: incomplete token measurement")
+    for label, old, new in [("overall", before["overall"], after["overall"])] + [
+        (f"grade:{grade}", before["grades"][grade], after["grades"][grade])
+        for grade in before["grades"]
+    ]:
+        def exact(row, metric_name):
+            denominator = (row["findings"] if metric_name == "precision" else row["truth_entries"]
+                           if metric_name == "recall" else row["findings"] + row["truth_entries"])
+            numerator = row["matched"] * (2 if metric_name == "f1" else 1)
+            return Fraction(numerator, denominator) if denominator else Fraction(0)
+        for metric_name in ("precision", "recall", "f1"):
+            if exact(new, metric_name) < exact(old, metric_name):
+                reasons.append(f"{label}: {metric_name} regressed ({old[metric_name]} -> {new[metric_name]})")
+    for cost in ("tokens_per_review", "tokens_per_review_median"):
+        old, new = before["overall"][cost], after["overall"][cost]
+        if old is not None and new is not None and new >= old:
+            reasons.append(f"{cost}: no strict improvement ({old} -> {new})")
+    return {"baseline": baseline, "candidate": candidate, "passed": not reasons, "reasons": reasons}
+
+
 def display_tokens(value: float | None) -> str:
     if value is None:
         return "--"
@@ -519,6 +563,11 @@ def print_text(report: dict[str, Any]) -> None:
             f"not compared: {excluded['name']} "
             f"(tokens/review unavailable; {excluded['reason']})"
         )
+    if report.get("acceptance_gate") is not None:
+        gate = report["acceptance_gate"]
+        print(f"acceptance: {'PASS' if gate['passed'] else 'FAIL'} ({gate['baseline']} -> {gate['candidate']})")
+        for reason in gate["reasons"]:
+            print(f"  - {reason}")
 
 
 def run_argument(value: str) -> tuple[str, Path]:
@@ -538,6 +587,8 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--slack", type=int, default=5)
     command.add_argument("--include-note", action="store_true")
     command.add_argument("--json", action="store_true", dest="as_json")
+    command.add_argument("--baseline", help="named baseline run for the quality/cost acceptance gate")
+    command.add_argument("--candidate", help="named candidate run; gate failure exits 1")
     return command
 
 
@@ -548,6 +599,12 @@ def main(argv: list[str] | None = None) -> int:
     names = [name for name, _ in args.runs]
     if len(names) != len(set(names)):
         parser().error("run names must be unique")
+    if (args.baseline is None) != (args.candidate is None):
+        parser().error("--baseline and --candidate must be supplied together")
+    if args.baseline is not None and (not args.baseline or not args.candidate or args.baseline not in names or args.candidate not in names or args.baseline == args.candidate):
+        parser().error("baseline and candidate must name two different --run entries")
+    if args.baseline is not None and args.include_note:
+        parser().error("--include-note is diagnostic only and cannot be used for acceptance")
     try:
         items, skipped = load_corpus(args.corpus)
         runs = [score_run(name, directory, items, args.granularity, args.slack, args.include_note) for name, directory in args.runs]
@@ -563,12 +620,17 @@ def main(argv: list[str] | None = None) -> int:
         "pareto": pareto_frontier(runs),
         "not_compared": not_compared(runs),
     }
+    if args.baseline is not None:
+        report["acceptance_gate"] = acceptance_gate(runs, args.baseline, args.candidate)
+        if skipped:
+            report["acceptance_gate"]["passed"] = False
+            report["acceptance_gate"]["reasons"].append("unpruned corpus items: " + ", ".join(skipped))
     if args.as_json:
         json.dump(report, sys.stdout, indent=2, sort_keys=True)
         print()
     else:
         print_text(report)
-    return 0
+    return 1 if report.get("acceptance_gate", {}).get("passed") is False else 0
 
 
 if __name__ == "__main__":
