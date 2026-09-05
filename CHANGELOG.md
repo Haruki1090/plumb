@@ -2,6 +2,23 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.7.1] - 2026-09-06
+
+### Fixed
+
+- Diagnose Codex-only installations without requiring Claude directories or plugin loading.
+- Keep missing, failed, and unverified graph nodes visible; document dependent-phase barriers.
+- Make decision briefs usable without an external artifact design or publishing service.
+- Correct nearest-rank percentiles and reject unrecognized usage records in session auditing.
+- Preserve unavailable token categories and display totals instead of reporting partial usage as zero
+  or as a complete total.
+
+### Documentation and verification
+
+- Clarify grounded exploration, visible terminal execution, measurement scope, and runtime limits.
+- Add negative regression fixtures and record the audit and independent review disposition.
+- Preserve the Claude-first canonical corpus and the existing Codex model profile.
+
 ## [0.7.0] - 2026-09-04
 
 ### Added

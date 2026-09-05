@@ -15,9 +15,42 @@ sandbox_root=$(mktemp -d)
 trap 'rm -f "$cfg"; rm -rf "$sandbox_root"' EXIT
 printf 'role.judge = codex\nrole.bulk   =  cursor-agent  \n' > "$cfg"
 
-# session-audit has eight assertions. python3 is optional, so missing it makes all eight visible
-# skips instead of turning doctor's informational dependency into a failure.
+# Session-audit checks use synthetic transcripts and never read private session content.
 if command -v python3 >/dev/null 2>&1; then
+  percentile_check=$(python3 -B -c 'import runpy, sys
+p = runpy.run_path(sys.argv[1])["percentile"]
+assert p(range(1, 11), .9) == 9
+assert p(range(1, 21), .9) == 18
+assert p(range(1, 11), .5) == 5
+assert p([7], .9) == 7 and p([], .9) is None
+print("ok")' "$root/scripts/session-audit.py" 2>/dev/null)
+  eq "session-audit uses nearest-rank percentiles at exact boundaries" "$percentile_check" "ok"
+  unsupported_dir="$sandbox_root/unsupported-session"
+  mkdir -p "$unsupported_dir"
+  printf '%s\n' '{"type":"response_item","payload":{"type":"message","role":"assistant"}}' \
+    > "$unsupported_dir/session.jsonl"
+  "$root/bin/plumb-session-audit" --transcripts "$unsupported_dir" --all --json >/dev/null 2>&1
+  eq "session-audit refuses zero recognized usage instead of reporting free work" "$?" "2"
+  printf '%s\n' '{"type":"assistant","message":{"usage":{}}}' > "$unsupported_dir/session.jsonl"
+  "$root/bin/plumb-session-audit" --transcripts "$unsupported_dir" --all --json >/dev/null 2>&1
+  eq "session-audit refuses an empty usage object" "$?" "2"
+  printf '%s\n' '{"type":"assistant","message":{"usage":{"input_tokens":10,"output_tokens":2}}}' \
+    > "$unsupported_dir/session.jsonl"
+  partial_totals=$("$root/bin/plumb-session-audit" --transcripts "$unsupported_dir" --all --json \
+    | python3 -c 'import json, sys
+t = json.load(sys.stdin)["token_totals"]
+print("ok" if t == {"input":10,"output":2,"cache_read":None,"cache_creation":None} else "wrong")')
+  eq "session-audit preserves missing cost fields as unavailable" "$partial_totals" "ok"
+  printf '%s\n' \
+    '{"type":"assistant","message":{"usage":{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":7,"output_tokens_details":{"thinking_tokens":2},"cache_creation":{"ephemeral_1h_input_tokens":5,"ephemeral_5m_input_tokens":0}}}}' \
+    '{"type":"assistant","message":{"usage":{"input_tokens":10}}}' > "$unsupported_dir/session.jsonl"
+  partial_display=$("$root/bin/plumb-session-audit" --transcripts "$unsupported_dir" --all --json \
+    | python3 -c 'import json, sys
+r = json.load(sys.stdin)
+assert all(v is None for v in r["output_tokens"].values())
+assert all(v is None for v in r["cache_creation"].values())
+print("ok")' 2>/dev/null)
+  eq "session-audit display metrics do not present partial sums as totals" "$partial_display" "ok"
   audit_dir="$sandbox_root/session-audit"
   mkdir -p "$audit_dir/clean-session/subagents"
   large_tool_result=$(printf '%*s' 110 '')
@@ -150,7 +183,7 @@ print("same" if same else "different")' "$audit_text_file" "$audit_json_file")
     ng "session-audit did not fail closed on an unknown format: code=$format_code output=[$format_out]"
   fi
 else
-  for audit_assertion in 1 2 3 4 5 6 7 8; do
+  for audit_assertion in 1 2 3 4 5 6 7 8 9 10 11 12 13; do
     printf '  %-4s %s\n' "--" "python3 not on PATH, session-audit assertions skipped"
   done
 fi
@@ -710,10 +743,38 @@ fake_home="$sandbox_root/home"
 mkdir -p "$fake_home/.claude/projects" \
          "$fake_home/.claude/agents"
 
-out=$(HOME="$fake_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_IN_SELFTEST=1 PLUMB_CONFIG=/nonexistent \
+out=$(HOME="$fake_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUNTIME=claude PLUMB_IN_SELFTEST=1 PLUMB_CONFIG=/nonexistent \
       bash "$root/scripts/doctor.sh" "$root" 2>&1)
 ng_count=$(printf '%s\n' "$out" | grep -c '^  NG ' || true)
 eq "NG count from doctor in a bare environment" "$ng_count" "0"
+
+# Codex-only users must not need a Claude installation. Test the CLI's structured installed list,
+# including a disabled plugin and a similarly named plugin (neither is an enabled plumb install).
+codex_only_home="$sandbox_root/codex-only-home"
+mkdir -p "$codex_only_home"
+printf '#!/bin/sh\nprintf '\''%%s\\n'\'' "$PLUMB_TEST_PLUGINS"\n' > "$sandbox/codex"
+chmod +x "$sandbox/codex"
+python_bin=$(type -P python3 2>/dev/null || true)
+if [ -n "$python_bin" ]; then
+  ln -s "$python_bin" "$sandbox/python3"
+  codex_doctor() {
+    HOME="$codex_only_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" \
+      PLUMB_RUNTIME=codex PLUMB_IN_SELFTEST=1 PLUMB_CONFIG=/nonexistent \
+      PLUMB_TEST_PLUGINS="$1" bash "$root/scripts/doctor.sh" "$root" 2>&1
+  }
+  out=$(codex_doctor '{"installed":[{"name":"plumb","installed":true,"enabled":true}]}'); code=$?
+  eq "doctor accepts Codex-only installation without Claude directories" "$code" "0"
+  printf '%s\n' "$out" | grep -q 'enabled Codex plugin: plumb' \
+    && ok "doctor verifies Codex plugin enablement" || ng "doctor did not verify Codex loading"
+  codex_doctor '{"installed":[{"name":"plumb","installed":true,"enabled":false}]}' >/dev/null
+  eq "doctor rejects disabled Codex plugin" "$?" "1"
+  codex_doctor '{"installed":[{"name":"plumb-extra","installed":true,"enabled":true}]}' >/dev/null
+  eq "doctor rejects a similarly named Codex plugin" "$?" "1"
+  codex_doctor '{broken' >/dev/null
+  eq "doctor rejects malformed Codex plugin output" "$?" "1"
+else
+  printf '  %-4s %s\n' "--" "Codex loading fixtures skipped: python3 unavailable"
+fi
 
 if [ $fail -eq 0 ]; then echo "  → passed"; else echo "  → failed"; fi
 exit $fail

@@ -41,6 +41,13 @@ Fill these in order. An item you cannot fill is a sign the design is not finishe
 
 Write "what has to exist for this to be over" so it is observable from outside. "Update the mocks" is not an end state. "All 14 P0 items satisfy their numbered clause in the design doc, and the source of truth reflects it" is.
 
+Before splitting nodes, locate the existing source of truth, implementation entry points, their
+callers, and the checks that exercise them. Hand off those paths with the revision inspected and
+any unresolved premise. Reuse an existing repository index when available; otherwise use a bounded
+search. An execution graph orders work; it does not establish which code or data answers the task.
+After two unsuccessful searches on the same premise, change the search axis or report the missing
+evidence instead of widening context indefinitely.
+
 ### 2. List the nodes
 
 Split the work into 5-10 pieces. More than that and management breaks down; fewer and there was no point drawing a graph.
@@ -82,7 +89,7 @@ What passes between nodes is **structured data only**. Do not pass conversation 
 }
 ```
 
-A downstream verification node no longer has to read the whole upstream history, so context consumption drops. At the same time, because what arrives is fixed, **the receiving side behaves deterministically**. Vague handoffs are a leading source of hallucination downstream.
+A downstream verification node no longer has to read the whole upstream history, so context consumption drops. Validate the schema at the receiving boundary and reject missing or malformed fields. **A fixed schema makes the interface predictable; it does not make an AI judgment deterministic.** Vague handoffs are a leading source of hallucination downstream.
 
 Give every node its inputs, outputs and responsibility (Node Contract): what this node takes, what it returns, and what it does not do.
 
@@ -113,7 +120,11 @@ What you do instead is cross **open questions × the nodes in the first batch** 
 - Reaching the quality bar
 - **No new findings** (loop-until-dry: stop when two consecutive rounds turn up nothing new; a plain count cap drops the tail)
 
-**Failure isolation** — one node failing does not stop the whole thing. Aggregate parallel results with the failures excluded, and hold a separate threshold: "fail the whole run if valid results fall below N".
+**Failure isolation** — one node failing does not stop independent work, but it must stay in the result ledger. Declare each node required or optional before execution. A missing, failed, or refuted required node blocks completion and every dependent node. Only explicitly optional nodes may be omitted, with a recorded reason; a count threshold never replaces required-node coverage.
+
+Success requires every required node to pass its acceptance criteria and verification. A budget cap,
+timeout, or two rounds without new findings stops work; none proves success on its own. Keep incomplete
+and blocked outcomes distinct from success, and preserve node IDs through every failure path.
 
 ### 9. Record, resume, and write back to the source of truth ★
 
@@ -196,7 +207,7 @@ The lanes after regrouping. One lane = one source of truth.
 The bar and the grounds for each lane. Cross-cutting rules stand separately. Write it refutation-oriented.
 
 ## Termination conditions
-List the compound.
+List the compound, required node IDs, optional omissions, and the outcome on budget exhaustion.
 
 ## Writing back to the source of truth
 What gets written back, and where.

@@ -6,11 +6,20 @@ set -uo pipefail
 
 root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 CLAUDE="$HOME/.claude"
+runtime=${PLUMB_RUNTIME:-auto}
+if [ "$runtime" = auto ]; then
+  if [ -n "${CODEX_THREAD_ID:-}" ]; then runtime=codex; else runtime=claude; fi
+fi
+case "$runtime" in
+  claude|codex) ;;
+  *) printf 'usage: PLUMB_RUNTIME=auto|claude|codex plumb-doctor [plugin-root]\n' >&2; exit 2 ;;
+esac
 fail=0
 note() { printf '  %-4s %s\n' "$1" "$2"; }
 bad()  { note "NG" "$1"; fail=1; }
 
 echo "plumb doctor: $root"
+note "--" "runtime: $runtime (override with PLUMB_RUNTIME)"
 
 # 1. Inside consistency (delegated to check-harness. Do not write it twice)
 echo "— inside"
@@ -109,6 +118,7 @@ done
 #    someone uses plumb the more agents they accumulate, so it is wrong for plumb's doctor to go
 #    NG over how a private agent happens to be written. Do not raise fail; just report the count
 #    (the contents are useful to the owner, so the check itself stays).
+if [ "$runtime" = claude ]; then
 echo "— the agents on your side (your own ~/.claude/agents/. plumb does not bundle these)"
 orphan=0
 for f in "$CLAUDE"/agents/*.md; do
@@ -120,10 +130,15 @@ for f in "$CLAUDE"/agents/*.md; do
   done < <(grep -oE '`?[a-z][a-z0-9-]+`? skill' "$f" | tr -d '`' | sed 's/ skill//' | sort -u)
 done
 note "--" "dangling private agents: ${orphan}"
+fi
 
 # 5. Do the paths path-map claims exist
 echo "— paths"
-[ -d "$CLAUDE/projects" ] && note "ok" "~/.claude/projects/" || bad "~/.claude/projects/ is missing"
+if [ "$runtime" = claude ]; then
+  [ -d "$CLAUDE/projects" ] && note "ok" "~/.claude/projects/" || bad "~/.claude/projects/ is missing"
+else
+  note "--" "Claude paths are not required by the Codex runtime"
+fi
 roots=$(git worktree list 2>/dev/null | wc -l | tr -d ' ')
 note "--" "worktrees git worktree list can see: ${roots}"
 for d in "$HOME/.herdr/worktrees" "$HOME/.codex/worktrees"; do
@@ -173,7 +188,31 @@ fi
 #    claude not being on PATH is "cannot check", not "broken". Confuse the two and an environment
 #    that simply does not use claude as a CLI goes NG.
 echo "— loading"
-if ! command -v claude >/dev/null 2>&1; then
+if [ "$runtime" = codex ]; then
+  if ! command -v codex >/dev/null 2>&1; then
+    note "--" "Codex plugin loading: cannot check (codex is not on PATH)"
+  elif ! command -v python3 >/dev/null 2>&1; then
+    note "--" "Codex plugin loading: cannot check (python3 is needed to parse JSON)"
+  elif plugins=$(codex plugin list --json); then
+    if printf '%s\n' "$plugins" | python3 -c 'import json, sys
+try:
+    data = json.load(sys.stdin)
+    installed = data["installed"]
+    assert isinstance(installed, list)
+    present = any(p.get("name") == "plumb" and p.get("installed") is True
+                  and p.get("enabled") is True for p in installed)
+except (ValueError, KeyError, TypeError, AttributeError, AssertionError):
+    sys.exit(2)
+sys.exit(0 if present else 1)
+'; then
+      note "ok" "enabled Codex plugin: plumb"
+    else
+      bad "cannot verify enabled Codex plugin plumb; inspect codex plugin list --json"
+    fi
+  else
+    bad "codex plugin list --json failed"
+  fi
+elif ! command -v claude >/dev/null 2>&1; then
   note "--" "is plumb in the plugin list: cannot check (claude is not on PATH)"
 elif claude plugin list 2>/dev/null | grep -q 'plumb'; then
   note "ok" "plumb is in the plugin list"

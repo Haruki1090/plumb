@@ -77,6 +77,23 @@ Codex plugins do not promise to put a plugin's `bin/` directory on `PATH`. Resol
 the loaded skill path and execute commands from `<plugin-root>/bin/`. A user installation may also expose
 the wrappers on `PATH`, but the workflow must not depend on that convenience.
 
+## Environment diagnostics and measurement
+
+Run `PLUMB_RUNTIME=codex <plugin-root>/bin/plumb-doctor` for this runtime. Doctor also detects
+`CODEX_THREAD_ID`; a plain shell defaults to Claude for compatibility. Codex diagnostics check the
+enabled plugin from `codex plugin list --json` and do not require Claude's directories or plugin
+installation. Missing diagnostic tools produce explicit skips, not proof of successful loading.
+Use `bin/plumb-codex-install --check` separately to verify the optional user profile and agents.
+
+Role and pane routing still use `PLUMB_CONFIG`, defaulting to `~/.claude/plumb/config` for compatibility.
+The file is plain configuration and does not require a Claude installation. Codex-only users can point
+`PLUMB_CONFIG` at a file of their choosing. There is no automatic second routing config to drift.
+
+`plumb-session-audit` currently understands Claude transcript records only. Do not feed it Codex
+session JSONL and report the resulting zero counts as measured cost. For a Codex benchmark, export
+the four token totals required by the scorer from actual runtime usage evidence, or report cost as
+unavailable and exclude that run from cost comparisons. See `skills/pr-review/references/bench-format.md`.
+
 ## Delegation discipline
 
 - Delegate only when the user explicitly asks for agents or when the active plumb playbook calls for a

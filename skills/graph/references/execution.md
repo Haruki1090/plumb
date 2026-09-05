@@ -1,6 +1,9 @@
 # Ways to execute it
 
 Once the graph definition exists, this is the mapping that turns it into something that runs. Assumes Claude Code.
+The Workflow API below is an optional runtime capability, not a bundled dependency. Check that the
+current runtime exposes the named operations before using them. Otherwise use "Without the Workflow
+tool" below; graph design does not require that API.
 
 ## Design element -> how it runs
 
@@ -22,6 +25,12 @@ Once the graph definition exists, this is the mapping that turns it into somethi
 
 The default structure is `pipeline()`. Use `parallel()` only when you need every upstream result at once.
 
+The example below accepts **independent lanes only**, after the shared-resource barrier. A lane has no
+dependency on another lane's output. For dependent nodes, split the graph into ordered phases and
+start a phase only after its required predecessors passed. Record each unstarted dependent as
+`blocked`, with its predecessor IDs; never send it to implementation or verification. Optional failures
+may be omitted only when the downstream contract explicitly tolerates the missing input.
+
 ```javascript
 export const meta = {
   name: 'lane-and-verify',
@@ -36,20 +45,32 @@ const results = await pipeline(
     schema: NODE_OUTPUT,          // Edge Contract
     isolation: 'worktree',        // keeps collisions off everything but the shared resources
   }),
-  (out, lane) => agent(
-    `Decide whether the following change satisfies ${lane.spec}. Try to refute it. When in doubt, refuted.`,
-    { label: `verify:${lane.id}`, phase: 'Verify', schema: VERDICT, effort: 'high' }
-  ).then(v => ({ lane: lane.id, out, verdict: v }))
+  async (out, lane) => {
+    if (!out) return { lane: lane.id, status: 'failed', reason: 'implementation missing' }
+    const verdict = await agent(
+      `Read the implementation artifacts ${JSON.stringify(out)} and acceptance criteria ${lane.spec}.
+       Try to refute the change. Return evidence for your verdict.`,
+      { label: `verify:${lane.id}`, phase: 'Verify', schema: VERDICT, effort: 'high' }
+    )
+    return { lane: lane.id, out, verdict,
+      status: !verdict ? 'failed' : verdict.refuted ? 'refuted' : 'passed' }
+  }
 )
 
-return results.filter(Boolean).filter(r => !r.verdict.refuted)
+// Preserve failed and missing lanes, including a runtime failure before either callback returned.
+const ledger = LANES.map(lane => results.find(r => r && r.lane === lane.id)
+  ?? { lane: lane.id, status: 'failed', reason: 'no result' })
+const blocked = LANES.filter(lane => lane.required !== false
+  && ledger.find(r => r.lane === lane.id).status !== 'passed')
+return { status: blocked.length ? 'incomplete' : 'passed', ledger,
+  blocked: blocked.map(lane => lane.id) }
 ```
 
 The points:
 
 - Verification is a **separate `agent()` call** from implementation. Do not let the same agent carry on
 - With `schema`, the return value comes back as a validated object. You write no parsing, and a shape that does not match makes the model retry
-- `agent()` returns `null` when it fails. `.filter(Boolean)` before using the results (failure isolation)
+- Treat a null result as a failed lane, retaining its identity and blocking dependents. Never filter failures out of the completion decision
 - Naming `phase` explicitly keeps the progress display grouped stably
 - `isolation: 'worktree'` has a setup cost, so use it **only when rewriting files in parallel**
 

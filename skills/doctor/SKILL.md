@@ -48,7 +48,7 @@ is only knowable by going and checking that it is. So it became a tool (**princi
 | Bundled agents | one of `agents/` was deleted or renamed. Cross-check the names `skills/pr-review/SKILL.md` calls against what is actually in `agents/` |
 | The agents on your side (your own copy) | the same cause, showing up on your own `~/.claude/agents/` side. Either put the skill back, or fix the agent's description |
 | Paths | `docs/path-map.md`'s claim is out of date. **Measure first, then fix the table. Do not rewrite it from a guess** |
-| Loading | check `claude plugin list` in a new session. `claude plugin disable plumb` rolls it back |
+| Loading | check the plugin list for the selected runtime in a new session; use the runtime adapter for command mapping |
 
 **Do not bury a failing item.** Loosening the expectation to get doctor to pass is
 killing the verifier (**principle-prove-it-works**).

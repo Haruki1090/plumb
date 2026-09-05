@@ -42,7 +42,6 @@ one subprocess and returns one summary to the model.
 
 **Measure a before session and a different after session with
 `plumb-session-audit --session <uuid>`.** Run the audit once for each UUID; requests per session
-and `TOOL-RESULT-OVER` must both be lower in the after session.
-
-**Uber measured 903 → 402 tokens (55%) for a one-row query and more than 90% for bulk work; this is
-an external data point, not plumb's own baseline.**
+and compare `TOOL-RESULT-OVER` alongside completed work and correctness. A zero overflow count
+cannot fall further, and lower request count is not a win if the after run completed less work.
+Use the same workload and record both results. Do not claim a saving from an external benchmark.

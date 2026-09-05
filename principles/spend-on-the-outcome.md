@@ -24,8 +24,8 @@ They are also where a tool, a shorter loop, or a smaller context can create a re
 
 ## Why this is hard to keep
 
-From inside a session, the context never looks large. It is cached. Cache reads cost a tenth
-of the full input price. The harness does not put the token count beside the turn that loaded
+From inside a session, the context never looks large. It may be cached. Cache reads can cost less
+than uncached input; the actual rate depends on the provider and model. The harness does not put the token count beside the turn that loaded
 it. **The cheap-looking read price is what makes a 700K context feel free.**
 
 It is not free. The same payload is read on every later request. A tool result returned once
@@ -86,4 +86,5 @@ The audit does not know what the session finished, and it does not prove that th
 worthwhile. Price and the unit of work are yours. That unit and the measured term together
 let you say what the session bought and what it spent on itself.
 
-The decomposition follows Uber Engineering's 2026 write-up on running a software factory; the thresholds are plumb's own, measured on 2026-09-02.
+The measurement scope is recorded in `docs/scope.md`. The thresholds are diagnostic defaults,
+not provider-independent limits.

@@ -17,10 +17,15 @@ Assemble it differently from the writer and the answer that comes back is the an
 | | What it holds |
 |---|---|
 | **1. The decision sentence** | one sentence on what is being decided, then one on **what changes with the choice** |
-| **2. HTML** | one page with the options side by side. Read `artifact-design` before writing it. Publish with `Artifact` |
-| **3. AskUserQuestion** | options carrying **the same labels** as the HTML. Put the real thing in `preview` |
+| **2. HTML** | one standalone page with the options side by side; save it under the directory returned by `plumb-path run --mkdir` and link to the file. If the runtime offers an artifact design skill and publishing tool, use them as optional presentation helpers |
+| **3. AskUserQuestion** | options carrying **the same labels** as the HTML. Put the real thing in `preview` when supported |
 
 What stays in the terminal is the decision sentence and the link. **Do not write the explanation twice.**
+
+No external skill or publishing service is required. Use the current runtime's supported question
+tool and option limit. If it has no `preview` field, the linked HTML holds the evidence. If no question
+tool is available, ask one concise question referring to the labels in the HTML. A pending decision
+blocks dependent work; elapsed time, a preselected recommendation, and silence are not an answer.
 
 ## What goes in the HTML
 
