@@ -776,5 +776,13 @@ else
   printf '  %-4s %s\n' "--" "Codex loading fixtures skipped: python3 unavailable"
 fi
 
+if command -v python3 >/dev/null 2>&1; then
+  python3 -B "$root/scripts/test-efficiency.py" \
+    && ok "runtime usage and quality/cost gate regression suite" \
+    || ng "runtime usage and quality/cost gate regression suite"
+else
+  printf '  %-4s %s\n' "--" "efficiency regression suite skipped: python3 unavailable"
+fi
+
 if [ $fail -eq 0 ]; then echo "  → passed"; else echo "  → failed"; fi
 exit $fail

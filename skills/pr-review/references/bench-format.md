@@ -30,6 +30,10 @@ A run mirrors corpus ids. `verdict.md` is the return shape in `report-template.m
 the JSON output of `plumb-session-audit --transcripts <the dedicated project directory> --all --json`,
 because a review that spawns teammates is several sessions and auditing one session would omit them:
 
+For another runtime, use its adapter's explicit audit mode and gather all participants into a dedicated
+directory. Never combine overlapping exports of the same session. Missing cost categories must stay
+unavailable; do not substitute zero to get a Pareto result.
+
 ```text
 <run>/00001-00004/verdict.md
 <run>/00001-00004/session.json
@@ -37,6 +41,14 @@ because a review that spawns teammates is several sessions and auditing one sess
 
 Candidates receive only the repository, PR number, and pinned SHA from `pr.json`. They do not receive
 `truth.json`, `fixed_by`, the fixing PR, or the evaluation playbook.
+
+For an acceptance decision, supply `--baseline <run-name> --candidate <run-name>` to the scorer.
+The gate requires a fully pruned corpus, nonempty verdict coverage and complete token costs, no precision/recall/F1
+regression overall or within any grade, and strict improvement in both mean and median tokens per
+review. It uses exact count ratios for quality, so display rounding cannot conceal a regression.
+Exit 0 means this measured comparison passes; exit 1 means the gate rejected it; exit 2 is invalid
+input. The gate never changes routing configuration. A pass on fixtures or one small corpus does not
+establish production quality, statistical significance, or dollar savings.
 
 Template section headings may use any Markdown heading level from `#` through `######`.
 Every backticked `path:line` or `path:start-end` in a finding's `Where` cell is part of that one finding, and any overlapping location can match truth.

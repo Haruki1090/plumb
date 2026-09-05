@@ -89,10 +89,22 @@ Role and pane routing still use `PLUMB_CONFIG`, defaulting to `~/.claude/plumb/c
 The file is plain configuration and does not require a Claude installation. Codex-only users can point
 `PLUMB_CONFIG` at a file of their choosing. There is no automatic second routing config to drift.
 
-`plumb-session-audit` currently understands Claude transcript records only. Do not feed it Codex
-session JSONL and report the resulting zero counts as measured cost. For a Codex benchmark, export
-the four token totals required by the scorer from actual runtime usage evidence, or report cost as
-unavailable and exclude that run from cost comparisons. See `skills/pr-review/references/bench-format.md`.
+Use `<plugin-root>/bin/plumb-session-audit --runtime codex --transcripts <scoped-directory> --all --json`
+for a dedicated review directory, or select one file with `--session <filename-without-jsonl>`.
+Do not point `--all` at a date directory containing unrelated sessions. Gather only the transcripts
+for the review being measured, including its participants; the tool does not discover teammates.
+Keep each original export only once: duplicate detection uses `session_meta.id` when present and
+otherwise the filename. Renamed copies without metadata cannot be identified as the same session.
+
+The adapter reads cumulative `event_msg/token_count` snapshots and ignores duplicate per-response
+records. It rejects resets, missing snapshots, and unobserved prefixes rather than undercounting.
+Native input includes cached tokens; normalization separates uncached input, cache reads and cache
+writes, and does not add reasoning tokens a second time. Missing cache-write information makes those
+cost categories unavailable. Cache TTL and idle rebuild metrics remain unavailable in this format.
+This adapter supports consistent snapshots, not every native session: a captured stream also emitted
+nonzero `total_tokens` with every category zero. Such sessions fail explicitly (exit 2); do not remove
+that event or substitute a zero cost to make an evaluation pass. Its runtime semantics remain unresolved.
+The default audit mode remains Claude. See `skills/pr-review/references/bench-format.md` for scoring.
 
 ## Delegation discipline
 
@@ -100,6 +112,10 @@ unavailable and exclude that run from cost comparisons. See `skills/pr-review/re
   role. Loading plumb is not permission for unrelated fan-out.
 - Keep requirements, decisions, and final integration in the main Sol thread.
 - Give each subagent a bounded input, writable-file ownership, output contract, and stopping condition.
+- When the spawn interface exposes history inheritance, use `fork_turns="none"` for an independent
+  bounded role and supply the contract plus absolute evidence/spec paths. Fork history only when the
+  role needs conversation-only decisions that cannot be supplied as a compact contract; record why.
+  A cheaper role carrying the controller's full history does not make the handoff cheap.
 - Use Luna low/medium for extraction, exploration, and repetitive work. Use Luna max only for bounded
   adversarial judgment or refutation. Use Sol high for ambiguous implementation, invariants, cutover
   reasoning, and final integration.
