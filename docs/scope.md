@@ -164,6 +164,9 @@ and context growth so a change can be assessed per completed task. Its threshold
 on 2026-09-02; they are diagnostic defaults, not universal limits or guaranteed savings.
 Execution graphs organize work and verification; they do not provide a repository knowledge index.
 plumb does not bundle an indexing service, tool gateway, live cost dashboard, or managed-agent platform.
+An explicit native audit mode normalizes scoped cumulative usage snapshots, retains unknown fields,
+and rejects duplicate session exports and discontinuous counters. Runtime-specific invocation and
+coverage limits live in `docs/openai-runtime.md`.
 
 `scripts/bench-extract.py` (`plumb-bench-extract`) turns a fixing PR's overlapping hunks into draft
 truth without overwriting a person's reviewed pruning. `scripts/bench-score.py`

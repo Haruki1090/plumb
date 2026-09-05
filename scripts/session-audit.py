@@ -197,7 +197,12 @@ def read_session(project_dir: Path, main_file: Path, args: argparse.Namespace) -
     synthetic_count = 0
     turn_count = 0
 
-    for chain, path in enumerate(transcript_paths(project_dir, main_file)):
+    paths = transcript_paths(project_dir, main_file) if args.runtime == "claude" else [main_file]
+    for chain, path in enumerate(paths):
+        normalizer = None
+        if args.runtime == "codex":
+            from codex_audit import CodexNormalizer
+            normalizer = CodexNormalizer()
         seen_requests: set[tuple[str, Any]] = set()
         with path.open("r", encoding="utf-8", errors="replace") as transcript:
             for line in transcript:
@@ -205,11 +210,20 @@ def read_session(project_dir: Path, main_file: Path, args: argparse.Namespace) -
                 try:
                     record = json.loads(line)
                 except (json.JSONDecodeError, ValueError):
+                    if normalizer is not None:
+                        raise AuditInputError(f"invalid JSON in native transcript: {path.name}")
                     skipped += 1
                     continue
                 if not isinstance(record, dict):
                     skipped += 1
                     continue
+                if normalizer is not None:
+                    try:
+                        record = normalizer.accept(record)
+                    except ValueError as error:
+                        raise AuditInputError(f"{path.name}: {error}") from error
+                    if record is None:
+                        continue
                 sizes.extend(tool_result_sizes(record))
                 if chain == 0 and is_human_turn(record):
                     turn_count += 1
@@ -236,6 +250,8 @@ def read_session(project_dir: Path, main_file: Path, args: argparse.Namespace) -
                 request = assistant_request(record, sequence, chain)
                 if request is None:
                     continue
+                if normalizer is not None:
+                    request["context"] = record["_native_context"]
                 understood_count += 1
                 if is_synthetic:
                     continue
@@ -272,6 +288,9 @@ def read_session(project_dir: Path, main_file: Path, args: argparse.Namespace) -
         if current_timestamp is not None:
             previous_timestamp = current_timestamp
 
+    # Native cache-write counters do not establish the Claude TTL/rebuild semantics used above.
+    if args.runtime == "codex":
+        idle_comparisons = 0
     idle_gaps = idle_gaps_count if idle_comparisons else None
     idle_rebuilds = idle_rebuilds_count if idle_comparisons else None
 
@@ -292,7 +311,7 @@ def read_session(project_dir: Path, main_file: Path, args: argparse.Namespace) -
         flags.append("IDLE-REBUILD")
 
     return {
-        "session_id": main_file.stem,
+        "session_id": (normalizer.session_id or main_file.stem) if normalizer else main_file.stem,
         "requests": requests,
         "record_count": record_count,
         "request_count": len(requests),
@@ -318,7 +337,9 @@ def select_sessions(project_dir: Path, args: argparse.Namespace) -> list[Path]:
     files = direct_transcripts(project_dir)
     if args.session:
         wanted = args.session[:-6] if args.session.endswith(".jsonl") else args.session
-        return [path for path in files if path.stem == wanted]
+        return [path for path in files if path.stem == wanted or (
+            args.runtime == "codex" and re.fullmatch(r"[0-9a-f-]{36}", wanted)
+            and path.stem.endswith("-" + wanted))]
     files.sort(key=lambda path: (path.stat().st_mtime, path.name), reverse=True)
     return files if args.all else files[: args.last]
 
@@ -585,7 +606,7 @@ def normalized_argv(argv: list[str]) -> list[str]:
     known_options = {
         "--last", "--project", "--transcripts", "--session", "--all", "--json", "--strict",
         "--ctx-threshold", "--tool-threshold", "--idle-minutes", "--rebuild-threshold",
-        "-h", "--help",
+        "--runtime", "-h", "--help",
     }
     result = []
     index = 0
@@ -602,7 +623,7 @@ def normalized_argv(argv: list[str]) -> list[str]:
 
 def parser() -> argparse.ArgumentParser:
     command = argparse.ArgumentParser(
-        description="Audit context use in one project's Claude Code transcripts.",
+        description="Audit context use in explicitly scoped Claude or Codex transcripts.",
         epilog=(
             "CTX-P90-OVER uses main-chain context only. IDLE-REBUILD uses main-chain requests "
             "only; subagent chains are not resumable sessions."
@@ -615,6 +636,7 @@ def parser() -> argparse.ArgumentParser:
     source = command.add_mutually_exclusive_group()
     source.add_argument("--project", help="project slug or working-directory path")
     source.add_argument("--transcripts", help="directory containing transcript .jsonl files")
+    command.add_argument("--runtime", choices=("claude", "codex"), default="claude")
     command.add_argument("--json", action="store_true", help="print machine-readable JSON")
     command.add_argument("--strict", action="store_true", help="exit 1 when any flag fires")
     command.add_argument("--ctx-threshold", type=int, default=400000)
@@ -626,6 +648,8 @@ def parser() -> argparse.ArgumentParser:
 
 def run(argv: list[str] | None = None) -> int:
     args = parser().parse_args(normalized_argv(list(sys.argv[1:] if argv is None else argv)))
+    if args.runtime == "codex" and args.transcripts is None:
+        parser().error("Codex auditing requires an explicit --transcripts directory")
     if args.last is None:
         args.last = 10
     if args.last <= 0:
@@ -641,6 +665,8 @@ def run(argv: list[str] | None = None) -> int:
     sessions = []
     for main_file in selected:
         sessions.append(read_session(project_dir, main_file, args))
+    if args.runtime == "codex" and len({s["session_id"] for s in sessions}) != len(sessions):
+        raise AuditInputError("duplicate native session identity; supply each participant only once")
 
     record_count = sum(session["record_count"] for session in sessions)
     understood_count = sum(session["understood_count"] for session in sessions)
@@ -654,11 +680,19 @@ def run(argv: list[str] | None = None) -> int:
 
     if not any(session["requests"] for session in sessions):
         raise AuditInputError(
-            "no recognized usage records; expected Claude Code transcripts, not an empty "
+            f"no recognized usage records; expected {args.runtime} transcripts, not an empty "
             "or unsupported session format"
         )
 
     report = summarize(project, sessions, args)
+    report["runtime"] = args.runtime
+    if args.runtime == "codex":
+        report["measurement_notes"] = [
+            "Usage comes from cumulative token_count snapshots, not duplicate per-response records.",
+            "Input totals exclude cache-read and cache-write subsets; reasoning is included in output.",
+            "Turns count task_started events. Cache TTL and idle rebuild metrics are unavailable.",
+            "Only supplied transcript files are covered; include every review participant explicitly.",
+        ]
     if args.json:
         json.dump(report, sys.stdout, indent=2, sort_keys=True)
         print()
