@@ -159,9 +159,11 @@ does not get named.
 
 `scripts/session-audit.py` (`plumb-session-audit`) streams one project's Claude Code
 transcripts and measures context per request, oversized tool results, and cache rebuilds after
-idle resumes without printing transcript content. Its six-term cost decomposition follows
-Uber Engineering's 2026 write-up on running a software factory; its thresholds are plumb's
-own, measured on 2026-09-02.
+idle resumes without printing transcript content. It separates usage volume, request overhead,
+and context growth so a change can be assessed per completed task. Its thresholds were measured
+on 2026-09-02; they are diagnostic defaults, not universal limits or guaranteed savings.
+Execution graphs organize work and verification; they do not provide a repository knowledge index.
+plumb does not bundle an indexing service, tool gateway, live cost dashboard, or managed-agent platform.
 
 `scripts/bench-extract.py` (`plumb-bench-extract`) turns a fixing PR's overlapping hunks into draft
 truth without overwriting a person's reviewed pruning. `scripts/bench-score.py`

@@ -21,3 +21,16 @@ How to ask:
 **Unset is not a fault.** It returns empty and exits 0.
 Even with the judge role unset, **the todo line for the judge role does not disappear**
 (**visible skip**). Leave it there reading `skip: role.judge unset`.
+
+## Observable terminal execution
+
+When `pane.driver` is configured, use its installed instructions to run long checks, builds, and
+investigation sweeps in a visible pane. Keep the caller's working directory and preserve the user's
+focus. Record the returned pane ID, log path, and command exit status; a visible process or a completed
+wait is not evidence that its command passed. Preserve pipeline failures when capturing logs with
+`tee`. Reuse only panes created for this task and never close another session's pane.
+
+If the driver requires a managed-session marker, check it before controlling panes. From outside that
+session, use foreground execution and record the visibility limitation. Do not attach to whichever
+unrelated session happens to be focused. Routing configuration selects a driver; it does not authorize
+starting extra agents, publication, or other external actions.

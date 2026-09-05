@@ -33,9 +33,10 @@ def percentile(values: Iterable[int], fraction: float) -> int | None:
     ordered = sorted(values)
     if not ordered:
         return None
-    # Pick the observation at the percentile boundary. Keeping this as an observed token count,
+    # Nearest-rank percentile: rank = ceil(p * n), converted to a zero-based index.
+    # Keeping this as an observed token count,
     # rather than interpolating two requests, makes every number traceable to one real request.
-    index = min(len(ordered) - 1, int(fraction * len(ordered)))
+    index = min(len(ordered) - 1, max(0, math.ceil(fraction * len(ordered)) - 1))
     return ordered[index]
 
 
@@ -111,6 +112,10 @@ def assistant_request(record: dict[str, Any], sequence: int, chain: int) -> dict
         return None
     usage = message.get("usage")
     if not isinstance(usage, dict):
+        return None
+    if not any(integer(usage.get(key)) is not None for key in (
+        "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"
+    )):
         return None
 
     context_parts = [
@@ -326,10 +331,16 @@ def quotient(part: int, whole: int) -> float | None:
     return round(part / whole, 2) if whole else None
 
 
-def token_totals(requests: Iterable[dict[str, Any]]) -> dict[str, int]:
+def complete_total(requests: list[dict[str, Any]], key: str) -> int | None:
+    if not requests or any(request[key] is None for request in requests):
+        return None
+    return sum(request[key] for request in requests)
+
+
+def token_totals(requests: Iterable[dict[str, Any]]) -> dict[str, int | None]:
     request_list = list(requests)
     return {
-        key: sum(request[key] or 0 for request in request_list)
+        key: complete_total(request_list, key)
         for key in ("input", "cache_read", "cache_creation", "output")
     }
 
@@ -339,14 +350,10 @@ def summarize(project: str, sessions: list[dict[str, Any]], args: argparse.Names
     contexts = [value for session in sessions for value in session["contexts"]]
     main_contexts = [value for session in sessions for value in session["main_contexts"]]
     first_contexts = [session["first_context"] for session in sessions if session["first_context"] is not None]
-    output_values = [request["output"] for request in requests if request["output"] is not None]
-    thinking_values = [request["thinking"] for request in requests if request["thinking"] is not None]
-    output_total = sum(output_values) if output_values else None
-    thinking_total = sum(thinking_values) if thinking_values else None
-    cache_1h_values = [request["cache_1h"] for request in requests if request["cache_1h"] is not None]
-    cache_5m_values = [request["cache_5m"] for request in requests if request["cache_5m"] is not None]
-    cache_1h = sum(cache_1h_values) if cache_1h_values else None
-    cache_5m = sum(cache_5m_values) if cache_5m_values else None
+    output_total = complete_total(requests, "output")
+    thinking_total = complete_total(requests, "thinking")
+    cache_1h = complete_total(requests, "cache_1h")
+    cache_5m = complete_total(requests, "cache_5m")
     main_models: Counter[str] = Counter()
     sidechain_models: Counter[str] = Counter()
     for request in requests:
@@ -372,7 +379,7 @@ def summarize(project: str, sessions: list[dict[str, Any]], args: argparse.Names
     has_idle_data = any(session["idle_comparisons"] for session in sessions)
     idle_gaps = sum(session["idle_gaps"] or 0 for session in sessions) if has_idle_data else None
     idle_rebuilds = sum(session["idle_rebuilds"] or 0 for session in sessions) if has_idle_data else None
-    cache_total = (cache_1h or 0) + (cache_5m or 0)
+    cache_total = cache_1h + cache_5m if cache_1h is not None and cache_5m is not None else None
     return {
         "project": project,
         "session_count": session_count,
@@ -423,8 +430,8 @@ def summarize(project: str, sessions: list[dict[str, Any]], args: argparse.Names
         "cache_creation": {
             "ephemeral_1h_input_tokens": cache_1h,
             "ephemeral_5m_input_tokens": cache_5m,
-            "ephemeral_1h_percent": ratio(cache_1h or 0, cache_total) if cache_1h is not None else None,
-            "ephemeral_5m_percent": ratio(cache_5m or 0, cache_total) if cache_5m is not None else None,
+            "ephemeral_1h_percent": ratio(cache_1h, cache_total) if cache_total is not None else None,
+            "ephemeral_5m_percent": ratio(cache_5m, cache_total) if cache_total is not None else None,
         },
         "models": {
             "main": dict(main_models.most_common()),
@@ -644,6 +651,12 @@ def run(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+
+    if not any(session["requests"] for session in sessions):
+        raise AuditInputError(
+            "no recognized usage records; expected Claude Code transcripts, not an empty "
+            "or unsupported session format"
+        )
 
     report = summarize(project, sessions, args)
     if args.json:
