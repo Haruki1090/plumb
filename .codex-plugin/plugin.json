@@ -1,6 +1,6 @@
 {
   "name": "plumb",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "A Claude-first engineering harness with an additive Codex adapter for disciplined planning, implementation, and adversarial review.",
   "author": {
     "name": "Haruki1090",

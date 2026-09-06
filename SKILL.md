@@ -29,7 +29,7 @@ in the body text.
 |---|---|
 | Main session | the Claude Code session you are in |
 | Implementer role | `Task` (do not set `model`). Produces a diff; the main session reviews it |
-| Explorer role | `Task` (do not set `model`). Produces no diff |
+| Explorer role | `Task`. Produces no diff. `model` comes from `role.explorer.model` when it is set; unset inherits |
 | Judge role | `role.judge` (unset: the main session stands in, and says so) |
 | Bulk role | `role.bulk` (unset: the main session works through it in order) |
 

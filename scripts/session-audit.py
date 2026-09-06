@@ -309,6 +309,8 @@ def read_session(project_dir: Path, main_file: Path, args: argparse.Namespace) -
         flags.append("TOOL-RESULT-OVER")
     if idle_rebuilds:
         flags.append("IDLE-REBUILD")
+    if first_context is not None and first_context > args.first_threshold:
+        flags.append("FIRST-REQUEST-OVER")
 
     return {
         "session_id": (normalizer.session_id or main_file.stem) if normalizer else main_file.stem,
@@ -416,6 +418,7 @@ def summarize(project: str, sessions: list[dict[str, Any]], args: argparse.Names
         "thresholds": {
             "context_tokens": args.ctx_threshold,
             "tool_result_bytes": args.tool_threshold,
+            "first_request_tokens": args.first_threshold,
             "idle_minutes": args.idle_minutes,
             "rebuild_tokens": args.rebuild_threshold,
         },
@@ -468,6 +471,9 @@ def summarize(project: str, sessions: list[dict[str, Any]], args: argparse.Names
             "IDLE-REBUILD": {
                 "sessions": sum("IDLE-REBUILD" in session["flags"] for session in sessions)
             },
+            "FIRST-REQUEST-OVER": {
+                "sessions": sum("FIRST-REQUEST-OVER" in session["flags"] for session in sessions)
+            },
         },
         "sessions": [
             {
@@ -479,6 +485,7 @@ def summarize(project: str, sessions: list[dict[str, Any]], args: argparse.Names
                 "token_totals": token_totals(session["requests"]),
                 "context_p90": session["context_p90"],
                 "main_context_p90": session["main_context_p90"],
+                "first_context": session["first_context"],
                 "tool_results_over": session["tool_results_over"],
                 "idle_rebuilds": session["idle_rebuilds"],
                 "flags": session["flags"],
@@ -582,6 +589,10 @@ def print_text(report: dict[str, Any], args: argparse.Namespace) -> None:
         f"  IDLE-REBUILD      {flags['IDLE-REBUILD']['sessions']:,} sessions    "
         f"resumed after >{args.idle_minutes:g}m with a full cache rebuild - fold before you resume"
     )
+    print(
+        f"  FIRST-REQUEST-OVER {flags['FIRST-REQUEST-OVER']['sessions']:,} sessions   "
+        f"first request above {args.first_threshold:,} tokens - weigh the fixed prompt with plumb-prompt-weight"
+    )
     print()
     selection = "--all" if args.all else f"--session {args.session}" if args.session else f"--last {args.last}"
     print(f"per session (worst first, {selection})")
@@ -641,6 +652,8 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--strict", action="store_true", help="exit 1 when any flag fires")
     command.add_argument("--ctx-threshold", type=int, default=400000)
     command.add_argument("--tool-threshold", type=int, default=40000)
+    command.add_argument("--first-threshold", type=int, default=50000,
+                         help="flag a session whose first main-chain request exceeds this many tokens")
     command.add_argument("--idle-minutes", type=float, default=60)
     command.add_argument("--rebuild-threshold", type=int, default=20000)
     return command

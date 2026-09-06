@@ -2,6 +2,24 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.9.0] - 2026-09-06
+
+### Added
+
+- `FIRST-REQUEST-OVER`: session-audit flags a session whose first main-chain request exceeds
+  `--first-threshold` (default 50,000 tokens), so the fixed prompt is a measured term.
+- `plumb-prompt-weight`: lists the user-controlled parts of the fixed prompt (instruction files,
+  memory index, session-start hooks, enabled plugins' skill and agent listings, user skills, MCP
+  declarations) with bytes and a byte-derived token estimate. Never runs a hook or prints contents.
+- `plumb-statusline-cost`: a status-line segment printing the runtime's running cost estimate,
+  with yen and a 50 / 80 / 100 % budget band from `cost.jpy_per_usd` and `cost.session_budget_usd`.
+- `role.explorer.model`: a config key that sets the explorer role's model; unset inherits.
+
+### Changed
+
+- The table saying where effort goes up lives in `docs/role-map.md`; the graph reference and the
+  PR-review skill point at it instead of restating it.
+
 ## [0.8.0] - 2026-09-06
 
 ### Added

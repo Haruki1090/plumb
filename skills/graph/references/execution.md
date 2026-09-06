@@ -89,15 +89,9 @@ So **what belongs in a worktree stops at nodes that edit source and run lint / t
 
 When a node is delegated to `playbooks/running-a-plan.md`, **`docs/role-map.md` is the source of truth for role assignment** and this document carries no model names. What follows is a rough guide for building directly with Workflow.
 
-The default is to specify nothing. Unspecified, a node inherits the parent session's model.
-
-| What the node does | What to specify |
-|---|---|
-| Extraction, classification, mechanical transformation | `effort: 'low'`, and a lighter model if needed |
-| Implementation, investigation | nothing (inherit the default) |
-| Verification, arbitration, final integration | `effort: 'high'` or above |
-
-If you are not sure, specify nothing. Lower it and verification slips through; raise it and only the cost goes up.
+The default is to specify nothing. Unspecified, a node inherits the parent session's model and
+effort. **Which kinds of node get `effort: 'low'` or `effort: 'high'` is the table "Where effort
+goes up" in `docs/role-map.md`**; this document does not restate it.
 
 ## Without the Workflow tool
 
