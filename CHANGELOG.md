@@ -2,6 +2,15 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.9.1] - 2026-09-06
+
+### Fixed
+
+- `plumb-prompt-weight` now counts project-level skills (`<project>/.claude/skills/*/SKILL.md`
+  descriptions) and the SessionStart hooks in the project's `settings.json` and
+  `settings.local.json`. Found on a repository that carried a project-level copy of a plugin: the
+  global listing had dropped to 23KB while that project still started at 57KB.
+
 ## [0.9.0] - 2026-09-06
 
 ### Added

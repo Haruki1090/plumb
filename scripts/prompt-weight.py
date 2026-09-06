@@ -100,11 +100,21 @@ def collect(home: Path, project: Path) -> list[dict[str, Any]]:
 
     settings = load_json(claude / "settings.json")
     settings = settings if isinstance(settings, dict) else {}
-    commands = session_start_commands(settings.get("hooks"))
-    if commands:
-        rows.append(row("session-start hooks (settings)", claude / "settings.json",
-                        "\n".join(commands).encode("utf-8"),
-                        f"{len(commands)} command(s); not executed, output size unknown"))
+    for component, path in (
+        ("session-start hooks (settings)", claude / "settings.json"),
+        ("session-start hooks (project settings)", project / ".claude" / "settings.json"),
+        ("session-start hooks (project local settings)", project / ".claude" / "settings.local.json"),
+    ):
+        loaded = settings if path == claude / "settings.json" else load_json(path)
+        commands = session_start_commands(loaded.get("hooks") if isinstance(loaded, dict) else None)
+        if commands:
+            rows.append(row(component, path, "\n".join(commands).encode("utf-8"),
+                            f"{len(commands)} command(s); not executed, output size unknown"))
+
+    project_skills = sorted((project / ".claude" / "skills").glob("*/SKILL.md"))
+    if project_skills:
+        rows.append(row("project skills (listing)", project / ".claude" / "skills",
+                        frontmatter_descriptions(project_skills), f"{len(project_skills)} skill(s)"))
 
     enabled = settings.get("enabledPlugins")
     enabled = enabled if isinstance(enabled, dict) else {}

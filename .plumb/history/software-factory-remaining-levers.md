@@ -72,7 +72,7 @@ the one key whose value is a model name, and that it lives in config so no docum
 `SKILL.md` Explorer row: same wording. `skills/pr-review/SKILL.md:96`: pass `model` from
 `plumb-config role.explorer.model` when it resolves. `scripts/selftest.sh`: add
 `role.explorer.model = tier-x` to the config fixture and assert the lookup.
-Bench lap (not run here): from `~/Documents/plumb-bench-scripts/`, `RUN=explorer-light` with the
+Bench lap (not run here): with the owner's private bench launcher (outside this repository), `RUN=explorer-light` with the
 key set, over the 12-item corpus, compared on tokens/review and requests per review against
 `clean-pass-3`; F1 must not regress beyond the noise floor (`bench-score` gate).
 

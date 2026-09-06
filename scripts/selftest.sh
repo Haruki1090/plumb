@@ -790,6 +790,9 @@ if command -v python3 >/dev/null 2>&1; then
   printf -- '---\nname: mine\ndescription: a user skill\n---\n' > "$pw_home/.claude/skills/mine/SKILL.md"
   printf '{"enabledPlugins":{"on@mk":true,"off@mk":false},"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo must-not-run-either"}]}]}}\n' > "$pw_home/.claude/settings.json"
   printf '{"version":1,"plugins":{"on@mk":[{"installPath":"%s"}],"off@mk":[{"installPath":"%s"}]}}\n' "$pw_plugin" "$pw_plugin" > "$pw_home/.claude/plugins/installed_plugins.json"
+  mkdir -p "$sandbox_root/pw-project/.claude/skills/local-one"
+  printf -- '---\nname: local-one\ndescription: a project skill\n---\nproject body must not count\n' > "$sandbox_root/pw-project/.claude/skills/local-one/SKILL.md"
+  printf '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo project-hook-must-not-run"}]}]}}\n' > "$sandbox_root/pw-project/.claude/settings.json"
   pw_text=$("$root/bin/plumb-prompt-weight" --home "$pw_home" --project "$sandbox_root/pw-project")
   pw_code=$?
   pw_json=$("$root/bin/plumb-prompt-weight" --home "$pw_home" --project "$sandbox_root/pw-project" --json)
@@ -800,11 +803,14 @@ on = next(row for row in r["rows"] if row["component"] == "plugin on@mk")
 ok = ("plugin off@mk" not in names
       and on["bytes"] == len("the one skill\n") and "1 session-start hook(s); not executed" in on["note"]
       and "must not count" not in text and "the one skill" not in text
+      and next(row for row in r["rows"] if row["component"] == "project skills (listing)")["bytes"] == len("a project skill\n")
+      and any(row["component"] == "session-start hooks (project settings)" for row in r["rows"])
+      and "must not count" not in text
       and r["total"]["bytes"] == sum(row["bytes"] for row in r["rows"])
       and "not executed" in text and text.rstrip().endswith("not visible here"))
 print("ok" if ok else "wrong")' "$pw_json" "$pw_text")
   eq "prompt-weight exits 0 on a synthetic home" "$pw_code" "0"
-  eq "prompt-weight lists enabled plugins only, counts descriptions not bodies, and never prints contents" "$pw_check" "ok"
+  eq "prompt-weight lists enabled plugins and project skills, counts descriptions not bodies, and never prints contents" "$pw_check" "ok"
   [ -e "$sandbox_root/hook-ran" ] && ng "prompt-weight executed a session-start hook" || ok "prompt-weight never executes a hook"
   empty_home="$sandbox_root/pw-empty"; mkdir -p "$empty_home"
   "$root/bin/plumb-prompt-weight" --home "$empty_home" --project "$empty_home" >/dev/null 2>&1
