@@ -37,6 +37,8 @@ writing the tests, and landing the result. It depends on no other plugin.
   `scripts/check-harness.sh` fails on the first two; `scripts/doctor.sh` checks the
   documents and the outer edge besides — whether the tools and skills the docs name
   still exist on this machine. `plumb-session-audit` checks the sessions themselves.
+  `plumb-prompt-weight` weighs the fixed prompt those sessions start with, and
+  `plumb-statusline-cost` keeps the running cost in the status line.
   The harness has caught real breakage, including a frontmatter flag that had made
   it unreachable from the model.
 

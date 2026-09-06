@@ -13,7 +13,9 @@ echo "plumb selftest: $root"
 cfg=$(mktemp)
 sandbox_root=$(mktemp -d)
 trap 'rm -f "$cfg"; rm -rf "$sandbox_root"' EXIT
-printf 'role.judge = codex\nrole.bulk   =  cursor-agent  \n' > "$cfg"
+printf 'role.judge = codex\nrole.bulk   =  cursor-agent  \nrole.explorer.model = tier-x\n' > "$cfg"
+eq "plumb-config resolves role.explorer.model" "$(PLUMB_CONFIG=$cfg "$root/bin/plumb-config" role.explorer.model)" "tier-x"
+eq "plumb-config leaves cost.session_budget_usd empty when unset" "$(PLUMB_CONFIG=$cfg "$root/bin/plumb-config" cost.session_budget_usd)" ""
 
 # Session-audit checks use synthetic transcripts and never read private session content.
 if command -v python3 >/dev/null 2>&1; then
@@ -83,9 +85,9 @@ print("ok")' 2>/dev/null)
     > "$audit_dir/flagged-session.jsonl"
 
   audit_out=$("$root/bin/plumb-session-audit" --transcripts "$audit_dir" --all \
-    --ctx-threshold 100 --tool-threshold 100)
+    --ctx-threshold 100 --tool-threshold 100 --first-threshold 60)
   audit_json=$("$root/bin/plumb-session-audit" --transcripts "$audit_dir" --all \
-    --ctx-threshold 100 --tool-threshold 100 --json)
+    --ctx-threshold 100 --tool-threshold 100 --first-threshold 60 --json)
   audit_text_file="$sandbox_root/audit.txt"
   audit_json_file="$sandbox_root/audit.json"
   printf '%s\n' "$audit_out" > "$audit_text_file"
@@ -116,14 +118,15 @@ print("ok" if ok else "wrong")' "$audit_json_file")
 r = json.load(open(sys.argv[1], encoding="utf-8"))
 sessions = {s["session_id"]: s for s in r["sessions"]}
 counts = {name: next(iter(value.values())) for name, value in r["flags"].items()}
-ok = (counts == {"CTX-P90-OVER": 1, "TOOL-RESULT-OVER": 1, "IDLE-REBUILD": 1}
+ok = (counts == {"CTX-P90-OVER": 1, "TOOL-RESULT-OVER": 1, "IDLE-REBUILD": 1, "FIRST-REQUEST-OVER": 1}
       and r["tool_results"] == {"over_percent": 33.3, "over_threshold": 1, "total": 3}
       and r["idle"] == {"cache_rebuilt_after": 1, "gaps": 1}
       and sessions["clean-session"]["context_p90"] == 41001
       and sessions["clean-session"]["main_context_p90"] == 61
-      and sessions["clean-session"]["flags"] == [])
+      and sessions["clean-session"]["flags"] == ["FIRST-REQUEST-OVER"]
+      and sessions["flagged-session"]["first_context"] == 50)
 print("ok" if ok else "wrong")' "$audit_json_file")
-  eq "session-audit isolates main-chain flags and measures tool results as UTF-8 bytes" "$flag_check" "ok"
+  eq "session-audit isolates main-chain flags, flags the first request, and measures tool results as UTF-8 bytes" "$flag_check" "ok"
 
   if printf '%s\n' "$audit_out" | grep -q 'unsafe?model?name: 1' \
       && ! printf '%s\n' "$audit_out" | grep -q 'unsafe/model name' \
@@ -774,6 +777,58 @@ if [ -n "$python_bin" ]; then
   eq "doctor rejects malformed Codex plugin output" "$?" "1"
 else
   printf '  %-4s %s\n' "--" "Codex loading fixtures skipped: python3 unavailable"
+fi
+
+# prompt-weight: a synthetic home with one enabled and one disabled plugin. Never the real one.
+if command -v python3 >/dev/null 2>&1; then
+  pw_home="$sandbox_root/pw-home"
+  pw_plugin="$pw_home/.claude/plugins/cache/mk/on/1.0.0"
+  mkdir -p "$pw_home/.claude/plugins" "$pw_plugin/skills/one" "$pw_plugin/hooks" "$pw_home/.claude/skills/mine" "$sandbox_root/pw-project"
+  printf '# rules\nkeep it short\n' > "$pw_home/.claude/CLAUDE.md"
+  printf -- '---\nname: one\ndescription: the one skill\n---\nbody that must not count\n' > "$pw_plugin/skills/one/SKILL.md"
+  printf '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo must-not-run > %s/hook-ran"}]}]}}\n' "$sandbox_root" > "$pw_plugin/hooks/hooks.json"
+  printf -- '---\nname: mine\ndescription: a user skill\n---\n' > "$pw_home/.claude/skills/mine/SKILL.md"
+  printf '{"enabledPlugins":{"on@mk":true,"off@mk":false},"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo must-not-run-either"}]}]}}\n' > "$pw_home/.claude/settings.json"
+  printf '{"version":1,"plugins":{"on@mk":[{"installPath":"%s"}],"off@mk":[{"installPath":"%s"}]}}\n' "$pw_plugin" "$pw_plugin" > "$pw_home/.claude/plugins/installed_plugins.json"
+  pw_text=$("$root/bin/plumb-prompt-weight" --home "$pw_home" --project "$sandbox_root/pw-project")
+  pw_code=$?
+  pw_json=$("$root/bin/plumb-prompt-weight" --home "$pw_home" --project "$sandbox_root/pw-project" --json)
+  pw_check=$(python3 -c 'import json, sys
+r = json.loads(sys.argv[1]); text = sys.argv[2]
+names = [row["component"] for row in r["rows"]]
+on = next(row for row in r["rows"] if row["component"] == "plugin on@mk")
+ok = ("plugin off@mk" not in names
+      and on["bytes"] == len("the one skill\n") and "1 session-start hook(s); not executed" in on["note"]
+      and "must not count" not in text and "the one skill" not in text
+      and r["total"]["bytes"] == sum(row["bytes"] for row in r["rows"])
+      and "not executed" in text and text.rstrip().endswith("not visible here"))
+print("ok" if ok else "wrong")' "$pw_json" "$pw_text")
+  eq "prompt-weight exits 0 on a synthetic home" "$pw_code" "0"
+  eq "prompt-weight lists enabled plugins only, counts descriptions not bodies, and never prints contents" "$pw_check" "ok"
+  [ -e "$sandbox_root/hook-ran" ] && ng "prompt-weight executed a session-start hook" || ok "prompt-weight never executes a hook"
+  empty_home="$sandbox_root/pw-empty"; mkdir -p "$empty_home"
+  "$root/bin/plumb-prompt-weight" --home "$empty_home" --project "$empty_home" >/dev/null 2>&1
+  eq "prompt-weight exits 0 on an empty home" "$?" "0"
+else
+  printf '  %-4s %s\n' "--" "python3 not on PATH, prompt-weight assertions skipped"
+fi
+
+# statusline-cost: stdin JSON in, one segment out. Config through PLUMB_CONFIG only.
+if command -v python3 >/dev/null 2>&1; then
+  sl_cfg="$sandbox_root/sl-config"; : > "$sl_cfg"
+  eq "statusline-cost prints the dollar figure" "$(printf '{"cost":{"total_cost_usd":1.5}}' | PLUMB_CONFIG=$sl_cfg "$root/bin/plumb-statusline-cost")" '$1.50'
+  printf 'cost.jpy_per_usd = 150\n' > "$sl_cfg"
+  eq "statusline-cost adds yen when the rate is configured" "$(printf '{"cost":{"total_cost_usd":1.5}}' | PLUMB_CONFIG=$sl_cfg "$root/bin/plumb-statusline-cost")" '$1.50 ¥225'
+  printf 'cost.session_budget_usd = 2\n' > "$sl_cfg"
+  sl_out=$(printf '{"cost":{"total_cost_usd":1.5}}' | PLUMB_CONFIG=$sl_cfg "$root/bin/plumb-statusline-cost")
+  case "$sl_out" in *'75%'*) ok "statusline-cost shows the budget percentage";; *) ng "statusline-cost budget percentage missing: [$sl_out]";; esac
+  case "$sl_out" in *$'\033[33m'*) ok "statusline-cost colours the 50-79 band yellow";; *) ng "statusline-cost band colour missing: [$sl_out]";; esac
+  sl_over=$(printf '{"cost":{"total_cost_usd":2.5}}' | PLUMB_CONFIG=$sl_cfg "$root/bin/plumb-statusline-cost")
+  case "$sl_over" in *$'\033[1;31m'*'125%'*) ok "statusline-cost turns bold red at 100 percent";; *) ng "statusline-cost over-budget colour wrong: [$sl_over]";; esac
+  sl_none=$(printf '{}' | PLUMB_CONFIG=$sl_cfg "$root/bin/plumb-statusline-cost"); sl_none_code=$?
+  eq "statusline-cost prints nothing without a cost field" "$sl_none|$sl_none_code" "|0"
+else
+  printf '  %-4s %s\n' "--" "python3 not on PATH, statusline-cost assertions skipped"
 fi
 
 if command -v python3 >/dev/null 2>&1; then

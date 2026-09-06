@@ -94,6 +94,8 @@ Build **two independent** sets of claims.
 decided. Do not verify them here.
 
 **(b) From the diff** — hand the `pr-diff-reader` agent **only the diff file you dumped in stage 0**.
+It is an explorer-shaped role: when `plumb-config role.explorer.model` resolves, pass that as its
+`model`; unset, it inherits the main session's.
 That agent holds nothing but `Read` / `Grep` / `Glob`, so **it cannot fetch the body**.
 Tool permissions enforce this, not a polite instruction.
 
@@ -151,7 +153,7 @@ What comes back carries **confidence only, exactly as with A through D. You atta
 Point it only at paths that survived stage 2's line. Point it at everything and it returns findings from
 the territory you decided not to look at, which leaves you **throwing away real findings you generated
 yourself**. effort is medium by default, and high is the ceiling once you have narrowed the target.
-Do not try to buy back the narrowing with effort.
+Do not try to buy back the narrowing with effort. (The table is "Where effort goes up" in `docs/role-map.md`.)
 
 What `/code-review` cannot find by construction: every finding is pinned to a file, so it misses
 **a defect that appears in no single file's diff** (B), and **anything that is not a question of code

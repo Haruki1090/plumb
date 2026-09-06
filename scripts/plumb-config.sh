@@ -11,13 +11,19 @@
 #   role.bulk    = <command>
 #   pane.driver  = <command>
 #   stack.tool   = gh-stack
+#   role.explorer.model     = <model>   the one key whose value is a model name; it lives here so
+#                                        that no document has to carry one (docs/role-map.md)
+#   cost.session_budget_usd = <usd>     expected spend for one session; plumb-statusline-cost
+#                                        colours the running cost at 50 / 80 / 100 % of it
+#   cost.jpy_per_usd        = <rate>    adds a yen figure beside the dollar one
 #
 # **"Not configured" is not an error.** Unset still exits 0 and returns the default.
 # Exit 1 here and every caller ends up writing || true, which hides the real failures.
 #
 # **An empty value (`key = ` with nothing on the right) means the same as unset.** No separate
-# meaning is assigned to it. All four keys mean "the main session stands in" when unset, so an
-# empty value has no need to carry "explicitly disabled".
+# meaning is assigned to it. The role and pane keys mean "the main session stands in" when unset,
+# the model key means "inherit", and the cost keys mean "do not show it", so an empty value has
+# no need to carry "explicitly disabled".
 set -uo pipefail
 
 key="${1:-}"

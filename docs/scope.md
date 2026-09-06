@@ -158,8 +158,11 @@ run command as arguments, and **to exit 2 on pre-existing pollution**, so an inn
 does not get named.
 
 `scripts/session-audit.py` (`plumb-session-audit`) streams one project's Claude Code
-transcripts and measures context per request, oversized tool results, and cache rebuilds after
-idle resumes without printing transcript content. It separates usage volume, request overhead,
+transcripts and measures context per request, oversized tool results, the size of the first
+request (the fixed prompt), and cache rebuilds after idle resumes without printing transcript
+content. `scripts/prompt-weight.py` (`plumb-prompt-weight`) estimates what the user-controlled
+part of that fixed prompt weighs, from the files the runtime loads; the runtime's own prompt and
+tool schemas are not visible to it. It separates usage volume, request overhead,
 and context growth so a change can be assessed per completed task. Its thresholds were measured
 on 2026-09-02; they are diagnostic defaults, not universal limits or guaranteed savings.
 Execution graphs organize work and verification; they do not provide a repository knowledge index.

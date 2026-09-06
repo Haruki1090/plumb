@@ -8,7 +8,7 @@ who does not have that tool.
 |---|---|---|
 | Main session | — (the Claude Code you are running in) | — |
 | Implementer role | — (`Task`. Do not write `model`) | — |
-| Explorer role | — (`Task`. Produces no diff) | — |
+| Explorer role | `role.explorer.model` (`Task`. Produces no diff; the key sets its `model`) | Inherits the main session's model |
 | Judge role | `role.judge` | **The main session stands in.** Say out loud that no other family's eyes are on it, and go on |
 | Bulk role | `role.bulk` | The main session works through it in order |
 | Driving a pane | `pane.driver` | Run it in the foreground |
@@ -21,6 +21,21 @@ How to ask:
 **Unset is not a fault.** It returns empty and exits 0.
 Even with the judge role unset, **the todo line for the judge role does not disappear**
 (**visible skip**). Leave it there reading `skip: role.judge unset`.
+
+## Where effort goes up
+
+**Effort is a per-call setting, not a session default.** The default is medium
+(**principle-spend-on-the-outcome**: output tokens are billed at a multiple of input, and
+`thinking %` in `plumb-session-audit` is the term this moves). Raise it only for the roles below.
+
+| What the role does | Effort |
+|---|---|
+| Extraction, classification, mechanical transformation, a bounded exploration | low |
+| Implementation, investigation, a review whose target is still wide | medium (the default; do not set it) |
+| Verification, arbitration, final integration, a review narrowed to a few paths | high |
+
+Lower it and verification slips through; raise it and only the cost goes up. **Do not buy back a
+target you failed to narrow with effort** — narrow first, then raise it once.
 
 ## Observable terminal execution
 
