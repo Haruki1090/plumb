@@ -55,5 +55,5 @@ estimate computed by the runtime (`cost.total_cost_usd`, list price) and the tok
 - Decomposing the first request from the transcript: the transcript carries one number for the
   whole request, so the split has to come from the files the runtime loads.
 - Running the explorer-tier bench in this lap: it is a multi-hour pane job on a private corpus
-  (`~/Documents/plumb-bench-scripts/`); the plumbing lands now, the measurement is its own lap.
+  (the owner's private bench scripts, outside this repository); the plumbing lands now, the measurement is its own lap.
 - Automated papercut recording and a context graph: recorded in the brief as deferred / out of scope.
