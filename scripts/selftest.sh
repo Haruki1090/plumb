@@ -822,9 +822,12 @@ fi
 # statusline-cost: stdin JSON in, one segment out. Config through PLUMB_CONFIG only.
 if command -v python3 >/dev/null 2>&1; then
   sl_cfg="$sandbox_root/sl-config"; : > "$sl_cfg"
-  eq "statusline-cost prints the dollar figure" "$(printf '{"cost":{"total_cost_usd":1.5}}' | PLUMB_CONFIG=$sl_cfg "$root/bin/plumb-statusline-cost")" '$1.50'
+  eq "statusline-cost prints the dollar figure" "$(printf '{"cost":{"total_cost_usd":1.5}}' | PLUMB_CONFIG=$sl_cfg "$root/bin/plumb-statusline-cost")" $'\033[1;37m$1.50\033[0m'
   printf 'cost.jpy_per_usd = 150\n' > "$sl_cfg"
-  eq "statusline-cost adds yen when the rate is configured" "$(printf '{"cost":{"total_cost_usd":1.5}}' | PLUMB_CONFIG=$sl_cfg "$root/bin/plumb-statusline-cost")" '$1.50 ¥225'
+  eq "statusline-cost adds yen when the rate is configured" "$(printf '{"cost":{"total_cost_usd":1.5}}' | PLUMB_CONFIG=$sl_cfg "$root/bin/plumb-statusline-cost")" $'\033[1;37m$1.50\033[0m \033[1;37m¥225\033[0m'
+  printf 'cost.session_budget_usd = 30\n' > "$sl_cfg"
+  sl_under=$(printf '{"cost":{"total_cost_usd":1.5}}' | PLUMB_CONFIG=$sl_cfg "$root/bin/plumb-statusline-cost")
+  case "$sl_under" in *$'\033[1;37m'*'5%'*) ok "statusline-cost paints the under-50 band white";; *) ng "statusline-cost under-band colour wrong: [$sl_under]";; esac
   printf 'cost.session_budget_usd = 2\n' > "$sl_cfg"
   sl_out=$(printf '{"cost":{"total_cost_usd":1.5}}' | PLUMB_CONFIG=$sl_cfg "$root/bin/plumb-statusline-cost")
   case "$sl_out" in *'75%'*) ok "statusline-cost shows the budget percentage";; *) ng "statusline-cost budget percentage missing: [$sl_out]";; esac

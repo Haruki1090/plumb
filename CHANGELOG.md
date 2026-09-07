@@ -2,6 +2,15 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.9.2] - 2026-09-07
+
+### Fixed
+
+- `plumb-statusline-cost` paints every part of its segment bright white. It emitted no colour at
+  all below the 50 % band, so the dollar, yen and percentage figures inherited the status line's
+  default foreground and rendered as dim grey the owner could not read. The 50 / 80 / 100 % band
+  colours are unchanged and still take precedence.
+
 ## [0.9.1] - 2026-09-06
 
 ### Fixed
