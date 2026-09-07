@@ -7,7 +7,7 @@ list-price estimate (`cost.total_cost_usd`). Two optional keys in the plumb conf
     cost.jpy_per_usd        = 150    -> appends ¥<jpy>
     cost.session_budget_usd = 30     -> appends <pct>% of budget, coloured by band
 
-Bands: under 50 % plain, 50-79 % yellow, 80-99 % magenta, 100 % and over bold red. The bands are
+Bands: under 50 % plain white, 50-79 % yellow, 80-99 % magenta, 100 % and over bold red. The bands are
 the 50 / 80 / 100 nudge points; the budget is the owner's expected spend for one session, not a
 limit the runtime enforces. No cost in the JSON means no output and exit 0, so a status line that
 appends this segment loses nothing when the field is absent.
@@ -20,6 +20,13 @@ import sys
 from pathlib import Path
 
 CONFIG = Path(__file__).resolve().parent / "plumb-config.sh"
+# The status line's default foreground renders dim grey and is hard to read, so every part of the
+# segment is painted. Bright white is the same base the account segment uses.
+BASE_COLOUR = "1;37"
+
+
+def paint(text: str, colour: str) -> str:
+    return f"\033[{colour}m{text}\033[0m"
 
 
 def config(key: str) -> str:
@@ -52,16 +59,14 @@ def segment(data: object) -> str:
     usd = cost.get("total_cost_usd") if isinstance(cost, dict) else None
     if not isinstance(usd, (int, float)) or isinstance(usd, bool):
         return ""
-    parts = [f"${usd:.2f}"]
+    parts = [paint(f"${usd:.2f}", BASE_COLOUR)]
     rate = number(config("cost.jpy_per_usd"))
     if rate:
-        parts.append(f"¥{round(usd * rate):,}")
+        parts.append(paint(f"¥{round(usd * rate):,}", BASE_COLOUR))
     budget = number(config("cost.session_budget_usd"))
     if budget:
         percent = usd / budget * 100
-        colour = band(percent)
-        text = f"{percent:.0f}%"
-        parts.append(f"\033[{colour}m{text}\033[0m" if colour else text)
+        parts.append(paint(f"{percent:.0f}%", band(percent) or BASE_COLOUR))
     return " ".join(parts)
 
 
