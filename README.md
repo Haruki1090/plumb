@@ -150,12 +150,6 @@ The Japanese original is frozen at the tag `v0.5.0-ja` and is not maintained:
 
     git show v0.5.0-ja:playbooks/fixing-a-bug.md
 
-## Credits
-
-plumb began as a port of pstack by Lauren Tan, which is where its shape came
-from — the router, principles as plain documents, and most of the principle
-names. No text is carried over verbatim any more. See NOTICE and docs/scope.md.
-
 ## License
 
 MIT
