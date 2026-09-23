@@ -848,5 +848,11 @@ else
   printf '  %-4s %s\n' "--" "efficiency regression suite skipped: python3 unavailable"
 fi
 
+if command -v python3 >/dev/null 2>&1; then
+  python3 -B "$root/scripts/test-skill-evals.py" >/dev/null \
+    && ok "skill evals: trigger observation, scoring, and lead-grade checks on synthetic transcripts" \
+    || ng "skill evals: trigger observation, scoring, and lead-grade checks on synthetic transcripts"
+fi
+
 if [ $fail -eq 0 ]; then echo "  → passed"; else echo "  → failed"; fi
 exit $fail

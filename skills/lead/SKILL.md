@@ -1,160 +1,110 @@
 ---
 name: lead
-description: Run a queue end to end as the coordinator - "review the open PRs", "implement the issues assigned to me one by one", "clear my queue", "work through my assignments". Reads the queue from the tracker, drops what already landed, decomposes, gives each unit its own worktree and a visible pane, drives implement -> independent review -> rework -> local checks -> ready PR, and reports what needs the owner. Use when the ask names a queue of PRs or issues rather than one change. For a single PR review use plumb:pr-review; for one bug, playbooks/fixing-a-bug.md.
+description: Coordinates a queue of pull requests or issues end to end. Use when asked to review PRs without naming a single one ("review the PRs", "check the PRs waiting on me", "go through my review requests") or to work the owner's assigned issues ("implement my assigned issues one by one", "clear my queue", "work through my assignments"). Reads the queue from the tracker, drops what already landed, gives each item its own worktree and a visible pane, drives implement or review -> independent check -> ready PR, and reports what needs the owner. For one PR URL use plumb:pr-review; for one bug, playbooks/fixing-a-bug.md.
 ---
 
 # Lead a queue
 
-**The owner hands over a queue, not a task. You are the coordinator: you decide the order, hand
-the work out, hold the gate, and bring back only what needs the owner.**
-
-"Review the PRs." "Implement what is assigned to me, one at a time." Those asks name no files and
-no design. Filling that gap by guessing is what this skill replaces with a fixed route.
+**The owner hands over a queue, not a task. You decide the order, hand the work out, hold the
+gate, and bring back only what needs the owner.**
 
 ## Authorization and the stop line
 
-**Invoking this skill is the owner's request for parallel roles.** You do not ask again before
-starting lanes. It authorizes nothing else: no merge, deploy, infrastructure apply, release,
-branch deletion, issue closing, or message to anyone. Review comments are posted only when the
-owner asked for them in this request.
+Invoking this skill is the owner's request for parallel roles; do not ask again before starting
+lanes. It authorizes nothing else: no merge, deploy, infrastructure apply, release, branch
+deletion, issue closing, or message to anyone. Post review comments only when this request asked.
 
-**The default stop line is a ready PR** — implemented, independently reviewed, locally checked at
-the final commit, pushed, opened and marked ready. The owner merges. A request that names a
-different line ("draft only", "stop after the review") overrides it.
+**Default stop line: a ready PR** (implemented, independently reviewed, checked at the final
+commit, pushed, marked ready). A request naming another line ("plan only", "draft only") wins.
 
-**The repository's instruction files win over this skill** on base branch, branch naming, local
-check commands, PR template and anything they forbid. Read them before step 1.
+The repository's instruction files win on base branch, branch naming, check commands, PR template
+and anything they forbid. Read them first.
 
-## 0. Seats
+## Seats
 
-| Seat | Who | Does not |
+| Seat | Who | Never |
 |---|---|---|
-| Coordinator | The main session | Write lane code. Carry lane history in its context (**principle-guard-the-context-window**) |
-| Implementer, one per lane | `role.bulk` if set, else the implementer role (`docs/role-map.md`) | Push, open PRs, stand up its own reviewer, write spec or plan files |
-| Reviewer | `role.judge` if set, else a fresh seat that did not implement | Edit the code under review |
+| Coordinator | The main session | Writes lane code or carries lane history (**principle-guard-the-context-window**) |
+| Implementer, one per lane | `role.bulk`, else the implementer role (`docs/role-map.md`) | Pushes, opens PRs, reviews itself, writes spec or plan files |
+| Reviewer | `role.judge`, else a fresh seat | Edits the code under review |
 
-Every seat runs where the owner can see it: through `pane.driver`, one tab per lane. With
-`pane.driver` unset, run lanes as isolated subagents and say `skip: pane.driver unset — lanes are
-not visible`.
+Lanes run through `pane.driver`, one tab per lane. Unset -> isolated subagents and
+`skip: pane.driver unset — lanes are not visible`.
 
-## 1. Intake: the queue as data
+## Checklist
 
-Read the queue from the tracker, not from memory or from the ask.
+Copy it into your todo list and keep it current.
 
-- **PR queue:** open PRs that request the owner's review, or that the owner authored — number,
-  base, head SHA, draft state, check state, size.
-- **Issue queue:** open issues assigned to the owner — number, title, labels, linked PRs.
+```
+- [ ] 1 Intake: queue read from the tracker, ledger opened
+- [ ] 2 Triage: every item has one state, rulings asked in one batch
+- [ ] 3 Decompose: lanes, shared-write inventory, live cap
+- [ ] 4 Lanes up: worktree + tab + brief file per lane   (stop here on "plan only")
+- [ ] 5 Loop: review -> rework -> checks -> ready PR, slots refilled
+- [ ] 6 Report: one row per item + ledger path
+```
 
-Open the ledger before anything else and write one line per item. **Compaction erases memory; the
-ledger survives it.**
+**1 Intake.** Read the queue from the tracker, not from the ask. Issues: open and assigned to the
+owner. PRs: requesting the owner's review or authored by the owner (then read
+[references/pr-queue.md](references/pr-queue.md)). Open the ledger before anything else:
 
-    log="$(plumb-path run --mkdir)/lead-$(date +%Y%m%d-%H%M).tsv"
+    log="$(plumb-path run --mkdir)/lead-<issues|prs>-$(date +%Y%m%d-%H%M%S)-$$.tsv"
     plumb-decision-log "$log" --header item state lane evidence next
-    plumb-decision-log "$log" 0 intake - "<query you ran>" "<N items>"
 
-## 2. Triage: drop what already landed
+Use that name exactly: another coordinator may be running, and a shared ledger mixes two queues.
+Write one line per item, and one line each time an item changes state.
 
-**An open issue is a claim that work is missing. Check it before you build it.**
+**2 Triage.** An open issue is a claim that work is missing; check it first.
+**Keep the bodies out of your context.** Pull the queue, merged PRs and open PRs once, as JSON
+files, and match them with a script (`playbooks/batching-chatty-tools.md`). With more than ten
+items, hand each item's reading to the explorer role and take back one ledger row per item
+(state, one-line evidence). You read only the rows.
+Search **merged** PRs for each item (closing keywords act only on the default branch, so work
+merged elsewhere leaves the issue open), then **read what the PR says about it**: "split out to
+#N" is a mention, not a fix. Confirm on the current base's code -> `landed`. Search **open** PRs ->
+`has-pr`: continue or review that PR, never a duplicate. Read the code, not the issue body.
+Every other item gets exactly one state:
 
-1. **Search merged PRs for each issue**, not only linked ones. Closing keywords only act on the
-   default branch, so work merged into an integration branch leaves its issue open. Landed ->
-   state `landed`, evidence = the merged PR. Propose closing; do not close.
-2. **Search open PRs for each issue.** One exists -> the lane continues or reviews that PR. Never
-   open a duplicate.
-3. **Read the code on the current base**, not the issue body. Issue bodies go stale before code.
-4. Classify every remaining item into exactly one state:
-
-| State | Next |
+| State | Meaning |
 |---|---|
-| `ready` | Becomes a lane |
-| `needs-ruling` | A choice that changes what gets built -> `plumb:decision-brief` |
-| `needs-shape` | What to build is still open -> `playbooks/shaping-the-work.md` before it is a lane |
-| `blocked` | Waits on another item; record which |
+| `ready` | Buildable now from what is written and decided |
+| `needs-ruling` | A decision changes what gets built (`plumb:decision-brief`) |
+| `needs-shape` | What to build is still open (`playbooks/shaping-the-work.md`) |
+| `owner-task` | Only a person can do it: production access, another system, a legal call |
+| `blocked` | Waits on another item or a later phase; name it |
 
-**Ask the rulings in one batch, and only the ones that block the first lanes.** The rest ride
-behind the running lanes (`plumb:graph`, step 7). Do not hold every lane for one open question.
+Ask only the rulings that block the first lanes, in one batch.
 
-## 3. Decompose
+**3 Decompose.** Two or more signals from `plumb:graph` -> draw the graph; otherwise a lane
+list. One lane = one item (or one bundle sharing a source of truth) = one branch = one worktree.
+Inventory shared writes first (`playbooks/fan-out.md`, step 1): same file, migration numbering,
+lockfile, generated contracts -> bundle or serialize. **At most 3-4 live lanes.** Checks that take
+the whole machine run one at a time.
 
-- **Two or more signals from the top of `plumb:graph` -> draw the graph.** Fewer -> a lane list.
-- **One lane = one item (or one bundle sharing a source of truth) = one branch = one worktree.**
-- **Inventory the shared writes before you fan out** (`playbooks/fan-out.md`, step 1): the same
-  file, migration numbering, a lockfile, generated contracts. Overlap -> bundle the lanes or run
-  them in series. Never two writers on one surface.
-- **Cap live lanes at three or four.** The limit is your reading and the owner's approvals, not
-  machine capacity. Checks that start containers or take the whole machine run **one at a time**;
-  queue them.
+**4 Lanes up**, all in one reply: a worktree from the explicit base ref
+(`playbooks/worktree-setup.md`), a tab per lane without taking the owner's focus, the implementer
+started through the driver under `lane-<item>`, and the brief written as a file from
+[references/lane-brief.md](references/lane-brief.md). Record each lane's starting commit.
 
-## 4. Stand up the lanes
+**5 Loop.** Wait on the driver's agent state, never a sleep loop.
+- *blocked*: read the prompt first. Relay an approval only inside the brief's range and
+  reversible; anything else goes up
+- *done*: read the report file, diff from the starting commit
+  (`playbooks/running-a-plan.md`, step 4), review in the separate seat, rework to the same
+  implementer with the cap from step 5 there
+- *passed*: run the repository's checks once at the final commit and record SHA and exit status;
+  push, open by `playbooks/opening-a-pr.md` with the template (UI changed -> screenshots), mark
+  ready, ledger `ready-pr`, refill the slot
 
-For each lane, in one reply:
+Queue outlasting the session -> layer `playbooks/autonomous-run.md`; predicate: every item is
+`ready-pr`, `landed`, `needs-ruling` with the question asked, or escalated with a reason.
 
-1. **Worktree from the repository's base branch, with the base ref explicit**
-   (`playbooks/worktree-setup.md`). Gitignored files are not copied; hand over absolute paths to
-   the ones the lane needs.
-2. **A tab per lane through `pane.driver`**, labeled `<item> <short title>`, without taking the
-   owner's focus. Start the implementer in it under a unique name (`lane-<item>`), using the
-   driver's agent-start command so the driver tracks its state.
-3. **The brief as a file.** The four parts of `playbooks/fan-out.md` step 2, plus:
-   - the acceptance criteria and the checks to run
-   - commit locally; do not push, open a PR, or create spec or plan files
-   - do not open extra panes or tabs
-   - write the report to `<path>`; reply with the path only (long pane output is lost on the
-     alternate screen)
-4. Record the starting commit on the lane's ledger line.
+**6 Report.** One row per item: final state, PR or evidence, checked SHA, what the owner must do.
+Then the ledger path. **A report without the ledger path is not complete.**
 
-## 5. The lane loop
+## What goes up
 
-Wait on the driver's agent state, not on a sleep loop. Layer `playbooks/autonomous-run.md` when
-the queue will outlast the session; its termination predicate is **every item is `ready-pr`,
-`landed`, `needs-ruling` with the question asked, or escalated with a reason**.
-
-| Lane state | Coordinator action |
-|---|---|
-| working | Nothing. Work another lane |
-| blocked | **Read the prompt before answering.** Relay an approval only when it is inside the brief's range and reversible. Anything else goes up. Never send keys you have not read the screen for |
-| done | Read the report file. Diff against the starting commit (`playbooks/running-a-plan.md`, step 4) |
-
-Then, per lane:
-
-1. **Review in a separate seat** with the brief, the report and the diff as files. The reviewer
-   refutes; it does not edit.
-2. **Rework goes back to the same implementer**, capped as in `playbooks/running-a-plan.md`,
-   step 5. You rule when the cap is hit.
-3. **Local checks once, at the final commit**, with the repository's commands. Record the SHA and
-   exit status. A quiet pane is not a pass (**principle-gate-claims-on-evidence**).
-4. **Push and open the PR** by `playbooks/opening-a-pr.md` and the repository's template. UI
-   changed -> screenshots in the body (`plumb:graph`, step 10). Mark it ready.
-5. Ledger line: `ready-pr`, PR URL, checked SHA. **Refill the freed slot from the queue.**
-
-### The PR-queue variant
-
-Each PR is a lane whose seat is a reviewer, not an implementer. Run `plumb:pr-review` per PR at a
-depth set by risk: a small, reversible PR gets one clean pass; an irreversible or authentication
-change gets the full stages. Verdicts go to files. **Do not fix the PR under review** — findings go
-back to its author, or, when the owner is the author and asked for fixes, to a separate
-implementer lane.
-
-## 6. Report
-
-One table, one row per queue item: item, final state, PR or evidence, the SHA the checks ran on,
-and what the owner must do. Then the ledger path. Put every open ruling into **one** question
-batch. **A report without the ledger path is not complete.**
-
-## What goes up to the owner
-
-Only these: an irreversible or outward-facing action, a product or taste call no check can
-settle, an approval prompt outside a lane's range, and a real dead end. Decide everything else,
-write it on the ledger, and keep the lanes moving (**principle-never-block-on-the-human**).
-
-## How this breaks
-
-- **Built an issue that had already landed** -> step 2.1. Search merged PRs first
-- **Opened a second PR for work already in review** -> step 2.2
-- **Two lanes rewrote the same file** -> step 3. The inventory comes before the fan-out
-- **Five lanes, and the owner's approvals became the bottleneck** -> the cap in step 3
-- **Heavy checks run side by side and all stalled** -> one at a time
-- **Pressed enter on an approval without reading it** -> the blocked row in step 5
-- **The implementer's answer vanished from the pane** -> the report file in step 4
-- **The coordinator started writing lane code** -> seat table. Hand it back to the lane
-- **Reported "done" from the lane's self-report** -> steps 5.1 and 5.3
+Only: an irreversible or outward-facing action, a product call no check settles, an approval
+outside a lane's range, a real dead end. Decide the rest and log it
+(**principle-never-block-on-the-human**). Known failure shapes:
+[references/failure-modes.md](references/failure-modes.md).

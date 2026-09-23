@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "plumb:lead rubric verdict",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["briefs", "outputs", "overall_pass", "notes"],
+  "properties": {
+    "briefs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["lane", "range", "material", "do_not_touch", "acceptance", "return_contract", "no_history"],
+        "properties": {
+          "lane": {"type": "string"},
+          "range": {"type": "integer", "minimum": 0, "maximum": 2},
+          "material": {"type": "integer", "minimum": 0, "maximum": 2},
+          "do_not_touch": {"type": "integer", "minimum": 0, "maximum": 2},
+          "acceptance": {"type": "integer", "minimum": 0, "maximum": 2},
+          "return_contract": {"type": "integer", "minimum": 0, "maximum": 2},
+          "no_history": {"type": "integer", "minimum": 0, "maximum": 2}
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["review_actionable", "report_evidence", "rulings_batched"],
+      "properties": {
+        "review_actionable": {"type": "integer", "minimum": 0, "maximum": 2},
+        "report_evidence": {"type": "integer", "minimum": 0, "maximum": 2},
+        "rulings_batched": {"type": "integer", "minimum": 0, "maximum": 2}
+      }
+    },
+    "overall_pass": {"type": "boolean"},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  }
+}
