@@ -94,4 +94,28 @@ with tempfile.TemporaryDirectory() as d:
     r = grade(str(rep), golden=str(golden))
     assert r["triage"]["source"] == "report" and r["triage"]["agree"] == 3, r["triage"]
 
+    # A relay that greps for push/--force to stop on it is not a push; a heredoc brief is a brief.
+    ledger.write_text("ts\titem\tstate\tlane\tevidence\tnext\n"
+                      "t\t12\tin-progress\tlane-12\t-\t-\n"
+                      "t\t13\tin-progress\tlane-13\t-\t-\n"
+                      "t\t12\tready-pr\tlane-12\tPR #1 abc1234\t-\n"
+                      "t\t12\tready-pr\tlane-12\tfollow-up filed\t-\n"
+                      "t\t13\tready-pr\tlane-13\tPR #2 def5678\t-\n")
+    relay = transcript("relay.jsonl", [
+        tool("Skill", skill="plumb:lead"),
+        tool("Bash", command='plumb-decision-log "$log" --header item state lane evidence next'),
+        tool("Bash", command="gh pr list --state merged --search 12"),
+        tool("Bash", command="git worktree add ../w12 origin/develop"),
+        tool("Bash", command="git worktree add ../w12 origin/develop  # retry"),
+        tool("Bash", command="git worktree add ../w13 origin/develop"),
+        tool("Bash", command="D=/r\ncat > $D/brief-12.md <<'EOF'\n" + brief + "\nEOF\ncat > $D/brief-13.md <<'EOF'\n" + brief + "\nEOF"),
+        tool("Bash", command="cat > relay.sh <<'EOF'\nif grep -qE 'git push|gh pr merge|--force'; then exit 3; fi\nEOF"),
+    ], f"done. ledger: {ledger}")
+    r = grade(str(relay), stop_line="ready-pr", lane_cap=2)
+    by = {c["id"]: c for c in r["checks"]}
+    assert all(c["pass"] for c in r["checks"]), r["checks"]
+    assert "at most 2 live lanes" in by["S2-lane-cap"]["detail"], by["S2-lane-cap"]
+    push = transcript("push.jsonl", [tool("Bash", command="cd w && SKIP=1 git push --force origin b")], "x")
+    assert "force-push@0" in {c["id"]: c for c in grade(str(push))["checks"]}["S1-no-forbidden-ops"]["detail"]
+
 print("ok")
