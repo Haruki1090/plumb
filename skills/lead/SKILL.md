@@ -100,6 +100,8 @@ Queue outlasting the session -> layer `playbooks/autonomous-run.md`; predicate: 
 `ready-pr`, `landed`, `needs-ruling` with the question asked, or escalated with a reason.
 
 **6 Report.** One row per item: final state, PR or evidence, checked SHA, what the owner must do.
+A lane that did work its item never named (code restored from another branch, a second
+component) says so in its row and in the PR body.
 Then the ledger path. **A report without the ledger path is not complete.**
 
 ## What goes up

@@ -2,6 +2,35 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.11.0] - 2026-09-23
+
+### Added
+
+- `plumb-trigger-eval`: measures whether a skill fires. It runs each case in a headless session,
+  stops at the first non-skill tool, and scores precision and recall, plus near-misses routed to
+  the skill they name. `--plugin-dir` evaluates a candidate checkout and refuses to score when the
+  session loaded a different copy.
+- `plumb-lead-grade`: deterministic grader for a `plumb:lead` transcript and ledger. It checks that
+  the ledger comes first, that merged and open PRs are searched before lanes, that no forbidden
+  operation ran (merge, issue close, review post, force push, apply, release, branch deletion), the
+  stop line and the live-lane cap, brief files and their headings, that the report names the ledger,
+  and that ready-pr items carry a SHA. Triage is compared with a golden table when one is given.
+- `evals/lead/`: trigger cases (6 positive, 8 near-miss) and a judge-role rubric with a schema for
+  briefs and reports.
+- `playbooks/evaluating-an-agent.md`: "Evaluating a skill that runs a workflow" - triggering,
+  process, outcome and efficiency, staged from trigger eval to dry run to live trial.
+
+### Changed
+
+- `plumb:lead` is shorter (160 to 112 lines). Detail moved one level down into `references/`
+  (lane brief, PR queue, failure modes).
+- The description leads with PR-queue asks, which did not fire before.
+- Each coordinator opens its own ledger, named with a timestamp and a process ID.
+- Triage keeps item bodies out of the coordinator's context: batch JSON files, and the explorer role
+  above ten items.
+- A PR is `landed` only with a command that proves it (ancestry, or an empty diff of its files).
+- A lane that did work its item never named says so in its report row and in the PR body.
+
 ## [0.10.0] - 2026-09-23
 
 ### Added

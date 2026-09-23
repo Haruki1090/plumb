@@ -3,6 +3,8 @@
 | Symptom | Cause | Where the skill prevents it |
 |---|---|---|
 | Built an issue that had already landed | Trusted the open state | Triage: search merged PRs first |
+| Called an open PR landed that was not | Asserted ancestry without running it | PR queue: prove landed with a command |
+| A lane grew past its item unseen | Unnamed work went in without a word | Report: name it in the row and the PR body |
 | A second PR for work already in review | Did not search open PRs | Triage: open PRs |
 | Two lanes rewrote one file | Fanned out before the inventory | Decompose: shared writes |
 | The owner's approvals became the bottleneck | Too many live lanes | Decompose: 3-4 cap |
