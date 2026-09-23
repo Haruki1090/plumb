@@ -2,6 +2,17 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.10.0] - 2026-09-23
+
+### Added
+
+- `plumb:lead`: a coordinator skill for queue-shaped asks ("review the open PRs", "implement the
+  issues assigned to me one by one"). Intake from the tracker into a decision log, triage against
+  merged and open PRs, decomposition through `plumb:graph` or a lane list, one worktree and one
+  visible `pane.driver` tab per lane, the implement → separate review → capped rework → final-SHA
+  checks → ready PR loop, and a single report with every open ruling in one batch. Invoking it
+  authorizes parallel roles only; the default stop line is a ready PR.
+
 ## [0.9.2] - 2026-09-07
 
 ### Fixed

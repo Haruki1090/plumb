@@ -53,6 +53,10 @@ Beyond the router, the 24 playbooks and the 23 principles, plumb ships these ski
   `pr-repro`, `pr-refuter`, `pr-blindspot`.
 - **`plumb:interrogate`** — adds one adversarial pass in a different model family
   to `plumb:pr-review`'s stage 3. Does not stand on its own.
+- **`plumb:lead`** — runs a queue as the coordinator: takes "review the open PRs"
+  or "implement the issues assigned to me", drops what already landed, gives each
+  unit its own worktree and visible pane, and drives implement → independent
+  review → local checks → ready PR. Stops at a ready PR; the owner merges.
 - **`plumb:graph`** — pre-work execution-graph design for goals that are large,
   parallelizable, or need to stay aligned with a source-of-truth doc.
 - **`plumb:decision-brief`** — turns a branching decision into a one-page HTML
