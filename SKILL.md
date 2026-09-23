@@ -86,6 +86,7 @@ Playbooks name principles. A named principle means you read the leaf in full.
 
 | Job | Playbook |
 |---|---|
+| **Work a queue as the coordinator** (review the open PRs; implement the assigned issues one by one) | `plumb:lead` |
 | Keep it running overnight; run until it is done | `playbooks/autonomous-run.md` |
 | Stop safely; compaction is close | `playbooks/pause-safely.md` |
 | Pick up where another session left off | `playbooks/session-pickup.md` |
