@@ -1,0 +1,15 @@
+id,prompt,expect
+L1,"Implement the issues assigned to me, one at a time.",plumb:lead
+L2,Review the open PRs that are waiting on me.,plumb:lead
+L3,Clear my queue.,plumb:lead
+L4,Work through my assignments and get each one to a PR.,plumb:lead
+L5,Go through the issues on my plate and ship what you can.,plumb:lead
+L6,Check every PR requested for my review and tell me which are safe to approve.,plumb:lead
+N1,Review https://github.com/octo/app/pull/42,plumb:pr-review
+N2,Fix the crash in the login form when the email field is empty.,-
+N3,Implement issue #123.,-
+N4,Draw the execution graph for moving billing to the new API before we start.,plumb:graph
+N5,What does our CI run on pull requests?,-
+N6,List the issues assigned to me.,-
+N7,Keep running the test suite overnight until it is green.,-
+N8,Write a plan for the notification redesign.,-

@@ -122,6 +122,41 @@ Keep moving. Rerun the corpus when the tools underneath a configuration change, 
 re-pruned, or when a new grade changes what it represents. The Pareto frontier is a measurement,
 not a permanent ranking.
 
+## Evaluating a skill that runs a workflow
+
+A review is scored by F1. A workflow skill such as `plumb:lead` is scored on four axes instead,
+each with its own instrument. Build them before the first real run, not after it.
+
+| Axis | Question | Instrument |
+|---|---|---|
+| Triggering | Does it fire on the asks it owns, and stay quiet on near misses? | `plumb-trigger-eval` over a case CSV |
+| Process | Did it follow its own steps and keep out of forbidden actions? | `plumb-lead-grade` over the transcript and ledger |
+| Spend | What did the coordinator carry, and what did one finished unit cost? | `plumb-session-audit` (both runtimes) |
+| Input and output quality | Were the briefs good material, and was the result evidence? | The skill's rubric, graded in the judge role |
+
+**Triggering.** A case CSV has `id,prompt,expect`; `expect` is the skill that must fire or `-`.
+Mix the asks the skill owns with near misses that belong to a neighbour (a single PR URL, one
+bug, a request only to list). Run it on every model that will hold the coordinator seat:
+
+    plumb-trigger-eval --cases evals/lead/triggers.csv --skill plumb:lead \
+      --model <model> --cwd <project> --out <run>/triggers
+
+Each case starts one headless session in plan mode and stops at the first tool call that is not a
+Skill call. The pass bar is zero false positives and zero false negatives. Keep private cases
+(real repository names, the owner's language) under `bench.corpus`, not in this repository.
+
+**Process and triage.** Before the run, **label the queue yourself**: one TSV row per item with
+the state the skill should reach (`landed`, `ready`, `needs-ruling`, ...). That golden file is what
+turns "garbage in" into a number. Then:
+
+    plumb-lead-grade --transcript <session.jsonl> --golden <golden.tsv> --stop-line plan|ready-pr
+
+**Stage it.** Triggering first. Then a dry run on the real queue with the stop line set to the
+plan, once with the skill and once without it (the baseline): the difference in triage accuracy
+and in coordinator tokens is what the skill buys. Only then a live run, capped at two lanes.
+A change to the skill reruns all three; a shorter body that drops a trigger or a process check is
+a regression, not a saving.
+
 ## How to tell
 
 Can you name the configuration running today, its F1, its tokens per review, and the date those two
