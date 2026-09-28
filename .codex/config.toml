@@ -1,3 +1,4 @@
+# managed-by-plumb: bin/plumb-codex-install owns this file and may replace it with --force.
 # Project defaults and the source for the `plumb` user profile installed by
 # bin/plumb-codex-install. Claude Code does not read this file.
 model = "gpt-5.6-sol"

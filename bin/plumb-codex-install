@@ -2,7 +2,14 @@
 # Install plumb's Codex profile and native custom agents without changing the Claude installation.
 set -u
 
-root=$(cd "$(dirname "$0")/.." && pwd)
+# Follow $0 to the real file even when it is a symlink. macOS has no readlink -f, so resolve it in a loop.
+self="${BASH_SOURCE[0]}"
+while [ -L "$self" ]; do
+  dir=$(cd -P "$(dirname "$self")" && pwd)
+  self=$(readlink "$self")
+  case "$self" in /*) ;; *) self="$dir/$self" ;; esac
+done
+root=$(cd -P "$(dirname "$self")/.." && pwd)
 scope=user
 target=""
 force=0
@@ -14,7 +21,10 @@ usage: plumb-codex-install [--user | --project DIR] [--force] [--check]
 
   --user         install ~/.codex/plumb.config.toml and ~/.codex/agents/ (default)
   --project DIR  install DIR/.codex/config.toml and DIR/.codex/agents/
-  --force        replace differing regular plumb-owned destination files
+  --force        replace differing destination files that plumb installed
+
+A project .codex/config.toml that plumb did not write is never replaced, even with --force; the
+installer leaves it untouched and lists the settings to merge into it by hand.
   --check        verify destinations without writing
 
 Set CODEX_HOME to override ~/.codex for a user installation.
@@ -56,6 +66,24 @@ for src in "$root"/.codex/agents/*.toml; do
   destinations+=("$agents_dst/$(basename "$src")")
 done
 
+# A project's .codex/config.toml may already hold the owner's own settings (MCP servers, sandbox,
+# approvals). Only a file carrying the marker line of the shipped config, or the header of releases
+# before the marker, counts as plumb-written. Anything else is skipped, never replaced.
+foreign_config=0
+plumb_written() {
+  grep -qF '# managed-by-plumb: bin/plumb-codex-install' "$1" 2>/dev/null \
+    || [ "$(head -1 "$1" 2>/dev/null)" = '# Project defaults and the source for the `plumb` user profile installed by' ]
+}
+if [ "$scope" = project ] && [ -f "$config_dst" ] && [ ! -L "$config_dst" ] \
+    && ! cmp -s "${sources[0]}" "$config_dst" && ! plumb_written "$config_dst"; then
+  foreign_config=1
+  printf 'skip %s was not written by plumb; leaving it untouched (--force does not replace it)\n' "$config_dst" >&2
+  printf '     To use the plumb defaults there, merge these settings into it by hand:\n' >&2
+  grep -vE '^[[:space:]]*(#|$)' "${sources[0]}" | sed 's/^/       /' >&2
+  sources=("${sources[@]:1}")
+  destinations=("${destinations[@]:1}")
+fi
+
 # Inspect every destination before writing any of them. Symlinks and non-regular targets are never
 # replaced, even with --force: following one would let a configuration install overwrite unrelated
 # data, while copying to a directory would report success without producing the promised file.
@@ -75,7 +103,7 @@ for i in "${!sources[@]}"; do
     printf 'NG  %s\n' "$dst"
     fail=1
   elif [ -e "$dst" ] && [ "$force" -ne 1 ]; then
-    printf 'NG  %s differs; rerun with --force to replace this plumb-owned file\n' "$dst" >&2
+    printf 'NG  %s differs from the plumb copy; rerun with --force to replace it\n' "$dst" >&2
     fail=1
   fi
 done
@@ -144,6 +172,10 @@ if [ "$check_only" -eq 0 ]; then
   if [ "$scope" = user ]; then
     printf '\nStart a new session with: codex --profile plumb\n'
   else
-    printf '\nTrust the project, start a new Codex session in %s, and its .codex/config.toml will load.\n' "$project_root"
+    if [ "$foreign_config" -eq 1 ]; then
+      printf '\nThe agents are installed. The project .codex/config.toml was left as it was; merge the settings above to use the plumb defaults.\n'
+    else
+      printf '\nTrust the project, start a new Codex session in %s, and its .codex/config.toml will load.\n' "$project_root"
+    fi
   fi
 fi
