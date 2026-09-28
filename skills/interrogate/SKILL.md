@@ -1,6 +1,6 @@
 ---
 name: interrogate
-description: Add a different model family to the refutation stage of a plumb PR review when that independent perspective is requested or warranted.
+description: Add a different model family to the refutation stage of a PR review when that independent perspective is requested or warranted. Not standalone; called from stage 3 of `plumb:pr-review`.
 ---
 
 # The other family's axis

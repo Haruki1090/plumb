@@ -7,8 +7,8 @@ Turn an approved shape into steps someone else can execute in order.
 `playbooks/shaping-the-work.md`.
 
 It goes where `plumb-path plan --mkdir` says. **The difference in rank between spec and plan,
-and the discipline of freezing and retiring a finished plan, are owned by SKILL.md** and are
-not copied here (**principle-encode-lessons-in-structure**).
+and the discipline of freezing and retiring a finished plan, are owned by
+`docs/artifact-lifecycle.md`** and are not copied here (**principle-encode-lessons-in-structure**).
 
 ## Decide who reads it, first
 
@@ -117,8 +117,8 @@ checkpoints belong there.
 | Situation | Instead |
 |---|---|
 | The shape is still moving | `playbooks/shaping-the-work.md`. **You cannot repair upstream from downstream** |
-| The local tier (the flow you are changing exists, and the shape ran to a few lines) | Implement without a plan. **The plan would run longer than the implementation** |
-| The nodes split and go parallel | `plumb:graph`. **The graph definition doubles as the plan. Do not write it twice** |
+| A local change (the flow you are changing exists, and the shape ran to a few lines) | Implement without a plan. **The plan would run longer than the implementation** |
+| The nodes split and go parallel | `plumb:graph`, which reuses the accepted plan instead of spawning its own. **Write the plan once; the graph points at it** |
 | A structural change that does not change behavior | `playbooks/refactoring.md` already carries the ordering |
 | Fixing something that is failing | **Get a repro first** (**principle-fix-root-causes**). Do not start from design. Go to `playbooks/fixing-a-bug.md` |
 

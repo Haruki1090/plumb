@@ -1,6 +1,6 @@
 ---
 name: plumb
-description: Route complex engineering work to plumb playbooks and principles when plumb is requested or the task needs an explicit engineering workflow.
+description: Route complex engineering work to plumb playbooks and principles. Use when asked to "use plumb" or "follow the principles", or when the task needs an explicit engineering workflow.
 ---
 
 # plumb
@@ -14,7 +14,7 @@ it does not replace the playbooks or principles below.
 
 ## Apply only the relevant workflow
 
-Use the requested outcome, existing authorization, and task risk to select one playbook below. Short, well-defined work can proceed directly. Read a principle when its decision criterion is relevant; name it alongside the decision it changes, without narrating every rule.
+Use the requested outcome, existing authorization, and task risk to select one playbook below. Short, well-defined work can proceed directly. Read a principle in full when its decision criterion applies; name it alongside the decision it changes, without narrating every rule.
 
 The current session remains responsible for integration. Runtime role mapping is in `docs/role-map.md`; read it when assigning roles. For non-trivial plumb work, keep one visible judge line: run the configured independent review or record `skip: <reason>`. A skip does not stop safe, authorized work or establish independent verification.
 
@@ -23,7 +23,7 @@ Continue through the requested deliverable and relevant checks. Ask only for unr
 ## The playbook index
 
 If your work has one of the shapes below, **read that playbook in full before you start**.
-Playbooks name principles. A named principle means you read the leaf in full.
+Playbooks name principles; read a named principle in full when you apply it.
 
 ### Investigate (changes no code)
 
@@ -103,7 +103,7 @@ Which upstream playbooks were not ported, and why, is in `docs/scope.md`.
 
 ## Artifact paths
 
-When writing or retiring a spec, plan, or run ledger, read [artifact lifecycle](docs/artifact-lifecycle.md). Resolve paths with `plumb-path`; do not create a second source of truth.
+When writing or retiring a spec, plan, or run ledger, read `docs/artifact-lifecycle.md`. Resolve paths with `plumb-path`; do not create a second source of truth.
 
 ## The principle index
 

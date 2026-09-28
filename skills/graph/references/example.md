@@ -1,6 +1,6 @@
 # A worked example: 125 mock diffs in one pass
 
-A record of actually running these steps, with the numbers and the calls left concrete. Read it to get a feel for what happens where.
+A record of actually running a graph, with the numbers and the calls left concrete. Read it to get a feel for what happens where.
 
 ## The situation
 
@@ -11,9 +11,9 @@ A record of actually running these steps, with the numbers and the calls left co
 
 ## Graph or loop
 
-Signals that hold: split specialization (implementing and checking conventions are different heads), demand for parallelism (125 items), auditable control flow (the alignment with the design docs has to be explainable later), an overloaded verifier (the implementer was judging their own conformance). **4 hold -> draw the graph.**
+Dependencies, parallel work, and several sources of truth all needed coordination: 125 items across 15 screens, 26 design docs as the source of truth, shared asset files, and a verifier separate from the implementer (the implementer had been judging their own conformance). **That is the graph's criterion -> draw the graph.**
 
-## Step 2: what regrouping the nodes turned up
+## Grouping by cause: what regrouping the nodes turned up
 
 Naively, "15 screens = 15 lanes". Regrouping by the clause each diff cited said otherwise.
 
@@ -23,7 +23,7 @@ Naively, "15 screens = 15 lanes". Regrouping by the clause each diff cited said 
 
 The real parallelism turned out to be **9-10 lanes**, not 15.
 
-## Step 3: barrier analysis (this paid the most)
+## Shared resources first: barrier analysis (this paid the most)
 
 Writing out "files it touches" for every node showed 4 files appearing under more than one node.
 
@@ -35,7 +35,7 @@ Writing out "files it touches" for every node showed 4 files appearing under mor
 
 Scattered across parallel lanes, nearly every lane would have been writing to the same 4 files and colliding. The structure changed to **13 nodes handled serially first, as the barrier phase**.
 
-## Step 7: what splitting the Human Gate turned up
+## Which decision blocks which node: splitting the Human Gate
 
 The documentation said "close the §4 rulings list first". Read plainly, that means waiting on all 11 decisions.
 
