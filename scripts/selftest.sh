@@ -854,5 +854,59 @@ if command -v python3 >/dev/null 2>&1; then
     || ng "skill evals: trigger observation, scoring, and lead-grade checks on synthetic transcripts"
 fi
 
+# ---- safety regressions: worktree-audit buckets and paths, project config ownership ----
+# worktree-audit runs against a throwaway repository, a fake HOME (no chat history is read) and a gh
+# stub that reports no default branch and one CLOSED, never-merged PR. Without jq the PR column is
+# unknown, so the PR assertion needs jq.
+if command -v jq >/dev/null 2>&1; then
+  wa="$sandbox_root/wt-audit"
+  mkdir -p "$wa/bin" "$wa/home"; wa=$(cd -P "$wa" && pwd)
+  cat > "$wa/bin/gh" <<'STUB'
+#!/bin/sh
+case "$1 $2" in
+  "pr list") printf '[{"number":7,"state":"CLOSED","headRefName":"closed-branch"}]\n' ;;
+  *) exit 1 ;;
+esac
+STUB
+  chmod +x "$wa/bin/gh"
+  wag() { git -C "$1" -c user.name=t -c user.email=selftest -c commit.gpgsign=false "${@:2}"; }
+  git init -q "$wa/repo" && wag "$wa/repo" commit -q --allow-empty -m init
+  git -C "$wa/repo" worktree add -q -b closed-branch "$wa/closed" 2>/dev/null
+  wag "$wa/closed" commit -q --allow-empty -m "unpushed work"
+  printf 'tracked\n' > "$wa/repo/f.txt"; wag "$wa/repo" add f.txt; wag "$wa/repo" commit -q -m f
+  git -C "$wa/repo" worktree add -q -b spaced "$wa/wt with space" 2>/dev/null
+  printf 'edited\n' > "$wa/wt with space/f.txt"
+  wa_out=$(HOME="$wa/home" PATH="$wa/bin:$PATH" bash "$root/scripts/worktree-audit.sh" "$wa/repo" 2>/dev/null)
+  wa_closed=$(printf '%s\n' "$wa_out" | awk -F'\t' -v p="$wa/closed" '$10==p{print $7" "$9}')
+  eq "worktree-audit never calls a CLOSED unmerged PR safe" "$wa_closed" "#7/CLOSED review"
+  wa_space=$(printf '%s\n' "$wa_out" | awk -F'\t' -v p="$wa/wt with space" '$10==p{print $4" "$9}')
+  eq "worktree-audit keeps a path with spaces whole and sees its edits" "$wa_space" "wip:1 hold-wip"
+  bash "$root/scripts/worktree-audit.sh" --help 2>/dev/null | grep -q '^usage:' \
+    && ok "worktree-audit --help prints usage" || ng "worktree-audit --help does not print usage"
+else
+  printf '  %-4s %s\n' "--" "jq not on PATH, worktree-audit bucket assertions skipped"
+fi
+
+# A project .codex/config.toml the owner wrote is never replaced, not even with --force; the
+# agents still install and the owner gets the settings to merge by hand.
+foreign_project="$sandbox_root/codex-foreign-project"
+mkdir -p "$foreign_project/.codex"
+printf '[mcp_servers.owner]\ncommand = "owner-server"\n' > "$foreign_project/.codex/config.toml"
+foreign_msg=$("$root/bin/plumb-codex-install" --project "$foreign_project" --force 2>&1)
+eq "Codex project install with --force succeeds beside a foreign config" "$?" "0"
+eq "Codex --force leaves a foreign project config untouched" \
+  "$(cat "$foreign_project/.codex/config.toml")" $'[mcp_servers.owner]\ncommand = "owner-server"'
+case "$foreign_msg" in *"merge these settings"*default_subagent_model*) ok "Codex installer lists the settings to merge";;
+  *) ng "Codex installer gave no merge guidance for a foreign project config";; esac
+eq "Codex agents still install beside a foreign project config" \
+  "$(find "$foreign_project/.codex/agents" -name '*.toml' -type f | wc -l | tr -d ' ')" "10"
+printf '# local edit\n' >> "$project_install/.codex/config.toml"
+"$root/bin/plumb-codex-install" --project "$project_install" --force >/dev/null 2>&1
+cmp -s "$root/.codex/config.toml" "$project_install/.codex/config.toml" \
+  && ok "Codex --force still restores a plumb-written project config" \
+  || ng "Codex --force did not restore a plumb-written project config"
+# ---- end safety regressions ----
+
+
 if [ $fail -eq 0 ]; then echo "  → passed"; else echo "  → failed"; fi
 exit $fail
