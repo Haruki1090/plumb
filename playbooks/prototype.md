@@ -7,19 +7,21 @@ before the UI, the interaction, or the arrangement is settled.
 Use it also when **an empirical branch you were about to hand the owner** — which behavior,
 which timing, which method — is one you can answer yourself by running it and watching.
 
-> **This is a tool used inside the "probe" tier of `playbooks/shaping-the-work.md`, not a replacement for it.**
-> The probe's gate stands: **say what you are about to try in two or three sentences, and build nothing until you get a nod.**
-> "I can answer this myself, so I won't ask" **does not extend to permission to build.**
-> After approval, where the probe says only "keep it cheap", this playbook fills in how.
+> **This is the small authorized experiment `playbooks/shaping-the-work.md` reaches for, not a replacement for it.**
+> An experiment the request already authorizes needs **no separate approval ceremony**. It stays inside the user's
+> data, systems, budget, and side-effect boundaries; anything beyond them needs its own authorization.
+> Stop before building only for an explicit gate the user asked for, or a shape choice the experiment cannot settle.
+> Where shaping says only "keep it cheap", this playbook fills in how.
 
-Inside the gate, **the bar for "smallest change" and for verification inverts.** Speed over
+Inside those boundaries, **the bar for "smallest change" and for verification inverts.** Speed over
 polish. Code quality is not the question. **The rigor lives in choosing the right design
 cheaply.** Be bold. Produce variants nobody asked for. Throw one away and try another.
 
 1. **Decide first what this prototype exists to settle.** Which arrangement, which
    interaction, which density. For an empirical branch: which behavior, which timing, which
    method. **No decision means no prototype** — send it to `playbooks/shaping-the-work.md`.
-   State the decision and the approach in two or three sentences. **Wait for approval. Stop here.**
+   State the decision and the approach in two or three sentences, then build. If the user asked
+   to see the approach first, **stop here** until they answer.
 2. If the design space is open, gather references. Find prior art, summarize the themes,
    palettes and arrangements, and let the direction be chosen first. Skip this when the
    direction is already fixed.

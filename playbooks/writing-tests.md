@@ -4,7 +4,7 @@
 
 When you add new behavior, when you fix a bug, when you touch an existing test.
 **"What has to pass for this to be done" is the spec; "which tests, written how" is the plan** —
-that split of rank is owned by SKILL.md and `playbooks/writing-a-plan.md` and is not copied
+that split of rank is owned by `docs/artifact-lifecycle.md` and `playbooks/writing-a-plan.md` and is not copied
 here (**principle-encode-lessons-in-structure**). **What this playbook holds is the content of
 the test itself.**
 

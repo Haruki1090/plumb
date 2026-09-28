@@ -175,8 +175,8 @@ Do not stop for a progress report or for "may I keep going".
 
 Before irreversible operations, external side effects, or key/permission changes, establish that the specific action is already authorized. Existing explicit authorization remains valid; ask only when the next action exceeds it or its target is unclear. Stop the dependent work for a flaw that reaches the product shape and cannot be resolved from the user's instructions. Continue independent work.
 
-The unresolved product choice follows the same line as "the price of undoing it" in
-`playbooks/shaping-the-work.md`. **On the method side, decide and move. On the shape side, stop.**
+An unresolved product choice follows the Stop / Do not stop table in
+**principle-never-block-on-the-human**. **On the method side, decide and move. On the shape side, stop.**
 
 **What you return:** the ledger path, how many tasks and each one's starting and landing
 commit, which tasks went into rework and how many rounds, **every ruling you made** (what, why,

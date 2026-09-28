@@ -1,3 +1,5 @@
+# Artifact lifecycle
+
 ## Where the artifacts go
 
 **Do not assemble paths. Ask the tool.**
@@ -17,7 +19,7 @@ The default is `<repo root>/.plumb/`. Override it with `PLUMB_ROOT`, or with `ro
 `.plumb/config`. **Spell a path out in prose and one of the two copies goes stale**
 (**principle-encode-lessons-in-structure**).
 
-### spec and plan are not the same rank
+## spec and plan are not the same rank
 
 | | What it is | Lifetime |
 |---|---|---|
@@ -31,7 +33,7 @@ Same tests, two documents: the bar for judging goes in one, the implementation i
 not the source of truth. **Conversely, specs and plans are always tracked.** A source of truth
 that disappears with the working tree is not a source of truth.
 
-### Retire a finished plan by freezing it
+## Retire a finished plan by freezing it
 
 **Do not leave a completed plan in `plans/`.** In batch 1, a `docs/plan.md` frozen back at
 Task 1 sat 18 lines out of date, still flying a header that said "execute these in order" —
@@ -47,7 +49,7 @@ Move it to `history/` and put this at the top:
 
 **What stops the damage is the header, not the directory name.** Moving it is not enough.
 
-### An existing `docs/superpowers/`
+## An existing `docs/superpowers/`
 
 Repositories that have used `superpowers` still carry `docs/superpowers/specs|plans`.
 **Do not migrate them wholesale.** Decide per repository. In a repository you have not
