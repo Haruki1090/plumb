@@ -2,6 +2,11 @@
 # Pin down how plumb's scripts behave. check-harness looks at whether the documents agree;
 # this looks at what the scripts return. doctor calls it from the "inside".
 set -uo pipefail
+case "${1:-}" in
+  -h|--help)
+    printf 'usage: plumb-selftest [plugin-root]\n\nRuns the script-behaviour checks in a temporary sandbox; exit 1 on any NG.\n'
+    exit 0 ;;
+esac
 root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 fail=0
 ok()  { printf '  %-4s %s\n' "ok" "$1"; }
@@ -732,6 +737,10 @@ for c in git gh; do
   p=$(type -P "$c" 2>/dev/null)
   if [ -n "$p" ] && [ -x "$p" ]; then
     ln -s "$p" "$sandbox/$c"
+  elif [ "$c" = gh ]; then
+    # A machine without gh gets told so once, by doctor's own gh line. Stub it here so selftest
+    # does not repeat that as "selftest is failing". The sandbox never calls gh for real.
+    printf '#!/bin/sh\nexit 0\n' > "$sandbox/gh"; chmod +x "$sandbox/gh"
   else
     ng "cannot stage $c in the sandbox (not a defect in doctor: the premise of this test is broken)"
   fi
@@ -778,6 +787,85 @@ if [ -n "$python_bin" ]; then
 else
   printf '  %-4s %s\n' "--" "Codex loading fixtures skipped: python3 unavailable"
 fi
+
+# Config format: a trailing ` # comment` is not part of the value, quotes are dropped, and a # with
+# no whitespace before it, or inside quotes, stays. README's example carries inline comments, so a
+# config copied from it must resolve to the bare command.
+fmt_cfg="$sandbox_root/format-config"
+printf '%s\n' \
+  '# a whole-line comment' \
+  'role.judge = codex exec   # another model family' \
+  'role.bulk = "cursor agent # kept"   # dropped' \
+  "pane.driver = 'herdr'" \
+  'stack.tool = # nothing but a comment' \
+  'bench.corpus = a#b' \
+  'cost.session_budget_usd = 2 # two dollars' > "$fmt_cfg"
+fmt() { PLUMB_CONFIG="$fmt_cfg" bash "$root/scripts/plumb-config.sh" "$@"; }
+eq "plumb-config drops a trailing comment" "$(fmt role.judge)" "codex exec"
+eq "plumb-config keeps a # inside quotes and drops the quotes" "$(fmt role.bulk)" "cursor agent # kept"
+eq "plumb-config drops single quotes" "$(fmt pane.driver)" "herdr"
+eq "plumb-config treats a comment-only value as unset" "$(fmt stack.tool DEF)" "DEF"
+eq "plumb-config keeps a # with no whitespace before it" "$(fmt bench.corpus)" "a#b"
+for h in plumb-config plumb-path plumb-doctor plumb-selftest; do
+  h_out=$("$root/bin/$h" --help 2>/dev/null); h_code=$?
+  case "$h_code|$h_out" in "0|usage: $h"*) ok "$h --help prints usage and exits 0" ;;
+    *) ng "$h --help: code=$h_code output=[$h_out]" ;; esac
+done
+if command -v python3 >/dev/null 2>&1; then
+  sl_fmt=$(printf '{"cost":{"total_cost_usd":1.5}}' | PLUMB_CONFIG=$fmt_cfg "$root/bin/plumb-statusline-cost")
+  case "$sl_fmt" in *'75%'*) ok "statusline-cost reads a budget that carries a trailing comment" ;;
+    *) ng "statusline-cost lost the commented budget: [$sl_fmt]" ;; esac
+fi
+
+# plumb-path: root = reads like plumb-config, and run/ outlives a linked worktree.
+pp_repo="$sandbox_root/pp-repo"; mkdir -p "$pp_repo/.plumb"
+git -C "$pp_repo" init -q
+git -C "$pp_repo" -c user.name=selftest -c user.email=selftest@users.noreply.github.com \
+  commit -q --allow-empty -m init
+pp_repo=$(cd -P "$pp_repo" && pwd)
+printf 'root = "x y"   # spaced\n' > "$pp_repo/.plumb/config"
+eq "plumb-path strips quotes and a trailing comment from root" \
+  "$(PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" root "$pp_repo")" "$pp_repo/x y"
+printf "root = 'art'\n" > "$pp_repo/.plumb/config"
+eq "plumb-path strips single quotes from root" \
+  "$(PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" spec "$pp_repo")" "$pp_repo/art/specs"
+rm -f "$pp_repo/.plumb/config"
+pp_wt="$sandbox_root/pp-wt"
+git -C "$pp_repo" worktree add -q --detach "$pp_wt" >/dev/null 2>&1
+pp_wt=$(cd -P "$pp_wt" && pwd)
+eq "plumb-path run from a linked worktree resolves through the main worktree" \
+  "$(cd "$pp_wt" && PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" run)" "$pp_repo/.plumb/run"
+eq "plumb-path spec from a linked worktree stays in that checkout" \
+  "$(cd "$pp_wt" && PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" spec)" "$pp_wt/.plumb/specs"
+pp_out="$sandbox_root/pp-outside"; mkdir -p "$pp_out"
+pp_msg=$(cd "$pp_out" && GIT_CEILING_DIRECTORIES="$sandbox_root" PLUMB_ROOT= \
+  bash "$root/scripts/plumb-path.sh" run --mkdir 2>&1); pp_code=$?
+case "$pp_code|$pp_msg" in 1*PLUMB_ROOT*) ok "plumb-path outside a repository fails and names PLUMB_ROOT" ;;
+  *) ng "plumb-path outside a repository: code=$pp_code output=[$pp_msg]" ;; esac
+eq "plumb-path outside a repository works with an absolute PLUMB_ROOT" \
+  "$(cd "$pp_out" && GIT_CEILING_DIRECTORIES="$sandbox_root" PLUMB_ROOT="$pp_out/art" \
+     bash "$root/scripts/plumb-path.sh" run --mkdir && [ -d "$pp_out/art/run" ] && echo made)" \
+  "$pp_out/art/run
+made"
+
+# doctor: a role holding a command line needs only its first word on PATH, and a fresh HOME that
+# has never run a Claude session (no ~/.claude/projects/) is "not yet", not NG.
+fresh_home="$sandbox_root/fresh-home"; mkdir -p "$fresh_home"
+role_cfg="$sandbox_root/role-config"
+printf 'role.judge = git status   # a command line\n' > "$role_cfg"
+out=$(HOME="$fresh_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUNTIME=claude \
+      PLUMB_IN_SELFTEST=1 PLUMB_CONFIG="$role_cfg" bash "$root/scripts/doctor.sh" "$root" 2>&1)
+eq "NG count from doctor on a fresh HOME with a multi-word role" \
+  "$(printf '%s\n' "$out" | grep -c '^  NG ' || true)" "0"
+printf '%s\n' "$out" | grep -q '^  ok   role.judge = git status$' \
+  && ok "doctor checks only the first word of a role command" || ng "doctor role line: [$out]"
+printf '%s\n' "$out" | grep -q '^  --   ~/.claude/projects/ not created yet' \
+  && ok "doctor reports a missing projects dir as not yet" || ng "doctor projects line: [$out]"
+printf 'role.judge = plumb-no-such-command exec\n' > "$role_cfg"
+out=$(HOME="$fresh_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUNTIME=claude \
+      PLUMB_IN_SELFTEST=1 PLUMB_CONFIG="$role_cfg" bash "$root/scripts/doctor.sh" "$root" 2>&1)
+printf '%s\n' "$out" | grep -q '^  NG   role.judge = plumb-no-such-command exec is configured but plumb-no-such-command is not on PATH$' \
+  && ok "doctor names the missing first word of a role command" || ng "doctor missing role line: [$out]"
 
 # prompt-weight: a synthetic home with one enabled and one disabled plugin. Never the real one.
 if command -v python3 >/dev/null 2>&1; then

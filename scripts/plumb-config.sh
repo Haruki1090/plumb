@@ -6,6 +6,9 @@
 #   plumb-config.sh <key> [default]
 #
 # It lives at ~/.claude/plumb/config (override with PLUMB_CONFIG). The format is plain key = value.
+# A line whose first non-blank character is # is a comment. So is the rest of a line after
+# whitespace followed by # (`role.judge = codex exec   # another family`). A value wrapped in
+# matching double or single quotes loses the quotes and keeps everything inside them, # included.
 #
 #   role.judge   = <command>
 #   role.bulk    = <command>
@@ -26,9 +29,11 @@
 # no need to carry "explicitly disabled".
 set -uo pipefail
 
+usage() { echo "usage: plumb-config <key> [default]   (reads \${PLUMB_CONFIG:-~/.claude/plumb/config})"; }
+case "${1:-}" in -h|--help) usage; exit 0 ;; esac
 key="${1:-}"
 def="${2:-}"
-[ -n "$key" ] || { echo "usage: plumb-config.sh <key> [default]" >&2; exit 2; }
+[ -n "$key" ] || { usage >&2; exit 2; }
 
 file="${PLUMB_CONFIG:-$HOME/.claude/plumb/config}"
 val=""
@@ -36,18 +41,26 @@ if [ -f "$file" ]; then
   # Match the key as a literal, not as a regular expression. Assemble it into a sed pattern and a
   # key holding [ or * gets reinterpreted as a bracket expression and matches an unrelated line.
   val=$(awk -v k="$key" '
-    { line = $0; sub(/^[[:space:]]+/, "", line) }
+    { line = $0; sub(/\r$/, "", line); sub(/^[[:space:]]+/, "", line) }
     index(line, k) == 1 {
       rest = substr(line, length(k) + 1)
       sub(/^[[:space:]]*/, "", rest)
       if (substr(rest, 1, 1) == "=") {
         sub(/^=[[:space:]]*/, "", rest)
+        q = substr(rest, 1, 1)
+        e = 0
+        if (q == "\"" || q == "\047") e = index(substr(rest, 2), q)
+        if (e > 0) {
+          rest = substr(rest, 2, e - 1)       # quoted: keep the inside verbatim
+        } else {
+          if (substr(rest, 1, 1) == "#") rest = ""
+          sub(/[[:space:]]+#.*$/, "", rest)   # trailing comment
+          sub(/[[:space:]]+$/, "", rest)
+        }
         print rest
         exit
       }
     }' "$file")
-  # Strip trailing whitespace (awk has already stripped the leading side)
-  val="${val%"${val##*[![:space:]]}"}"
 fi
 
 printf '%s\n' "${val:-$def}"

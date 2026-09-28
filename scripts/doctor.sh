@@ -4,6 +4,21 @@
 # Usage: scripts/doctor.sh [plugin-root]
 set -uo pipefail
 
+case "${1:-}" in
+  -h|--help)
+    cat <<'EOF'
+usage: plumb-doctor [plugin-root]
+
+Checks that the environment plumb's documents describe still exists on this machine.
+  ok  present and working
+  --  unset, optional, or cannot check here (never a failure)
+  NG  broken; the exit status is 1
+PLUMB_RUNTIME=claude|codex picks the runtime (default: detect).
+Run it from Claude Code's Bash tool, through the doctor skill, or as <plugin-root>/bin/plumb-doctor.
+EOF
+    exit 0 ;;
+esac
+
 root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 CLAUDE="$HOME/.claude"
 runtime=${PLUMB_RUNTIME:-auto}
@@ -59,10 +74,14 @@ for k in role.judge role.bulk pane.driver; do
   v=$(cfg "$k")
   if [ -z "$v" ]; then
     note "--" "$k: unset (the main session stands in)"
-  elif command -v "$v" >/dev/null 2>&1; then
-    note "ok" "$k = $v"
   else
-    bad "$k = $v is configured but is not on PATH"
+    # The value is a command line (`codex exec`, `herdr run`); only its first word has to be on PATH.
+    set -f; set -- $v; set +f
+    if command -v "$1" >/dev/null 2>&1; then
+      note "ok" "$k = $v"
+    else
+      bad "$k = $v is configured but $1 is not on PATH"
+    fi
   fi
 done
 
@@ -135,7 +154,9 @@ fi
 # 5. Do the paths path-map claims exist
 echo "— paths"
 if [ "$runtime" = claude ]; then
-  [ -d "$CLAUDE/projects" ] && note "ok" "~/.claude/projects/" || bad "~/.claude/projects/ is missing"
+  # Claude Code creates projects/ on its first session. Before that, "missing" means "not yet".
+  [ -d "$CLAUDE/projects" ] && note "ok" "~/.claude/projects/" \
+    || note "--" "~/.claude/projects/ not created yet (Claude Code makes it on the first session)"
 else
   note "--" "Claude paths are not required by the Codex runtime"
 fi
@@ -159,9 +180,11 @@ elif r=$(bash "$root/scripts/plumb-path.sh" root 2>/dev/null); then
   if [ -d "$r" ]; then
     # A trailing-slash pattern matches no directory that does not exist.
     # Do not report "not created yet" as "tracked".
-    if [ ! -d "$r/run" ]; then
+    # run/ resolves through the main worktree (plumb-path --help), so ask plumb-path for it.
+    rr=$(bash "$root/scripts/plumb-path.sh" run 2>/dev/null || printf '%s' "$r/run")
+    if [ ! -d "$rr" ]; then
       note "--" "run/: not created yet (it gets created with --mkdir when you use it)"
-    elif git -C "$(dirname "$r")" check-ignore -q "$r/run" 2>/dev/null; then
+    elif git -C "$(dirname "$rr")" check-ignore -q "$rr" 2>/dev/null; then
       note "ok" "run/ is untracked"
     else
       bad "run/ is tracked (the ledger gets mixed into the source of truth)"
@@ -211,6 +234,17 @@ sys.exit(0 if present else 1)
     fi
   else
     bad "codex plugin list --json failed"
+  fi
+  # The profile and custom agents are optional, so drift is information, never NG.
+  codex_home=${CODEX_HOME:-"$HOME/.codex"}
+  if [ ! -x "$root/bin/plumb-codex-install" ]; then
+    :
+  elif [ ! -e "$codex_home/plumb.config.toml" ]; then
+    note "--" "optional Codex profile: not installed (\$plumb:setup adds it)"
+  elif bash "$root/bin/plumb-codex-install" --user --check >/dev/null 2>&1; then
+    note "ok" "optional Codex profile and agents match this plugin version"
+  else
+    note "--" "optional Codex profile or agents differ from this plugin version (rerun \$plumb:setup)"
   fi
 elif ! command -v claude >/dev/null 2>&1; then
   note "--" "is plumb in the plugin list: cannot check (claude is not on PATH)"
