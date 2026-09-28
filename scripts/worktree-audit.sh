@@ -8,6 +8,18 @@
 # git worktree list returns everything registered, whichever root it sits under.
 set -u
 
+case "${1:-}" in
+  -h|--help)
+    cat <<'USAGE'
+usage: scripts/worktree-audit.sh [repo-path]
+
+Print one row per linked worktree of the repository (default: the current one) with its size, age,
+merge state, dirty state, ignored files, remote state, PR, last chat, and a suggested bucket.
+Read-only: it deletes nothing. The bucket is advice; playbooks/worktree-cleanup.md keeps the gate.
+USAGE
+    exit 0 ;;
+esac
+
 # stat and date take opposite flags on BSD (macOS) and GNU (Linux), and the collision is silent:
 # `date -r` reads an epoch on BSD and a *file* on GNU, so on Linux the old call did not error, it
 # reported the wrong day. Probe once and bind the two calls rather than guessing from `uname`.
@@ -25,7 +37,9 @@ cd "$repo" 2>/dev/null || { echo "cannot cd: $repo" >&2; exit 1; }
 git rev-parse --show-toplevel >/dev/null 2>&1 \
   || { echo "not a git repository: $repo" >&2; exit 1; }
 
-main_wt=$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')
+# Take the whole remainder of the line: a path may contain spaces, and a field split would report
+# a truncated path (which then reads as clean because git cannot see into it).
+main_wt=$(git worktree list --porcelain | sed -n 's/^worktree //p' | head -1)
 
 # Guess neither the default branch nor the remote.
 # Match the repository gh is looking at against the local remotes by URL.
@@ -47,6 +61,12 @@ if [ -n "$gh_url" ] && [ -n "$def" ]; then
 fi
 [ -z "$base_ref" ] && echo "warn: cannot determine the default branch of the target repository. The MERGED column will read ?" >&2
 
+# Without jq the PR column cannot be read. Say so once and mark the column unknown rather than "-",
+# which would read as "no PR" and silently drop hold-open-pr.
+have_jq=1
+command -v jq >/dev/null 2>&1 \
+  || { have_jq=0; echo "warn: jq not found. The PR column will read ? and open PRs cannot hold a worktree" >&2; }
+
 prs=$(mktemp); KEEP=$(mktemp); REGEN=$(mktemp)
 gh pr list --author "@me" --state all --limit 1000 \
   --json number,state,headRefName 2>/dev/null > "$prs" || echo "[]" > "$prs"
@@ -54,7 +74,7 @@ now=$(date +%s)
 
 printf "SIZE\tAGE\tMERGED\tDIRTY\tIGNORED\tREMOTE\tPR\tLAST_CHAT\tBUCKET\tWORKTREE\n"
 
-git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt; do
+git worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r wt; do
   [ "$wt" = "$main_wt" ] && continue
 
   size=$(du -sh "$wt" 2>/dev/null | awk '{print $1}')
@@ -105,6 +125,7 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt;
   pr=$([ -n "$branch" ] && jq -r --arg b "$branch" \
     '.[] | select(.headRefName==$b) | "#\(.number)/\(.state)"' "$prs" 2>/dev/null | head -1)
   [ -z "$pr" ] && pr="-"
+  [ "$have_jq" -eq 0 ] && pr="?"
 
   # Sessions are stored under a slug per cwd (docs/path-map.md).
   # A session opened inside a worktree stays under that worktree's slug.
@@ -129,13 +150,15 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt;
 
   # The bucket is advice, not permission (playbook step 2).
   # safe only when it is clean, merged and unused. Keep it consistent with step 4.
+  # Merged means an ancestor of the default branch or a MERGED PR. A CLOSED PR that never merged may
+  # hold the only copy of its commits, so the mere existence of a PR is not enough.
   case "$dirty" in wip:*) bucket=hold-wip ;; *)
     case "$pr" in *OPEN*) bucket=hold-open-pr ;; *)
       if [ "$keep" -gt 0 ]; then bucket=verify-ignored
       elif [ "$dirty" != clean ]; then bucket=verify-scratch
       elif [ "$recent" = yes ]; then bucket=verify-recent-chat
       elif [ "$regen" -gt 0 ]; then bucket=check-regen
-      elif [ "$merged" = YES ] || [ "$pr" != "-" ]; then bucket=safe
+      elif [ "$merged" = YES ] || [ "${pr##*/}" = MERGED ]; then bucket=safe
       else bucket=review; fi ;;
     esac ;;
   esac
