@@ -27,15 +27,17 @@
 set -euo pipefail
 
 die() { printf 'host-shots: %s\n' "$*" >&2; exit 1; }
+# A value flag at the end of the line, or followed by another flag, is missing its value.
+need() { [ "$2" -ge 2 ] && [ -n "$3" ] && [ "${3#--}" = "$3" ] || die "$1 needs a value (see --help)"; }
 
 BRANCH=""; REPO=""; MSG=""; DRY=0; FORCE=0; COMPRESS=0
 PAIR_B=(); PAIR_A=(); PAIR_L=(); FILE_P=(); FILE_L=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --branch)   BRANCH="${2:-}"; shift 2 ;;
-    --repo)     REPO="${2:-}"; shift 2 ;;
-    --message)  MSG="${2:-}"; shift 2 ;;
+    --branch)   need "$1" $# "${2:-}"; BRANCH="$2"; shift 2 ;;
+    --repo)     need "$1" $# "${2:-}"; REPO="$2"; shift 2 ;;
+    --message)  need "$1" $# "${2:-}"; MSG="$2"; shift 2 ;;
     --compress) COMPRESS=1; shift ;;
     --force)    FORCE=1; shift ;;
     --dry-run)  DRY=1; shift ;;
@@ -135,6 +137,19 @@ done
 
 [ ${#NAMES[@]} -gt 0 ] || die "nothing to park. Pass --pair or --file"
 
+# One tree cannot hold two entries of the same name: mktree would reject it, or one image would
+# silently shadow the other in the Markdown. Stop before anything is written.
+i=0
+while [ $i -lt ${#NAMES[@]} ]; do
+  j=$((i + 1))
+  while [ $j -lt ${#NAMES[@]} ]; do
+    [ "${NAMES[$i]}" != "${NAMES[$j]}" ] \
+      || die "two images would both be named ${NAMES[$i]} (${PATHS[$i]} and ${PATHS[$j]}). Rename one"
+    j=$((j + 1))
+  done
+  i=$((i + 1))
+done
+
 # ---- size -------------------------------------------------------------
 i=0
 while [ $i -lt ${#NAMES[@]} ]; do
@@ -152,11 +167,27 @@ while [ $i -lt ${#NAMES[@]} ]; do
 done
 
 # ---- Markdown ---------------------------------------------------------
+# Percent-encode everything outside the unreserved set (and /), so a space or a parenthesis in
+# a file or branch name does not end the Markdown link early.
+urlenc() {
+  local LC_ALL=C s="$1" out="" c i=0
+  while [ $i -lt ${#s} ]; do
+    c="${s:$i:1}"
+    case "$c" in
+      [A-Za-z0-9._~/-]) out="$out$c" ;;
+      # & 255: bash 3.2 sign-extends a byte over 0x7F.
+      *) out="$out$(printf '%%%02X' $(( $(printf '%d' "'$c") & 255 )))" ;;
+    esac
+    i=$((i + 1))
+  done
+  printf '%s' "$out"
+}
+
 emit_md() {
   local i=0
   while [ $i -lt ${#NAMES[@]} ]; do
     printf '![%s](https://github.com/%s/raw/%s/%s)\n\n' \
-      "${ALTS[$i]}" "$SLUG" "$BRANCH" "${NAMES[$i]}"
+      "${ALTS[$i]}" "$SLUG" "$(urlenc "$BRANCH")" "$(urlenc "${NAMES[$i]}")"
     i=$((i + 1))
   done
 }

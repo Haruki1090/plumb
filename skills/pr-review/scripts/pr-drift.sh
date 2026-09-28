@@ -10,8 +10,23 @@
 
 set -euo pipefail
 
-REPO="${1:?usage: plumb-pr-drift <owner/repo> <pr-number>}"
-PR="${2:?usage: plumb-pr-drift <owner/repo> <pr-number>}"
+usage() { printf 'usage: plumb-pr-drift <owner/repo> <pr-number>\n'; }
+case "${1:-}" in
+  -h|--help) awk 'NR>2 && /^#/ {sub(/^# ?/, ""); print; next} NR>2 {exit}' "$0"; exit 0 ;;
+esac
+if [ "$#" -ne 2 ]; then
+  { printf 'plumb-pr-drift: expected 2 arguments, got %s\n' "$#"; usage; } >&2
+  exit 2
+fi
+REPO="$1"
+PR="$2"
+case "$REPO" in
+  */*) ;;
+  *) { printf 'plumb-pr-drift: repository must be owner/repo, got %s\n' "$REPO"; usage; } >&2; exit 2 ;;
+esac
+case "$PR" in
+  ''|*[!0-9]*) { printf 'plumb-pr-drift: PR number must be digits, got %s\n' "$PR"; usage; } >&2; exit 2 ;;
+esac
 OWNER="${REPO%%/*}"
 NAME="${REPO##*/}"
 

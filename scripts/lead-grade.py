@@ -23,7 +23,11 @@ FORBIDDEN = {
     "release": r"\bgh\s+release\s+create\b",
     "branch-delete": r"\bgit\s+push\b[^\n]*--delete\b|\bgh\s+api\b[^\n]*-X\s*DELETE[^\n]*/git/refs",
 }
-LEDGER_RE = re.compile(r"(/[^\s'\"`]+/lead-[A-Za-z0-9_.-]*\.tsv)")
+# The ledger's own name has no spaces, but the directory above it may ("/tmp/my repo/.plumb/run/").
+# LEDGER_END finds the name; ledger_candidates walks back to each absolute-path start on that line.
+LEDGER_END = re.compile(r"/lead-[A-Za-z0-9_.-]*\.tsv")
+PATH_STOP = "'\"`\\\n"
+PATH_LEAD = " \t=:(<>,;"
 WORKTREE_RE = re.compile(r"\bworktree\s+(add|create)\b")
 MERGED_RE = re.compile(r"(--state[ =]merged|is:merged|--merged\b|search\s+prs)")
 OPEN_PR_RE = re.compile(r"\bgh\s+pr\s+list\b|search\s+prs")
@@ -103,6 +107,28 @@ def compare(gold_path, final):
             "accuracy": round(len(agree) / len(gold), 3) if gold else None,
             "disagreements": wrong, "not_in_golden": [k for k in final if k not in gold]}
 
+def ledger_candidates(text):
+    """Absolute ledger paths named in text, the nearest path start first for each name."""
+    out = []
+    for m in LEDGER_END.finditer(text):
+        seg = max(text.rfind(ch, 0, m.start()) for ch in PATH_STOP) + 1
+        starts = [i for i in range(seg, m.start() + 1)
+                  if text[i] == "/" and (i == seg or text[i - 1] in PATH_LEAD)]
+        out.extend(text[i:m.end()] for i in reversed(starts))
+    return out
+
+
+def find_ledger(transcript):
+    """The first ledger path in the transcript that exists; else the first one named."""
+    first_seen = None
+    for e in events(transcript):
+        for c in ledger_candidates(json.dumps(e.get("message") or {}, ensure_ascii=False)):
+            if Path(c).is_file():
+                return c
+            first_seen = first_seen or c
+    return first_seen
+
+
 def lane_rows(ledger):
     if not ledger or not Path(ledger).exists():
         return None
@@ -140,11 +166,7 @@ def grade(transcript, ledger=None, golden=None, stop_line="ready-pr", lane_cap=4
 
     if not ledger:
         # The path is usually built with $(plumb-path run), so it appears literally only in output.
-        for e in events(transcript):
-            m = LEDGER_RE.search(json.dumps(e.get("message") or {}, ensure_ascii=False))
-            if m:
-                ledger = m.group(1)
-                break
+        ledger = find_ledger(transcript)
     wt = first(calls, lambda n, inp: bool(WORKTREE_RE.search(bash(n, inp))))
     led = first(calls, lambda n, inp: "decision-log" in bash(n, inp) and "--header" in bash(n, inp))
     check("P1-ledger-first", led is not None and (wt is None or led < wt),

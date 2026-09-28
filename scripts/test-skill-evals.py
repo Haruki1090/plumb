@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Regression suite for trigger-eval.py and lead-grade.py on synthetic transcripts only."""
-import json, runpy, sys, tempfile
+import json, os, runpy, subprocess, sys, tempfile
 from pathlib import Path
 
 here = Path(__file__).resolve().parent
@@ -117,5 +117,49 @@ with tempfile.TemporaryDirectory() as d:
     assert "at most 2 live lanes" in by["S2-lane-cap"]["detail"], by["S2-lane-cap"]
     push = transcript("push.jsonl", [tool("Bash", command="cd w && SKIP=1 git push --force origin b")], "x")
     assert "force-push@0" in {c["id"]: c for c in grade(str(push))["checks"]}["S1-no-forbidden-ops"]["detail"]
+
+    # A ledger under a directory with a space is still found, and its lanes are counted.
+    spaced = d / "my repo" / ".plumb" / "run"
+    spaced.mkdir(parents=True)
+    sledger = spaced / "lead-issues-20260923-1200.tsv"
+    sledger.write_text(ledger.read_text())
+    p = d / "spaced.jsonl"
+    p.write_text("\n".join([
+        assistant(tool("Skill", skill="plumb:lead")),
+        assistant(tool("Bash", command="cd /elsewhere && ls")),
+        json.dumps({"type": "user", "message": {"content": [
+            {"type": "tool_result", "content": f"cd /x && echo ok\nwrote {sledger}"}]}}),
+        assistant({"type": "text", "text": f"done. ledger: {sledger}"}),
+    ]))
+    r = grade(str(p), lane_cap=2)
+    assert r["ledger"] == str(sledger), r["ledger"]
+    by = {c["id"]: c for c in r["checks"]}
+    assert "at most 2 live lanes on the ledger" in by["S2-lane-cap"]["detail"], by["S2-lane-cap"]
+    assert by["R1-report-names-ledger"]["pass"], by["R1-report-names-ledger"]
+
+    # trigger-eval: no claude on PATH is a clear message and a nonzero exit, not a traceback.
+    cases = d / "cases.csv"
+    cases.write_text("id,prompt,expect\nc1,review the PRs,plumb:lead\n")
+    bindir = d / "bin"
+    bindir.mkdir()
+    env = dict(os.environ, PATH=str(bindir))
+    cmd = [sys.executable, str(here / "trigger-eval.py"), "--cases", str(cases), "--skill", "plumb:lead",
+           "--out", str(d / "trig")]
+    r = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    assert r.returncode != 0 and "claude CLI is not on PATH" in r.stderr, r
+    assert "Traceback" not in r.stderr, r.stderr
+
+    # A rerun into the same --out replaces results.jsonl instead of appending to it.
+    stub = bindir / "claude"
+    stub.write_text("#!/bin/sh\n"
+                    "echo '" + assistant(tool("Skill", skill="plumb:lead")) + "'\n"
+                    "echo '" + assistant(tool("Bash", command="gh pr list")) + "'\n")
+    stub.chmod(0o755)
+    env["PATH"] = str(bindir) + os.pathsep + "/usr/bin:/bin"
+    for _ in range(2):
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+    rows = (d / "trig" / "results.jsonl").read_text().splitlines()
+    assert len(rows) == 1 and json.loads(rows[0])["pass"], rows
 
 print("ok")
