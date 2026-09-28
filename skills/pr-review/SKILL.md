@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Review a large or irreversible PR as the person who holds the approval. Fires on a bare GitHub PR URL (https://github.com/<owner>/<repo>/pull/<n>). Use when asked to "review this PR", "is this safe to approve", "a review request came in", or "take a look at this PR" - cross-checks the body's claims against the facts of the diff, runs refuters and reproduction tests in parallel, and returns confidence and blocking separately.
+description: Review a substantial or high-risk pull request against its claims, using independent refutation and reproduction where needed. A PR URL alone is a review request unless context says otherwise.
 ---
 
 # PR review v1.1

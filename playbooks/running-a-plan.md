@@ -15,9 +15,7 @@ copied here (**principle-encode-lessons-in-structure**).
 
 **The handoff table in step 7 of `playbooks/writing-a-plan.md` is the source of truth** and is
 not copied here. If the choice has not been made, read it there, decide, and come back. The
-default is **hand it out** — one role per task keeps **the bulky material off the main
-session** (**principle-guard-the-context-window**). Slice it in the main session when there
-are three tasks or fewer, or when they are tightly entangled.
+choice depends on task independence, handoff cost, and authorization. Execute locally when that is simpler or the tasks are tightly entangled. Hand out bounded tasks only when delegation is authorized and adds useful separation.
 
 **Do not hand tasks out at the same time.** Tasks in a plan write to the same surfaces of the
 same tree, so the test in step 1 of `playbooks/fan-out.md` says no on its own
@@ -175,12 +173,9 @@ From here, `playbooks/closing-a-branch.md`. If you open a PR along the way,
 **A night spent stopped on a question gives nothing back.**
 Do not stop for a progress report or for "may I keep going".
 
-You stop for exactly four things. **An irreversible operation** (deleting, wiping, touching
-production). **A side effect that leaves this workspace** (a push to a shared branch, a merge,
-a publish). **A change that touches keys or permissions.** **A flaw in the plan that reaches
-all the way to the shape, where every road is a guess.**
+Before irreversible operations, external side effects, or key/permission changes, establish that the specific action is already authorized. Existing explicit authorization remains valid; ask only when the next action exceeds it or its target is unclear. Stop the dependent work for a flaw that reaches the product shape and cannot be resolved from the user's instructions. Continue independent work.
 
-The fourth is the same line as "the price of undoing it" in
+The unresolved product choice follows the same line as "the price of undoing it" in
 `playbooks/shaping-the-work.md`. **On the method side, decide and move. On the shape side, stop.**
 
 **What you return:** the ledger path, how many tasks and each one's starting and landing

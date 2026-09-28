@@ -9,19 +9,19 @@ tool" below; graph design does not require that API.
 
 | Design element | How it runs |
 |---|---|
-| Node | one subagent, or a step of code. Its implementation and verification are delegated (SKILL.md, "Delegate the node layer") |
+| Node | a local step or an authorized, bounded subagent task; independent verification uses a separate reviewer when required |
 | Parallel lane | `Workflow`'s `parallel()` / `pipeline()`, or several Agent calls in one message |
 | Barrier | `parallel()` (waits for all), or simply split the phases and write them serially |
 | Pipeline (no barrier) | `Workflow`'s `pipeline()` |
 | Edge Contract | `agent()`'s `schema` option (enforced by JSON Schema; validation happens in the calling layer) |
 | Model Tiering | `agent()`'s `model` / `effort` options |
 | Separating the workspace | `isolation: 'worktree'` (**has constraints. Read "Worktree constraints" below first**) |
-| Human Gate | stop execution and ask a human. Do not bury it inside the graph |
-| Writing back to the source of truth | write back with an MCP tool (Notion, GitHub and the like) after the run |
+| Human Gate | ask for a material unresolved decision or an explicitly requested approval; do not re-open settled choices |
+| Writing back to the source of truth | update the existing record only when that destination and action are authorized; otherwise return local evidence |
 
 ## Using the Workflow tool
 
-**Precondition**: use `Workflow` only when the user explicitly asked for multi-agent execution. "Design the graph" is a request for a design, not for a run. Show the design and confirm before executing.
+**Precondition**: use `Workflow` only when the user explicitly asked for multi-agent execution. A design-only request does not authorize a run. Honor requested approval gates, but do not ask again for execution the user already authorized.
 
 The default structure is `pipeline()`. Use `parallel()` only when you need every upstream result at once.
 
@@ -112,7 +112,7 @@ Context always runs out, so keep the state outside.
 - **A progress file** — write what is finished to an external file. A new session reads it to pick up the situation. Do not rely on context to remember
 - **Restrict updates to the item list** — let it rewrite the completion flag and nothing else. Never the items themselves. Left alone, the requirements get rewritten and everything is "done"
 - **A health check at session start** — confirm that what was built so far still runs before starting new work
-- **Commit often** — commit in slices with descriptive messages. If something goes wrong you can go back
+- **Keep recoverable checkpoints** — save evidence and diffs; commit in slices only when committing is within the authorized workflow. Exclude unrelated user changes
 - **Compaction alone is not enough** — context compaction is necessary, but on its own it does not carry work across several contexts. Pair it with external state
 
 ## Resuming

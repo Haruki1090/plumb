@@ -16,7 +16,7 @@ cache. Then start Codex with:
 codex --profile plumb
 ```
 
-The main thread uses `gpt-5.6-sol` at high reasoning. The default subagent uses `gpt-5.6-luna` at medium
+The optional shipped profile uses `gpt-5.6-sol` at high reasoning. An ordinary plugin session keeps its current model and user settings; do not switch it to match this profile. The default subagent uses `gpt-5.6-luna` at medium
 reasoning, with four spawned threads allowed at once. Named agents override those defaults where their
 job needs more or less depth.
 
@@ -24,7 +24,7 @@ job needs more or less depth.
 
 | Claude-first term | Codex execution |
 |---|---|
-| Main session | The current Sol-led Codex thread |
+| Main session | The current Codex thread (keep its selected model) |
 | Explorer `Task` | `plumb_explorer` |
 | Implementer `Task` | `plumb_worker` |
 | `role.bulk` when unset | `plumb_bulk`, only after the fan-out independence test passes |
@@ -110,7 +110,7 @@ The default audit mode remains Claude. See `skills/pr-review/references/bench-fo
 
 - Delegate only when the user explicitly asks for agents or when the active plumb playbook calls for a
   role. Loading plumb is not permission for unrelated fan-out.
-- Keep requirements, decisions, and final integration in the main Sol thread.
+- Keep requirements, decisions, and final integration in the main thread.
 - Give each subagent a bounded input, writable-file ownership, output contract, and stopping condition.
 - When the spawn interface exposes history inheritance, use `fork_turns="none"` for an independent
   bounded role and supply the contract plus absolute evidence/spec paths. Fork history only when the
