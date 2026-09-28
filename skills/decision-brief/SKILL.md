@@ -1,6 +1,6 @@
 ---
 name: decision-brief
-description: Compare meaningful alternatives when a user decision changes what will be built, using concrete evidence and clear tradeoffs.
+description: Compare meaningful alternatives when a user decision changes what will be built, using concrete evidence and clear tradeoffs. Use when asked to "show me the options", "lay out the options so I can pick" or "compare them side by side"; not for progress reports or a plain "is this OK".
 ---
 
 # A decision the owner can make

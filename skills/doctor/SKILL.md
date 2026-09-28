@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Check plumb installation and routing health. Use when asked to "run doctor" or "check plumb's health", or after relevant environment components change.
+description: Check plumb installation and routing health. Use when asked to "run doctor", "check plumb's health" or "is the harness broken", or after relevant environment components change.
 ---
 
 # doctor
