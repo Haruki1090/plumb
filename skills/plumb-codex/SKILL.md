@@ -1,9 +1,11 @@
 ---
 name: plumb-codex
-description: Use the Claude-first plumb engineering harness from Codex without changing its canonical playbooks or principles.
+description: "Codex only: not for Claude Code. Use the Claude-first plumb harness from Codex without changing its canonical playbooks or principles."
 ---
 
 # plumb runtime entry
+
+Codex only. In Claude Code, use the root `plumb` skill instead and ignore this file.
 
 This is a thin execution adapter. Do not restate or fork the harness here.
 

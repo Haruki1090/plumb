@@ -1,6 +1,6 @@
 ---
 name: interrogate
-description: Adds one adversarial axis from a different model family to the refutation stage of a PR review. Use when asked to "show this to another model family", "get a second family on it", "are we judging inside one family only", and whenever the change under review is irreversible or wide. It does not stand on its own - it is called from stage 3 of `plumb:pr-review`.
+description: Add a different model family to the refutation stage of a PR review when that independent perspective is requested or warranted. Not standalone; called from stage 3 of `plumb:pr-review`.
 ---
 
 # The other family's axis

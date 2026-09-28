@@ -16,20 +16,25 @@ cache. Then start Codex with:
 codex --profile plumb
 ```
 
-The main thread uses `gpt-5.6-sol` at high reasoning. The default subagent uses `gpt-5.6-luna` at medium
-reasoning, with four spawned threads allowed at once. Named agents override those defaults where their
-job needs more or less depth.
+The optional shipped profile uses `gpt-5.6-sol` at high reasoning. An ordinary plugin session keeps
+its current model and user settings; do not switch it to match this profile. The default subagent uses
+`gpt-5.6-luna` at medium reasoning, with four spawned threads allowed at once. Named agents override
+those defaults where their job needs more or less depth.
+
+A project-scoped install writes `.codex/config.toml` only when that file is absent or was written by
+plumb (it carries the `# managed-by-plumb:` marker line). An owner's existing project configuration
+is never replaced, even with `--force`; the installer lists the settings to merge by hand instead.
 
 ## Role mapping
 
 | Claude-first term | Codex execution |
 |---|---|
-| Main session | The current Sol-led Codex thread |
+| Main session | The current Codex thread (keep its selected model) |
 | Explorer `Task` | `plumb_explorer` |
 | Implementer `Task` | `plumb_worker` |
 | `role.bulk` when unset | `plumb_bulk`, only after the fan-out independence test passes |
 | Same-family verification | `plumb_judge` |
-| `role.judge` | The command configured by `plumb-config role.judge`; see the family rule below |
+| `role.judge` | The command configured by `<plugin-root>/bin/plumb-config role.judge`; see the family rule below |
 | Several `Agent` calls | Spawn the named agents together, then wait for every required result |
 | `AskUserQuestion` | Use the runtime's structured user-input tool when available; otherwise ask one concise question |
 | Agent `SendMessage` instruction | Ignore it. A Codex subagent returns its final response to the parent automatically |
@@ -65,7 +70,7 @@ independent verification, but it does **not** close the harness's different-fami
 
 For the different-family pass:
 
-1. Read `plumb-config role.judge ""`.
+1. Read `<plugin-root>/bin/plumb-config role.judge ""`.
 2. If it resolves to a genuinely different-family command, run that bounded review and record it.
 3. Otherwise leave the required todo line as `skip: role.judge unset or not a different model family`.
 
@@ -110,7 +115,7 @@ The default audit mode remains Claude. See `skills/pr-review/references/bench-fo
 
 - Delegate only when the user explicitly asks for agents or when the active plumb playbook calls for a
   role. Loading plumb is not permission for unrelated fan-out.
-- Keep requirements, decisions, and final integration in the main Sol thread.
+- Keep requirements, decisions, and final integration in the main thread.
 - Give each subagent a bounded input, writable-file ownership, output contract, and stopping condition.
 - When the spawn interface exposes history inheritance, use `fork_turns="none"` for an independent
   bounded role and supply the contract plus absolute evidence/spec paths. Fork history only when the

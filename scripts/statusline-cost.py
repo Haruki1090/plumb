@@ -70,7 +70,18 @@ def segment(data: object) -> str:
     return " ".join(parts)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    args = sys.argv[1:] if argv is None else argv
+    if args and args[0] in ("-h", "--help"):
+        print("usage: plumb-statusline-cost < status-line.json\n\n" + (__doc__ or "").strip())
+        return 0
+    if args:
+        sys.stderr.write(f"plumb-statusline-cost: unexpected argument {args[0]!r}; it reads JSON on stdin"
+                         " (see --help)\n")
+        return 2
+    if sys.stdin.isatty():
+        sys.stderr.write("plumb-statusline-cost: pipe the status-line JSON on stdin (see --help)\n")
+        return 2
     try:
         data = json.load(sys.stdin)
     except ValueError:

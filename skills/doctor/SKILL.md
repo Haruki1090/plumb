@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Check whether the environment plumb claims still exists on this machine. Use when asked to "run doctor", "check plumb's health", "is the harness broken", and after you change the environment, when you come back to plumb after a while, or at the end of a batch.
+description: Check plumb installation and routing health. Use when asked to "run doctor", "check plumb's health" or "is the harness broken", or after relevant environment components change.
 ---
 
 # doctor

@@ -1,6 +1,6 @@
 ---
 name: plumb
-description: The entry point to plumb - an index of named principles that puts discipline on non-trivial work. Use when asked to "use plumb", "follow the principles", "get a plumb line on this first", or whenever a task needs real rigor.
+description: Route complex engineering work to plumb playbooks and principles. Use when asked to "use plumb" or "follow the principles", or when the task needs an explicit engineering workflow.
 ---
 
 # plumb
@@ -12,43 +12,18 @@ coding agent, read `docs/openai-runtime.md` before applying any instruction abou
 values, tools, configuration paths, or command lookup. That document translates the execution surface;
 it does not replace the playbooks or principles below.
 
-## How to use this
+## Apply only the relevant workflow
 
-When you start non-trivial work, **make your first todo "read the principle index below"**.
-When the index points you at a principle, **read that principle in full before applying it**.
+Use the requested outcome, existing authorization, and task risk to select one playbook below. Short, well-defined work can proceed directly. Read a principle in full when its decision criterion applies; name it alongside the decision it changes, without narrating every rule.
 
-**When you apply a principle, name it in your reply alongside the specific decision it changed.**
-A citation with no decision attached is treated as evidence you never read the leaf.
+The current session remains responsible for integration. Runtime role mapping is in `docs/role-map.md`; read it when assigning roles. For non-trivial plumb work, keep one visible judge line: run the configured independent review or record `skip: <reason>`. A skip does not stop safe, authorized work or establish independent verification.
 
-## Where roles run
-
-`docs/role-map.md` is the source of truth for where each role runs. Do not write a model name
-in the body text.
-
-| Role | Where it runs |
-|---|---|
-| Main session | the Claude Code session you are in |
-| Implementer role | `Task` (do not set `model`). Produces a diff; the main session reviews it |
-| Explorer role | `Task`. Produces no diff. `model` comes from `role.explorer.model` when it is set; unset inherits |
-| Judge role | `role.judge` (unset: the main session stands in, and says so) |
-| Bulk role | `role.bulk` (unset: the main session works through it in order) |
-
-**Non-trivial work must open a todo line for the judge role.** Open the line before you decide
-whether to run it.
-
-That line closes exactly two ways:
-
-- it runs
-- it stays, carrying `skip: <reason>`
-
-**You cannot get away without opening the line.** You cannot delete it either. Skipping is
-allowed; skipping silently is not. A todo list with no judge line is itself the mark of a
-breach of discipline.
+Continue through the requested deliverable and relevant checks. Ask only for unresolved choices that change scope, permissions, or the result. Existing approval remains valid; a playbook does not authorize external publication or messages. An explicit plan/review gate requested by the user still applies.
 
 ## The playbook index
 
 If your work has one of the shapes below, **read that playbook in full before you start**.
-Playbooks name principles. A named principle means you read the leaf in full.
+Playbooks name principles; read a named principle in full when you apply it.
 
 ### Investigate (changes no code)
 
@@ -108,7 +83,7 @@ Playbooks name principles. A named principle means you read the leaf in full.
 
 | Job | Playbook |
 |---|---|
-| Draw the execution graph (2 or more of the 5 signals) | `plumb:graph` |
+| Coordinate dependencies, parallel work, or multiple sources of truth with an execution graph | `plumb:graph` |
 | **Hand a branching decision back to the owner** (2+ options, and the choice changes what gets built) | `plumb:decision-brief` |
 
 ### What plumb has no playbook for
@@ -126,60 +101,9 @@ this router forwards to an outside plugin any more.
 
 Which upstream playbooks were not ported, and why, is in `docs/scope.md`.
 
-## Where the artifacts go
+## Artifact paths
 
-**Do not assemble paths. Ask the tool.**
-
-`plumb-*` are thin wrappers in `bin/`. Claude Code puts every plugin's `bin/` on PATH at
-install time, so you can call them by bare name from anywhere.
-
-```bash
-plumb-path spec      # approved designs
-plumb-path plan      # plans being executed
-plumb-path history   # finished plans
-plumb-path run       # ledgers, decision logs, briefs
-plumb-path spec --mkdir   # create it if it is missing
-```
-
-The default is `<repo root>/.plumb/`. Override it with `PLUMB_ROOT`, or with `root=` in
-`.plumb/config`. **Spell a path out in prose and one of the two copies goes stale**
-(**principle-encode-lessons-in-structure**).
-
-### spec and plan are not the same rank
-
-| | What it is | Lifetime |
-|---|---|---|
-| **spec** | End state, acceptance criteria, why this approach, what you rejected | **The source of truth.** It is what gets approved; changing it needs re-approval. Tracked |
-| **plan** | Files, signatures, **test code**, how to slice the commits | **Disposable.** Stale the moment execution starts. Tracked, but retired when it is done |
-
-**"What has to pass for this to be done" is the spec. "Which tests, written how" is the plan.**
-Same tests, two documents: the bar for judging goes in one, the implementation in the other.
-
-`run/` is not tracked (`.plumb/.gitignore`). Ledgers and decision logs are traces of the work,
-not the source of truth. **Conversely, specs and plans are always tracked.** A source of truth
-that disappears with the working tree is not a source of truth.
-
-### Retire a finished plan by freezing it
-
-**Do not leave a completed plan in `plans/`.** In batch 1, a `docs/plan.md` frozen back at
-Task 1 sat 18 lines out of date, still flying a header that said "execute these in order" —
-and **anyone who came along and executed it would have rolled back every fix from that day**.
-
-Move it to `history/` and put this at the top:
-
-```markdown
-> **This is history. Do not execute it.**
-> The current source of truth is <path>. **If this document disagrees with it, the source of
-> truth wins.** Do not sync this back up — syncing it revives the second source of truth.
-```
-
-**What stops the damage is the header, not the directory name.** Moving it is not enough.
-
-### An existing `docs/superpowers/`
-
-Repositories that have used `superpowers` still carry `docs/superpowers/specs|plans`.
-**Do not migrate them wholesale.** Decide per repository. In a repository you have not
-migrated, **assume the old material is under `docs/superpowers/`** when you go looking.
+When writing or retiring a spec, plan, or run ledger, read `docs/artifact-lifecycle.md`. Resolve paths with `plumb-path`; do not create a second source of truth.
 
 ## The principle index
 

@@ -38,13 +38,12 @@ If it does not, hand it over before you go.
   carries no branch
 - **When you do stop, stop once, for everything at once.** Collect a nod per section and
   the round trips pile up, one per section. **A question that genuinely cannot be asked until
-  another is answered is not a second stop** — it could not have gone in the first one. That
-  ordering is `playbooks/shaping-the-work.md`'s; what this principle forbids is stopping twice
-  on questions that could have gone together
+  another is answered is not a second stop** — it could not have gone in the first one. What
+  this principle forbids is stopping twice on questions that could have gone together
 - **While you wait, keep doing the work that does not depend on that branch**
 - A problem you notice gets **recorded and fixed on the next pass**, not reported and
   waited on where you found it
 
 **How to hand it over** — the form for handing a branching decision to the owner is
-`skills/decision-brief`. **Redrawing the stop line from this principle is
-`playbooks/shaping-the-work.md`.**
+`skills/decision-brief`. **Applying this line to a product decision that is still open is
+`playbooks/shaping-the-work.md`**; it does not draw a line of its own.

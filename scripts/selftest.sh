@@ -2,6 +2,11 @@
 # Pin down how plumb's scripts behave. check-harness looks at whether the documents agree;
 # this looks at what the scripts return. doctor calls it from the "inside".
 set -uo pipefail
+case "${1:-}" in
+  -h|--help)
+    printf 'usage: plumb-selftest [plugin-root]\n\nRuns the script-behaviour checks in a temporary sandbox; exit 1 on any NG.\n'
+    exit 0 ;;
+esac
 root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 fail=0
 ok()  { printf '  %-4s %s\n' "ok" "$1"; }
@@ -732,6 +737,10 @@ for c in git gh; do
   p=$(type -P "$c" 2>/dev/null)
   if [ -n "$p" ] && [ -x "$p" ]; then
     ln -s "$p" "$sandbox/$c"
+  elif [ "$c" = gh ]; then
+    # A machine without gh gets told so once, by doctor's own gh line. Stub it here so selftest
+    # does not repeat that as "selftest is failing". The sandbox never calls gh for real.
+    printf '#!/bin/sh\nexit 0\n' > "$sandbox/gh"; chmod +x "$sandbox/gh"
   else
     ng "cannot stage $c in the sandbox (not a defect in doctor: the premise of this test is broken)"
   fi
@@ -778,6 +787,85 @@ if [ -n "$python_bin" ]; then
 else
   printf '  %-4s %s\n' "--" "Codex loading fixtures skipped: python3 unavailable"
 fi
+
+# Config format: a trailing ` # comment` is not part of the value, quotes are dropped, and a # with
+# no whitespace before it, or inside quotes, stays. README's example carries inline comments, so a
+# config copied from it must resolve to the bare command.
+fmt_cfg="$sandbox_root/format-config"
+printf '%s\n' \
+  '# a whole-line comment' \
+  'role.judge = codex exec   # another model family' \
+  'role.bulk = "cursor agent # kept"   # dropped' \
+  "pane.driver = 'herdr'" \
+  'stack.tool = # nothing but a comment' \
+  'bench.corpus = a#b' \
+  'cost.session_budget_usd = 2 # two dollars' > "$fmt_cfg"
+fmt() { PLUMB_CONFIG="$fmt_cfg" bash "$root/scripts/plumb-config.sh" "$@"; }
+eq "plumb-config drops a trailing comment" "$(fmt role.judge)" "codex exec"
+eq "plumb-config keeps a # inside quotes and drops the quotes" "$(fmt role.bulk)" "cursor agent # kept"
+eq "plumb-config drops single quotes" "$(fmt pane.driver)" "herdr"
+eq "plumb-config treats a comment-only value as unset" "$(fmt stack.tool DEF)" "DEF"
+eq "plumb-config keeps a # with no whitespace before it" "$(fmt bench.corpus)" "a#b"
+for h in plumb-config plumb-path plumb-doctor plumb-selftest; do
+  h_out=$("$root/bin/$h" --help 2>/dev/null); h_code=$?
+  case "$h_code|$h_out" in "0|usage: $h"*) ok "$h --help prints usage and exits 0" ;;
+    *) ng "$h --help: code=$h_code output=[$h_out]" ;; esac
+done
+if command -v python3 >/dev/null 2>&1; then
+  sl_fmt=$(printf '{"cost":{"total_cost_usd":1.5}}' | PLUMB_CONFIG=$fmt_cfg "$root/bin/plumb-statusline-cost")
+  case "$sl_fmt" in *'75%'*) ok "statusline-cost reads a budget that carries a trailing comment" ;;
+    *) ng "statusline-cost lost the commented budget: [$sl_fmt]" ;; esac
+fi
+
+# plumb-path: root = reads like plumb-config, and run/ outlives a linked worktree.
+pp_repo="$sandbox_root/pp-repo"; mkdir -p "$pp_repo/.plumb"
+git -C "$pp_repo" init -q
+git -C "$pp_repo" -c user.name=selftest -c user.email=selftest@users.noreply.github.com \
+  commit -q --allow-empty -m init
+pp_repo=$(cd -P "$pp_repo" && pwd)
+printf 'root = "x y"   # spaced\n' > "$pp_repo/.plumb/config"
+eq "plumb-path strips quotes and a trailing comment from root" \
+  "$(PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" root "$pp_repo")" "$pp_repo/x y"
+printf "root = 'art'\n" > "$pp_repo/.plumb/config"
+eq "plumb-path strips single quotes from root" \
+  "$(PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" spec "$pp_repo")" "$pp_repo/art/specs"
+rm -f "$pp_repo/.plumb/config"
+pp_wt="$sandbox_root/pp-wt"
+git -C "$pp_repo" worktree add -q --detach "$pp_wt" >/dev/null 2>&1
+pp_wt=$(cd -P "$pp_wt" && pwd)
+eq "plumb-path run from a linked worktree resolves through the main worktree" \
+  "$(cd "$pp_wt" && PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" run)" "$pp_repo/.plumb/run"
+eq "plumb-path spec from a linked worktree stays in that checkout" \
+  "$(cd "$pp_wt" && PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" spec)" "$pp_wt/.plumb/specs"
+pp_out="$sandbox_root/pp-outside"; mkdir -p "$pp_out"
+pp_msg=$(cd "$pp_out" && GIT_CEILING_DIRECTORIES="$sandbox_root" PLUMB_ROOT= \
+  bash "$root/scripts/plumb-path.sh" run --mkdir 2>&1); pp_code=$?
+case "$pp_code|$pp_msg" in 1*PLUMB_ROOT*) ok "plumb-path outside a repository fails and names PLUMB_ROOT" ;;
+  *) ng "plumb-path outside a repository: code=$pp_code output=[$pp_msg]" ;; esac
+eq "plumb-path outside a repository works with an absolute PLUMB_ROOT" \
+  "$(cd "$pp_out" && GIT_CEILING_DIRECTORIES="$sandbox_root" PLUMB_ROOT="$pp_out/art" \
+     bash "$root/scripts/plumb-path.sh" run --mkdir && [ -d "$pp_out/art/run" ] && echo made)" \
+  "$pp_out/art/run
+made"
+
+# doctor: a role holding a command line needs only its first word on PATH, and a fresh HOME that
+# has never run a Claude session (no ~/.claude/projects/) is "not yet", not NG.
+fresh_home="$sandbox_root/fresh-home"; mkdir -p "$fresh_home"
+role_cfg="$sandbox_root/role-config"
+printf 'role.judge = git status   # a command line\n' > "$role_cfg"
+out=$(HOME="$fresh_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUNTIME=claude \
+      PLUMB_IN_SELFTEST=1 PLUMB_CONFIG="$role_cfg" bash "$root/scripts/doctor.sh" "$root" 2>&1)
+eq "NG count from doctor on a fresh HOME with a multi-word role" \
+  "$(printf '%s\n' "$out" | grep -c '^  NG ' || true)" "0"
+printf '%s\n' "$out" | grep -q '^  ok   role.judge = git status$' \
+  && ok "doctor checks only the first word of a role command" || ng "doctor role line: [$out]"
+printf '%s\n' "$out" | grep -q '^  --   ~/.claude/projects/ not created yet' \
+  && ok "doctor reports a missing projects dir as not yet" || ng "doctor projects line: [$out]"
+printf 'role.judge = plumb-no-such-command exec\n' > "$role_cfg"
+out=$(HOME="$fresh_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUNTIME=claude \
+      PLUMB_IN_SELFTEST=1 PLUMB_CONFIG="$role_cfg" bash "$root/scripts/doctor.sh" "$root" 2>&1)
+printf '%s\n' "$out" | grep -q '^  NG   role.judge = plumb-no-such-command exec is configured but plumb-no-such-command is not on PATH$' \
+  && ok "doctor names the missing first word of a role command" || ng "doctor missing role line: [$out]"
 
 # prompt-weight: a synthetic home with one enabled and one disabled plugin. Never the real one.
 if command -v python3 >/dev/null 2>&1; then
@@ -853,6 +941,107 @@ if command -v python3 >/dev/null 2>&1; then
     && ok "skill evals: trigger observation, scoring, and lead-grade checks on synthetic transcripts" \
     || ng "skill evals: trigger observation, scoring, and lead-grade checks on synthetic transcripts"
 fi
+
+# ---- safety regressions: worktree-audit buckets and paths, project config ownership ----
+# worktree-audit runs against a throwaway repository, a fake HOME (no chat history is read) and a gh
+# stub that reports no default branch and one CLOSED, never-merged PR. Without jq the PR column is
+# unknown, so the PR assertion needs jq.
+if command -v jq >/dev/null 2>&1; then
+  wa="$sandbox_root/wt-audit"
+  mkdir -p "$wa/bin" "$wa/home"; wa=$(cd -P "$wa" && pwd)
+  cat > "$wa/bin/gh" <<'STUB'
+#!/bin/sh
+case "$1 $2" in
+  "pr list") printf '[{"number":7,"state":"CLOSED","headRefName":"closed-branch"}]\n' ;;
+  *) exit 1 ;;
+esac
+STUB
+  chmod +x "$wa/bin/gh"
+  wag() { git -C "$1" -c user.name=t -c user.email=selftest -c commit.gpgsign=false "${@:2}"; }
+  git init -q "$wa/repo" && wag "$wa/repo" commit -q --allow-empty -m init
+  git -C "$wa/repo" worktree add -q -b closed-branch "$wa/closed" 2>/dev/null
+  wag "$wa/closed" commit -q --allow-empty -m "unpushed work"
+  printf 'tracked\n' > "$wa/repo/f.txt"; wag "$wa/repo" add f.txt; wag "$wa/repo" commit -q -m f
+  git -C "$wa/repo" worktree add -q -b spaced "$wa/wt with space" 2>/dev/null
+  printf 'edited\n' > "$wa/wt with space/f.txt"
+  wa_out=$(HOME="$wa/home" PATH="$wa/bin:$PATH" bash "$root/scripts/worktree-audit.sh" "$wa/repo" 2>/dev/null)
+  wa_closed=$(printf '%s\n' "$wa_out" | awk -F'\t' -v p="$wa/closed" '$10==p{print $7" "$9}')
+  eq "worktree-audit never calls a CLOSED unmerged PR safe" "$wa_closed" "#7/CLOSED review"
+  wa_space=$(printf '%s\n' "$wa_out" | awk -F'\t' -v p="$wa/wt with space" '$10==p{print $4" "$9}')
+  eq "worktree-audit keeps a path with spaces whole and sees its edits" "$wa_space" "wip:1 hold-wip"
+  bash "$root/scripts/worktree-audit.sh" --help 2>/dev/null | grep -q '^usage:' \
+    && ok "worktree-audit --help prints usage" || ng "worktree-audit --help does not print usage"
+else
+  printf '  %-4s %s\n' "--" "jq not on PATH, worktree-audit bucket assertions skipped"
+fi
+
+# A project .codex/config.toml the owner wrote is never replaced, not even with --force; the
+# agents still install and the owner gets the settings to merge by hand.
+foreign_project="$sandbox_root/codex-foreign-project"
+mkdir -p "$foreign_project/.codex"
+printf '[mcp_servers.owner]\ncommand = "owner-server"\n' > "$foreign_project/.codex/config.toml"
+foreign_msg=$("$root/bin/plumb-codex-install" --project "$foreign_project" --force 2>&1)
+eq "Codex project install with --force succeeds beside a foreign config" "$?" "0"
+eq "Codex --force leaves a foreign project config untouched" \
+  "$(cat "$foreign_project/.codex/config.toml")" $'[mcp_servers.owner]\ncommand = "owner-server"'
+case "$foreign_msg" in *"merge these settings"*default_subagent_model*) ok "Codex installer lists the settings to merge";;
+  *) ng "Codex installer gave no merge guidance for a foreign project config";; esac
+eq "Codex agents still install beside a foreign project config" \
+  "$(find "$foreign_project/.codex/agents" -name '*.toml' -type f | wc -l | tr -d ' ')" "10"
+printf '# local edit\n' >> "$project_install/.codex/config.toml"
+"$root/bin/plumb-codex-install" --project "$project_install" --force >/dev/null 2>&1
+cmp -s "$root/.codex/config.toml" "$project_install/.codex/config.toml" \
+  && ok "Codex --force still restores a plumb-written project config" \
+  || ng "Codex --force did not restore a plumb-written project config"
+# ---- end safety regressions ----
+
+
+# ---- polish: script usage and input validation (host-shots, session-audit, --help) ----
+polish_dir="$sandbox_root/polish"
+mkdir -p "$polish_dir/shots/a" "$polish_dir/shots/b"
+git init -q "$polish_dir/repo" && git -C "$polish_dir/repo" remote add origin git@github.com:o/r.git
+printf x > "$polish_dir/shots/a/my shot.png"; printf y > "$polish_dir/shots/a/s.png"; printf z > "$polish_dir/shots/b/s.png"
+polish_md=$(cd "$polish_dir" && bash "$root/scripts/host-shots.sh" --repo repo --branch assets/x \
+  --file "shots/a/my shot.png" --dry-run 2>/dev/null)
+eq "host-shots percent-encodes a space in the image URL" "$polish_md" \
+  "![my shot](https://github.com/o/r/raw/assets/x/my%20shot.png)"
+polish_err=$(cd "$polish_dir" && bash "$root/scripts/host-shots.sh" --repo repo --branch assets/x \
+  --file shots/a/s.png --file shots/b/s.png --dry-run 2>&1 >/dev/null); polish_rc=$?
+case "$polish_rc|$polish_err" in 1*'two images would both be named s.png'*) ok "host-shots refuses two images with the same name";;
+  *) ng "host-shots duplicate name not refused: [$polish_rc|$polish_err]";; esac
+for polish_flag in --branch --repo --message; do
+  polish_err=$(bash "$root/scripts/host-shots.sh" "$polish_flag" 2>&1); polish_rc=$?
+  eq "host-shots names $polish_flag when its value is missing" "$polish_rc|$polish_err" \
+    "1|host-shots: $polish_flag needs a value (see --help)"
+done
+polish_err=$(bash "$root/scripts/host-shots.sh" --branch --dry-run 2>&1); polish_rc=$?
+eq "host-shots does not take the next flag as --branch's value" "$polish_rc|$polish_err" \
+  "1|host-shots: --branch needs a value (see --help)"
+
+for polish_cmd in "bin/plumb-check" "bin/plumb-pr-drift" "bin/plumb-statusline-cost" \
+                  "bin/plumb-decision-log" "bin/plumb-isolate-pollution"; do
+  [ -e "$root/$polish_cmd" ] || continue
+  polish_out=$("$root/$polish_cmd" --help </dev/null 2>/dev/null); polish_rc=$?
+  case "$polish_rc|$polish_out" in 0*[Uu]sage*|0*"Append one row"*|0*"Isolate the polluter"*) ok "$polish_cmd --help prints usage and exits 0";;
+    *) ng "$polish_cmd --help: [$polish_rc|$polish_out]";; esac
+done
+polish_err=$("$root/bin/plumb-pr-drift" o/r 2>&1); polish_rc=$?
+case "$polish_rc|$polish_err" in 2*'expected 2 arguments'*) ok "plumb-pr-drift explains a missing PR number";;
+  *) ng "plumb-pr-drift usage error unreadable: [$polish_rc|$polish_err]";; esac
+
+if command -v python3 >/dev/null 2>&1; then
+  mkdir -p "$polish_dir/repo/sub/deeper" "$polish_dir/home"
+  polish_audit=$(cd "$polish_dir/repo/sub/deeper" && HOME="$polish_dir/home" python3 -B -c 'import os, runpy, sys
+m = runpy.run_path(sys.argv[1])
+top = os.path.realpath(sys.argv[2])
+want = os.path.join(os.environ["HOME"], ".claude", "projects", m["slug_for"](top))
+os.makedirs(want)
+label, found = m["resolve_input"](None, None)
+assert str(found) == want, (found, want)
+print("ok")' "$root/scripts/session-audit.py" "$polish_dir/repo" 2>&1)
+  eq "session-audit from a subdirectory falls back to the git toplevel's transcripts" "$polish_audit" "ok"
+fi
+# ---- end polish ----
 
 if [ $fail -eq 0 ]; then echo "  → passed"; else echo "  → failed"; fi
 exit $fail

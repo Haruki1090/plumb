@@ -75,8 +75,8 @@ Every other item gets exactly one state:
 
 Ask only the rulings that block the first lanes, in one batch.
 
-**3 Decompose.** Two or more signals from `plumb:graph` -> draw the graph; otherwise a lane
-list. One lane = one item (or one bundle sharing a source of truth) = one branch = one worktree.
+**3 Decompose.** Dependencies, parallel work, or several sources of truth that need coordination
+(`plumb:graph`) -> draw the graph; otherwise a lane list. One lane = one item (or one bundle sharing a source of truth) = one branch = one worktree.
 Inventory shared writes first (`playbooks/fan-out.md`, step 1): same file, migration numbering,
 lockfile, generated contracts -> bundle or serialize. **At most 3-4 live lanes.** Checks that take
 the whole machine run one at a time.

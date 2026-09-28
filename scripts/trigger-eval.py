@@ -9,7 +9,7 @@ Cases are a CSV with a header: id,prompt,expect
   expect = the skill that must fire (e.g. plumb:lead), or "-" meaning the skill under test must
   not fire. A case that expects another skill scores against that skill as well.
 """
-import argparse, csv, json, os, signal, subprocess, sys, time
+import argparse, csv, json, os, shutil, signal, subprocess, sys, time
 from pathlib import Path
 
 PLUGIN = "plumb"
@@ -78,7 +78,11 @@ def run_case(prompt, model, cwd, timeout, raw_path, plugin_dir=None):
                     break
         finally:
             if p.poll() is None:
-                os.killpg(p.pid, signal.SIGTERM)
+                # A group whose members already exited (zombies on macOS) refuses the signal.
+                try:
+                    os.killpg(p.pid, signal.SIGTERM)
+                except (ProcessLookupError, PermissionError):
+                    pass
             p.wait()
     skills, other, usage = observe(lines)
     return {"skills": skills, "first_tool": other, "first_request_tokens": usage,
@@ -105,20 +109,29 @@ def main():
     ap.add_argument("--skill", required=True, help="skill under test, e.g. plumb:lead")
     ap.add_argument("--model", action="append", default=[], help="repeatable; default: session default")
     ap.add_argument("--cwd", default=os.getcwd(), help="project the sessions start in")
-    ap.add_argument("--out", required=True, help="run directory (raw streams + results.jsonl)")
+    ap.add_argument("--out", required=True,
+                    help="run directory (raw streams + results.jsonl; results.jsonl is rewritten each run)")
     ap.add_argument("--timeout", type=int, default=180, help="seconds per case")
     ap.add_argument("--only", help="comma-separated case ids")
     ap.add_argument("--plugin-dir", help="load this checkout of the plugin instead of the installed one")
     a = ap.parse_args()
 
-    cases = list(csv.DictReader(open(a.cases, newline="")))
+    try:
+        with open(a.cases, newline="") as f:
+            cases = list(csv.DictReader(f))
+    except OSError as e:
+        sys.exit(f"trigger-eval: cannot read --cases: {e}")
     if a.only:
         keep = set(a.only.split(","))
         cases = [c for c in cases if c["id"] in keep]
     if not cases:
         sys.exit("no cases")
+    if not shutil.which("claude"):
+        sys.exit("trigger-eval: the claude CLI is not on PATH; install Claude Code or fix PATH")
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
+    # One run, one results file: a rerun into the same --out must not mix in the old rows.
+    (out / "results.jsonl").write_text("")
     summary = []
     for model in a.model or [""]:
         rows = []

@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Review a large or irreversible PR as the person who holds the approval. Fires on a bare GitHub PR URL (https://github.com/<owner>/<repo>/pull/<n>). Use when asked to "review this PR", "is this safe to approve", "a review request came in", or "take a look at this PR" - cross-checks the body's claims against the facts of the diff, runs refuters and reproduction tests in parallel, and returns confidence and blocking separately.
+description: Review a pull request as the approver, checking its claims against the diff with independent refutation and reproduction. Use when asked to "review this PR" or "is this safe to approve"; a bare GitHub PR URL is a review request unless context says otherwise.
 ---
 
 # PR review v1.1
@@ -30,7 +30,7 @@ conditions appear to match**. Calling them turns the review into a different tas
 
 | Do not call | Why |
 |---|---|
-| `plumb:graph` | Every trigger condition matches (several files, parallelism, alignment with a design doc, subagents), but it is a **pre-work design** skill. It converts the review into a design task |
+| `plumb:graph` | A large PR looks like its territory (dependencies, parallel work, several sources of truth, verification), but it is a **pre-work design** skill. It converts the review into a design task |
 | `/simplify` | "Clean this up" lands on it. It is quality-only and it applies fixes. Against principle 6 |
 | plumb's `playbooks/shaping-the-work.md` | A design conversation starts. Review is not creative work |
 | plumb's `playbooks/being-reviewed.md` | The **author's** playbook. Wearing both hats on one PR leaves a record of you judging your own diff. It is what the author reads after you return, not what you read |
@@ -93,11 +93,15 @@ Build **two independent** sets of claims.
 **(a) From the body** — pull out of the PR body and the commit messages only the claims whose truth can be
 decided. Do not verify them here.
 
-**(b) From the diff** — hand the `pr-diff-reader` agent **only the diff file you dumped in stage 0**.
+**(b) From the diff** — hand the `plumb:pr-diff-reader` agent **only the diff file you dumped in stage 0**.
 It is an explorer-shaped role: when `plumb-config role.explorer.model` resolves, pass that as its
 `model`; unset, it inherits the main session's.
 That agent holds nothing but `Read` / `Grep` / `Glob`, so **it cannot fetch the body**.
 Tool permissions enforce this, not a polite instruction.
+
+The six bundled agents live in `agents/`: `pr-diff-reader`, `pr-invariant`, `pr-cutover`, `pr-repro`,
+`pr-refuter`, `pr-blindspot`. Launch each by its plugin-qualified name (`plumb:pr-refuter` and so on).
+An installed plugin does not register the bare name, and it can resolve to an unrelated personal agent.
 
 Then **take the set difference.**
 
@@ -130,9 +134,9 @@ E is conditional: add it only when it lands.
 | Axis | How it runs | Territory |
 |---|---|---|
 | **A. Line-level correctness** | `/code-review <effort> <the paths from stage 2>` | whether the code is correct |
-| **B. Invariants** | `pr-invariant` agent | properties spanning several places |
-| **C. The cutover path** | `pr-cutover` agent | procedure, operations, irreversibility |
-| **D. Reproduction** | `pr-repro` agent (**worktree isolation required**) | promoting or killing a PLAUSIBLE |
+| **B. Invariants** | `plumb:pr-invariant` agent | properties spanning several places |
+| **C. The cutover path** | `plumb:pr-cutover` agent | procedure, operations, irreversibility |
+| **D. Reproduction** | `plumb:pr-repro` agent (**worktree isolation required**) | promoting or killing a PLAUSIBLE |
 | **E. Another family** (conditional) | `plumb:interrogate` | blind spots one family shares |
 
 **On E.** A through D split the **roles**, but **every one of them runs inside the same model family**.
@@ -174,7 +178,7 @@ Whatever you dropped goes into stage 6's "what I did not look at", without excep
 **Record the "too large" refusal itself as a finding.** A diff too big for automated review is material
 for the case that it should have been split.
 
-**On D.** Of the PLAUSIBLE findings out of B and A, hand the reproducible kind to `pr-repro`.
+**On D.** Of the PLAUSIBLE findings out of B and A, hand the reproducible kind to `plumb:pr-repro`.
 They can be promoted to `CONFIRMED = a failing test was written and it actually failed`.
 
 Keep the asymmetry of reach in view at all times.
@@ -189,7 +193,7 @@ So **axis C tops out at PLAUSIBLE by construction**. Do not let that invert into
 **On an irreversible change, axis C is usually the frightening one.**
 What confidence cannot cover, cover by raising blocking.
 
-**Put `pr-refuter` on every finding. On a BLOCK candidate, without exception.**
+**Put `plumb:pr-refuter` on every finding. On a BLOCK candidate, without exception.**
 When in doubt, fall to the refuting side.
 Each refuter has a 30-tool-call budget; `PLAUSIBLE - budget spent` counts as no refutation, so the finding keeps its confidence and the verdict's confidence section states that the refuter spent its budget.
 
@@ -232,7 +236,7 @@ asked — they get dropped otherwise.
 
 ### 4. Inspecting the blank space
 
-Stand up one `pr-blindspot` agent. Ask it one thing only: what impact area does this PR body never once
+Stand up one `plumb:pr-blindspot` agent. Ask it one thing only: what impact area does this PR body never once
 touch?
 
 ### 5. The verdict

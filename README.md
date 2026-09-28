@@ -8,7 +8,7 @@
 A Claude-first harness, with an additive Codex adapter, that makes discipline *namable*: every principle has a
 name you can call it by, judgment is routed to a different model family than the
 one that wrote the code, and **skipping is allowed but never silent** — a skipped
-step leaves a `skip: <reason>` line you cannot delete.
+judgment pass leaves a visible `skip: <reason>` line.
 
 ## What it adds
 
@@ -16,19 +16,19 @@ plumb is self-contained: 24 playbooks covering the whole arc of a unit of work �
 shaping it, planning it, running the plan task by task, fixing what breaks,
 writing the tests, and landing the result. It depends on no other plugin.
 
-- **Visible skip.** A non-trivial task must open a todo line for the judgment
-  pass. That line closes one of two ways: it runs, or it carries an explicit
-  `skip: <reason>`. It cannot be deleted. A todo list with no judgment line is
-  itself the evidence the discipline was dropped — which makes the omission
-  reviewable instead of invisible.
+- **Visible skip.** Non-trivial plumb work keeps one visible todo line for the
+  judgment pass. That line closes one of two ways: the configured independent
+  review runs, or the line carries an explicit `skip: <reason>`. A skip does not
+  stop safe, authorized work, and it is never reported as independent
+  verification — which makes the omission reviewable instead of invisible.
 - **Judgment in another family.** The model that wrote the code is the worst
   reviewer of it: it shares the blind spots that produced the bug. plumb routes
   the adversarial pass to a different model family and treats a same-family-only
   verdict as unreviewed.
 - **A principle index you call by name.** 23 principles, each with a
-  name. Citing one obliges you to name the specific decision it changed — a
-  quotation with no decision attached is treated as proof the leaf was never
-  read. Naming turns "be careful" into something a reviewer can check. Each
+  name. A principle is read in full when its decision criterion applies, and
+  cited alongside the specific decision it changed rather than narrated rule by
+  rule. Naming turns "be careful" into something a reviewer can check. Each
   principle states *why it is hard to keep* — the mechanism that makes people
   and models break it — and how to tell afterwards whether it was kept.
 - **A harness that checks its own claims.** Documentation rots silently: a
@@ -59,11 +59,13 @@ Beyond the router, the 24 playbooks and the 23 principles, plumb ships these ski
   review → local checks → ready PR. Stops at a ready PR; the owner merges.
 - **`plumb:graph`** — pre-work execution-graph design for goals that are large,
   parallelizable, or need to stay aligned with a source-of-truth doc.
-- **`plumb:decision-brief`** — turns a branching decision into a one-page HTML
-  comparison plus an `AskUserQuestion` call with matching labels, instead of a
-  wall of prose.
+- **`plumb:decision-brief`** — hands a branching decision back to the owner as
+  options compared on the same axes, with a recommendation: a compact table for
+  a simple choice, a standalone HTML brief when the comparison is complex or
+  visual, then one question using the same option labels — instead of a wall of
+  prose.
 - **`plumb:doctor`** — checks whether the environment plumb's docs claim (routed
-  tools, bundled agents, dependency plugins) actually exists on this machine.
+  tools, bundled agents, paths, plugin loading) actually exists on this machine.
 
 The `plumb-bench-extract` and `plumb-bench-score` commands build a pruned review corpus and compare
 agent configurations by precision, recall, F1, and tokens per review.
@@ -80,9 +82,9 @@ From a shell instead:
     claude plugin marketplace add Haruki1090/plumb
     claude plugin install plumb@plumb
 
-Nothing else is required. plumb has no plugin dependencies — `scripts/doctor.sh`
-checks only the tools you chose to route roles to, and reports `--` for the ones
-you left unset.
+Nothing else is required. plumb has no plugin dependencies — beyond git and gh,
+`scripts/doctor.sh` checks only the tools you chose to route roles to, and reports
+`--` for the ones you left unset.
 
 ### Codex (sidecar)
 
@@ -131,10 +133,24 @@ To route a role elsewhere, write `~/.claude/plumb/config`:
     stack.tool   = gh-stack    # stacked-PR tooling
     bench.corpus = <directory> # private evaluation corpus (see playbooks/evaluating-an-agent.md)
 
-Run `plumb-doctor` from a shell to see what is wired and what is unset (installing the
-plugin puts it on your PATH). Unset reads `--`, never `NG` — plumb does not report a
-tool you chose not to install as breakage. From inside Claude Code, the `doctor` skill
-covers the same ground.
+One `key = value` per line. A line starting with `#` is a comment, and so is
+everything after whitespace followed by `#`. Wrap a value in double or single
+quotes to keep a `#` or surrounding spaces; the quotes themselves are dropped. A
+key with an empty value counts as unset. A role value may be a whole command line
+(`role.judge = codex exec`); doctor checks only its first word against PATH.
+
+Claude Code puts the plugin's `bin/` on PATH for its own Bash tool, not for your
+login shell. Run `plumb-doctor` from Claude Code's Bash tool, or use the `doctor`
+skill; from an ordinary terminal, call it by its path in the plugin cache,
+`~/.claude/plugins/cache/plumb/plumb/<version>/bin/plumb-doctor`. It shows what is
+wired and what is unset. Unset reads `--`, never `NG` — plumb does not report a
+tool you chose not to install as breakage.
+
+Specs, plans and run ledgers go under `<repo>/.plumb/` by default; `plumb-path
+--help` lists the kinds and the `PLUMB_ROOT` / `.plumb/config` overrides (`root =`
+follows the same format as above). Specs and plans are tracked and stay with the
+checkout. `run/` is untracked, so from a linked worktree it resolves to the main
+worktree's `.plumb/run` and outlives `git worktree remove`.
 
 Codex model placement lives separately in [`.codex/config.toml`](.codex/config.toml). Keeping the two
 configuration surfaces separate is intentional: Claude remains the primary harness, while Codex reuses

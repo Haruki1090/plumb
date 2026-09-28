@@ -1,6 +1,6 @@
 # Putting screenshots of a UI change in the PR
 
-The practical side of SKILL.md step 10. **A graph that touched frontend or UI pastes the screens into its result (best effort).**
+Use this reference when UI evidence is required or materially helps review. Capture only what supports the claim. Return local evidence unless uploading images, committing assets, or editing the PR is part of the authorized task; this reference does not grant those permissions.
 
 The conclusions first:
 
@@ -24,11 +24,12 @@ What you can **skip**: screens that did not change, another resolution of the sa
 
 ## 1. Secure the before state
 
-Capturing it before you start implementing is the cheapest route. If you forgot, expand the pre-change commit and capture that.
+Capturing it before you start implementing is the cheapest route. If you forgot, expand the pre-change commit in a fresh temporary directory and capture that. A commit does not contain pre-existing uncommitted edits: label that comparison accurately, or report that the exact before state is unavailable. Do not overwrite the current tree to reconstruct it.
 
 ```bash
-# expand just the target directory from the pre-change commit into /tmp
-git archive <before-sha> path/to/app | tar -x -C /tmp/before --strip-components=2
+# Expand into a new directory; use the returned path as BEFORE_DIR below.
+BEFORE_DIR=$(mktemp -d /tmp/ui-before.XXXXXX)
+git archive <before-sha> path/to/app | tar -x -C "$BEFORE_DIR" --strip-components=2
 ```
 
 Do not rewind the working tree with `git stash` or `git checkout`. **That takes down the nodes running in parallel with it.** Expanding somewhere else is safe.
@@ -38,7 +39,7 @@ Do not rewind the working tree with `git stash` or `git checkout`. **That takes 
 For a static mock, serve it over HTTP and use headless Chrome. Avoid `file://` — localStorage is sometimes unavailable there.
 
 ```bash
-cd /tmp/before && python3 -m http.server 8942 &
+cd "$BEFORE_DIR" && python3 -m http.server 8942 &
 cd path/to/app && python3 -m http.server 8941 &
 ```
 
@@ -99,12 +100,12 @@ Do not use JPEG for UI screenshots (the type smears). GitHub Markdown renders We
 | `gh release upload` | partly | a private repo still needs auth, and cutting a release for screenshots is the wrong shape |
 | Gist / external hosting | no | it puts a non-public screen outside |
 
-If you commit them, **a repository with no images in it yet is one where you are setting a new precedent.** Do not do it silently.
+Commit images only when repository asset changes are within the request. **A repository with no images in it yet is one where you are setting a new precedent.** Resolve that choice before adding them; offering later deletion is not a substitute for authorization.
 
 - Put them next to the source of that screen (`mocks/<release>/screenshots/` or similar)
 - **Put a README in the same directory** — the capture commands and an index. Without it, whoever comes next sees binaries of unknown origin
 - If there is a file-ownership list or a parent README, link from there
-- Write "delete these if you don't want them" in the PR body, and leave the call to the other side
+- State where the authorized evidence was stored and why
 
 ## 5. Paste them into the body
 
