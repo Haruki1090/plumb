@@ -119,7 +119,7 @@ while IFS= read -r name; do
   [ -f "$root/bin/plumb-$name" ] && continue
   if [ -f "$root/agents/$name.md" ]; then note "ok" "agents/$name.md"
   else bad "agents/$name.md is missing (skills/pr-review/SKILL.md names it)"; fi
-done < <(grep -oE '`pr-[a-z-]+`' "$root/skills/pr-review/SKILL.md" | tr -d '`' | sort -u)
+done < <(grep -oE '`(plumb:)?pr-[a-z-]+`' "$root/skills/pr-review/SKILL.md" | tr -d '`' | sed 's/^plumb://' | sort -u)
 
 # 3c. Is there an agent sitting in agents/ that nobody names (file -> body text)
 #     check-harness's rule 8 (the playbook and principle index) looks both ways, but agents were
@@ -128,7 +128,7 @@ done < <(grep -oE '`pr-[a-z-]+`' "$root/skills/pr-review/SKILL.md" | tr -d '`' |
 for f in "$root"/agents/*.md; do
   [ -f "$f" ] || continue
   n=$(basename "$f" .md)
-  grep -q "\`$n\`" "$root/skills/pr-review/SKILL.md" \
+  grep -qE "\`(plumb:)?$n\`" "$root/skills/pr-review/SKILL.md" \
     || bad "no body text names agents/$n.md (orphan agent)"
 done
 

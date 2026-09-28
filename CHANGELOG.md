@@ -2,6 +2,39 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.12.0] - 2026-09-29
+
+### Changed
+
+- The router, `shaping-the-work`, `plumb:graph`, `plumb:decision-brief` and `running-a-plan` are
+  shorter and less gate-heavy. Artifact paths, spec/plan rank and plan retirement moved to
+  `docs/artifact-lifecycle.md`. The rest of the corpus (prototype, writing-a-plan, writing-tests,
+  lead, never-block-on-the-human, scope) now points at the new texts instead of removed sections.
+- Skill descriptions are shorter; the explicit triggers ("review this PR", a bare PR URL,
+  "run doctor", "use plumb") are kept.
+- `plumb-path run` resolves through the main worktree, so ledgers survive worktree removal.
+  spec, plan and history stay per checkout.
+- `plumb-config` and `plumb-path` drop trailing ` # comments` and surrounding quotes.
+- The Codex-only skills (`setup`, `plumb-codex`) say so in their descriptions.
+
+### Fixed
+
+- `plumb:pr-review` launches the bundled agents by their plugin names (`plumb:pr-refuter` and so
+  on). The bare names do not exist on a fresh install and can resolve to unrelated personal agents.
+- `plumb-worktree-audit` no longer marks a worktree with a closed, unmerged PR as `safe`, and no
+  longer truncates worktree paths that contain spaces.
+- `plumb-codex-install --project --force` no longer replaces a `.codex/config.toml` that plumb did
+  not write; it prints the settings to merge by hand.
+- `plumb-doctor`: a multi-word role command is checked by its first word; a fresh home without
+  `~/.claude/projects/` reads `--`, not NG; a machine without gh no longer reports a failing
+  selftest on top of the gh line; Codex mode reports a stale profile or agents.
+- The README no longer claims the plugin puts `plumb-doctor` on the shell PATH, and its config
+  example parses.
+- `-h`/`--help` works on every `plumb-*` command. `plumb-trigger-eval` gives a clear error without
+  `claude` and no longer appends to a previous run's results. `plumb-lead-grade` and
+  `plumb-session-audit` handle paths with spaces and subdirectories; `plumb-host-shots` encodes
+  URLs and refuses duplicate names.
+
 ## [0.11.0] - 2026-09-23
 
 ### Added

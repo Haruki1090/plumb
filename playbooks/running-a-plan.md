@@ -96,7 +96,7 @@ judgment.
 **Hand the diff over as a file.** Do not load the diff into the main session's context.
 
     from=<the starting commit you wrote in the ledger>
-    pkg="$(plumb-path run)/task-3.diff"
+    pkg="$(plumb-path run)/$(basename <plan path> .md)-task-3.diff"   # run/ is shared by every worktree
     git log --format='%h %s' "$from"..HEAD  >  "$pkg"
     git diff --stat          "$from"..HEAD >> "$pkg"
     git diff -U10            "$from"..HEAD >> "$pkg"
