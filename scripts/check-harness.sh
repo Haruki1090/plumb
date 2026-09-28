@@ -3,6 +3,15 @@
 # Usage: scripts/check-harness.sh [plugin-root]
 set -uo pipefail
 
+case "${1:-}" in
+  -h|--help)
+    printf 'usage: plumb-check [plugin-root]\n\n'
+    printf 'Runs the cross-cutting rule checks over a plumb checkout (default: this one).\n'
+    printf 'Exits 0 when every check passes, 1 otherwise.\n'
+    exit 0 ;;
+  -*) printf 'plumb-check: unknown option %s (see --help)\n' "$1" >&2; exit 2 ;;
+esac
+[ -z "${1:-}" ] || [ -d "$1" ] || { printf 'plumb-check: not a directory: %s (see --help)\n' "$1" >&2; exit 2; }
 root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 SKILLS_DIR="$root/skills"
 ROOT_SKILL="$root/SKILL.md"

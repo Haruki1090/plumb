@@ -12,6 +12,9 @@
 # Keep it outside the tree (under gitignore), so it survives a revert.
 set -euo pipefail
 
+case "${1:-}" in
+  -h|--help) awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
+esac
 [ "$#" -ge 2 ] || { printf 'usage: decision-log.sh <logfile> [--header] <value>...\n' >&2; exit 1; }
 logfile="$1"; shift
 

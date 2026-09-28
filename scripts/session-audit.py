@@ -8,6 +8,7 @@ import json
 import math
 import os
 import re
+import subprocess
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -56,6 +57,16 @@ def slug_for(path: str) -> str:
     return re.sub(r"[^A-Za-z0-9]", "-", os.path.abspath(os.path.expanduser(path)))
 
 
+def git_toplevel(cwd: str) -> str | None:
+    try:
+        out = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    top = out.stdout.strip()
+    return top if out.returncode == 0 and top else None
+
+
 def direct_transcripts(directory: Path) -> list[Path]:
     return [path for path in directory.iterdir() if path.is_file() and path.suffix == ".jsonl"]
 
@@ -71,6 +82,11 @@ def resolve_input(project: str | None, transcripts: str | None) -> tuple[str, Pa
     if project is None:
         slug = slug_for(os.getcwd())
         candidates = [(slug, projects_root / slug)]
+        # Claude Code names the directory after the directory the session started in, usually
+        # the repository root; from a subdirectory, fall back to the git toplevel.
+        top = git_toplevel(os.getcwd())
+        if top and slug_for(top) != slug:
+            candidates.append((slug_for(top), projects_root / slug_for(top)))
     else:
         candidates = []
         if re.fullmatch(r"[-A-Za-z0-9]+", project):

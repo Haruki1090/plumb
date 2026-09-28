@@ -13,6 +13,9 @@
 # Residue that was already there makes the first case look guilty. Fail on it first and check.
 set -uo pipefail
 
+case "${1:-}" in
+  -h|--help) awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
+esac
 [ "$#" -ge 3 ] || {
   printf 'usage: isolate-pollution.sh <residue check> <command that runs one case> <target>...\n' >&2
   exit 2

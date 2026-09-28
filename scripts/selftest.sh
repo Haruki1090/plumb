@@ -854,5 +854,52 @@ if command -v python3 >/dev/null 2>&1; then
     || ng "skill evals: trigger observation, scoring, and lead-grade checks on synthetic transcripts"
 fi
 
+# ---- polish: script usage and input validation (host-shots, session-audit, --help) ----
+polish_dir="$sandbox_root/polish"
+mkdir -p "$polish_dir/shots/a" "$polish_dir/shots/b"
+git init -q "$polish_dir/repo" && git -C "$polish_dir/repo" remote add origin git@github.com:o/r.git
+printf x > "$polish_dir/shots/a/my shot.png"; printf y > "$polish_dir/shots/a/s.png"; printf z > "$polish_dir/shots/b/s.png"
+polish_md=$(cd "$polish_dir" && bash "$root/scripts/host-shots.sh" --repo repo --branch assets/x \
+  --file "shots/a/my shot.png" --dry-run 2>/dev/null)
+eq "host-shots percent-encodes a space in the image URL" "$polish_md" \
+  "![my shot](https://github.com/o/r/raw/assets/x/my%20shot.png)"
+polish_err=$(cd "$polish_dir" && bash "$root/scripts/host-shots.sh" --repo repo --branch assets/x \
+  --file shots/a/s.png --file shots/b/s.png --dry-run 2>&1 >/dev/null); polish_rc=$?
+case "$polish_rc|$polish_err" in 1*'two images would both be named s.png'*) ok "host-shots refuses two images with the same name";;
+  *) ng "host-shots duplicate name not refused: [$polish_rc|$polish_err]";; esac
+for polish_flag in --branch --repo --message; do
+  polish_err=$(bash "$root/scripts/host-shots.sh" "$polish_flag" 2>&1); polish_rc=$?
+  eq "host-shots names $polish_flag when its value is missing" "$polish_rc|$polish_err" \
+    "1|host-shots: $polish_flag needs a value (see --help)"
+done
+polish_err=$(bash "$root/scripts/host-shots.sh" --branch --dry-run 2>&1); polish_rc=$?
+eq "host-shots does not take the next flag as --branch's value" "$polish_rc|$polish_err" \
+  "1|host-shots: --branch needs a value (see --help)"
+
+for polish_cmd in "bin/plumb-check" "bin/plumb-pr-drift" "bin/plumb-statusline-cost" \
+                  "bin/plumb-decision-log" "bin/plumb-isolate-pollution"; do
+  [ -e "$root/$polish_cmd" ] || continue
+  polish_out=$("$root/$polish_cmd" --help </dev/null 2>/dev/null); polish_rc=$?
+  case "$polish_rc|$polish_out" in 0*[Uu]sage*|0*"Append one row"*|0*"Isolate the polluter"*) ok "$polish_cmd --help prints usage and exits 0";;
+    *) ng "$polish_cmd --help: [$polish_rc|$polish_out]";; esac
+done
+polish_err=$("$root/bin/plumb-pr-drift" o/r 2>&1); polish_rc=$?
+case "$polish_rc|$polish_err" in 2*'expected 2 arguments'*) ok "plumb-pr-drift explains a missing PR number";;
+  *) ng "plumb-pr-drift usage error unreadable: [$polish_rc|$polish_err]";; esac
+
+if command -v python3 >/dev/null 2>&1; then
+  mkdir -p "$polish_dir/repo/sub/deeper" "$polish_dir/home"
+  polish_audit=$(cd "$polish_dir/repo/sub/deeper" && HOME="$polish_dir/home" python3 -B -c 'import os, runpy, sys
+m = runpy.run_path(sys.argv[1])
+top = os.path.realpath(sys.argv[2])
+want = os.path.join(os.environ["HOME"], ".claude", "projects", m["slug_for"](top))
+os.makedirs(want)
+label, found = m["resolve_input"](None, None)
+assert str(found) == want, (found, want)
+print("ok")' "$root/scripts/session-audit.py" "$polish_dir/repo" 2>&1)
+  eq "session-audit from a subdirectory falls back to the git toplevel's transcripts" "$polish_audit" "ok"
+fi
+# ---- end polish ----
+
 if [ $fail -eq 0 ]; then echo "  → passed"; else echo "  → failed"; fi
 exit $fail
