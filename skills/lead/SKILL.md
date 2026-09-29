@@ -25,7 +25,7 @@ and anything they forbid. Read them first.
 | Seat | Who | Never |
 |---|---|---|
 | Coordinator | The main session | Writes lane code or carries lane history (**principle-guard-the-context-window**) |
-| Implementer, one per lane | `role.bulk`, else the implementer role (`docs/role-map.md`) | Pushes, opens PRs, reviews itself, writes spec or plan files |
+| Implementer, one per lane | `role.implementer`, else `role.bulk`, else the implementer role's `Task` (`docs/role-map.md`) | Pushes, opens PRs, reviews itself, writes spec or plan files |
 | Reviewer | `role.judge`, else a fresh seat | Edits the code under review |
 
 Lanes run through `pane.driver`, one tab per lane. Unset -> isolated subagents and

@@ -12,10 +12,12 @@
 #
 #   role.judge   = <command>
 #   role.bulk    = <command>
+#   role.implementer = <command>   started in a pane through pane.driver (docs/role-map.md)
 #   pane.driver  = <command>
 #   stack.tool   = gh-stack
 #   role.explorer.model     = <model>   the one key whose value is a model name; it lives here so
 #                                        that no document has to carry one (docs/role-map.md)
+#   role.implementer.model  = <model>   the same, for the implementer's Task fallback
 #   cost.session_budget_usd = <usd>     expected spend for one session; plumb-statusline-cost
 #                                        colours the running cost at 50 / 80 / 100 % of it
 #   cost.jpy_per_usd        = <rate>    adds a yen figure beside the dollar one

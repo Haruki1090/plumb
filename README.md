@@ -122,13 +122,15 @@ does not pretend to satisfy plumb's genuinely different-family judge requirement
 
 ## Claude configuration
 
-plumb works with nothing configured. Unset roles fall back to the main session,
-which says so instead of pretending the pass happened.
+plumb works with nothing configured. Unset roles fall back to the main session (the
+implementer to a subagent), which says so instead of pretending the pass happened.
 
 To route a role elsewhere, write `~/.claude/plumb/config`:
 
     role.judge   = <command>   # adversarial pass, ideally another model family
     role.bulk    = <command>   # mechanical fan-out
+    role.implementer = <command>   # implementer started in a visible pane, e.g. a lighter model tier
+    role.implementer.model = <model>  # the implementer's subagent fallback; unset inherits
     pane.driver  = <command>   # terminal multiplexer for long-running work
     stack.tool   = gh-stack    # stacked-PR tooling
     bench.corpus = <directory> # private evaluation corpus (see playbooks/evaluating-an-agent.md)

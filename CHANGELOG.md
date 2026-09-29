@@ -2,6 +2,25 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.13.0] - 2026-09-30
+
+### Added
+
+- `role.implementer`: a config key holding the command that starts the implementer role in a
+  visible pane through `pane.driver`. The main session keeps design, verification and integration;
+  the implementer takes a bounded brief, so the key can point at a lighter model tier. Unset keeps
+  the `Task` subagent.
+- `role.implementer.model`: the `model` for that `Task` fallback; unset inherits.
+- `docs/role-map.md` states the implementer rules for every playbook: a report without check output
+  is not done, ambiguity comes back to the main session, one writer per file.
+- The lane brief tells the implementer to stop and report when the range or acceptance is unclear,
+  or when the same check fails twice for the same reason.
+
+### Changed
+
+- `plumb:lead` seats lane implementers from `role.implementer`, then `role.bulk`, then a `Task`.
+- `plumb-doctor` checks `role.implementer` alongside the other role commands.
+
 ## [0.12.0] - 2026-09-29
 
 ### Changed
