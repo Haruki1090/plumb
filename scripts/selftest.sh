@@ -18,8 +18,10 @@ echo "plumb selftest: $root"
 cfg=$(mktemp)
 sandbox_root=$(mktemp -d)
 trap 'rm -f "$cfg"; rm -rf "$sandbox_root"' EXIT
-printf 'role.judge = codex\nrole.bulk   =  cursor-agent  \nrole.explorer.model = tier-x\n' > "$cfg"
+printf 'role.judge = codex\nrole.bulk   =  cursor-agent  \nrole.explorer.model = tier-x\nrole.implementer = worker-cli --tier y\nrole.implementer.model = tier-y\n' > "$cfg"
 eq "plumb-config resolves role.explorer.model" "$(PLUMB_CONFIG=$cfg "$root/bin/plumb-config" role.explorer.model)" "tier-x"
+eq "plumb-config resolves role.implementer" "$(PLUMB_CONFIG=$cfg "$root/bin/plumb-config" role.implementer)" "worker-cli --tier y"
+eq "plumb-config keeps role.implementer and role.implementer.model apart" "$(PLUMB_CONFIG=$cfg "$root/bin/plumb-config" role.implementer.model)" "tier-y"
 eq "plumb-config leaves cost.session_budget_usd empty when unset" "$(PLUMB_CONFIG=$cfg "$root/bin/plumb-config" cost.session_budget_usd)" ""
 
 # Session-audit checks use synthetic transcripts and never read private session content.

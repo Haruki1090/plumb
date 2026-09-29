@@ -70,10 +70,15 @@ command -v python3 >/dev/null 2>&1 \
   || note "--" "python3 is not on PATH (needed only when you use plumb-pr-drift, plumb-session-audit, plumb-bench-extract or plumb-bench-score)"
 
 cfg() { bash "$root/scripts/plumb-config.sh" "$1" ""; }
-for k in role.judge role.bulk pane.driver; do
+keys="role.judge role.bulk role.implementer pane.driver"
+# Codex does not read role.implementer (docs/openai-runtime.md); a Claude-only command must not fail it.
+[ "$runtime" = codex ] && keys="role.judge role.bulk pane.driver"
+for k in $keys; do
   v=$(cfg "$k")
   if [ -z "$v" ]; then
-    note "--" "$k: unset (the main session stands in)"
+    [ "$k" = role.implementer ] \
+      && note "--" "$k: unset (a subagent stands in)" \
+      || note "--" "$k: unset (the main session stands in)"
   else
     # The value is a command line (`codex exec`, `herdr run`); only its first word has to be on PATH.
     set -f; set -- $v; set +f

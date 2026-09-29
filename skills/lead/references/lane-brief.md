@@ -22,6 +22,8 @@ Observable conditions for done, and the exact checks to run.
 ## Return
 - Commit locally on this branch. Do not push, open a PR, or create spec or plan files.
 - Do not open extra panes or tabs.
+- Stop and write the report instead of deciding when the range or acceptance is unclear, or when
+  the same check fails twice for the same reason.
 - Write the report to <absolute path>: what changed, checks run with exit status, open caveats.
 - Reply with the report path only.
 ```

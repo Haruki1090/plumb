@@ -32,6 +32,7 @@ is never replaced, even with `--force`; the installer lists the settings to merg
 | Main session | The current Codex thread (keep its selected model) |
 | Explorer `Task` | `plumb_explorer` |
 | Implementer `Task` | `plumb_worker` |
+| `role.implementer`, `role.implementer.model` | Not read, including by `plumb:lead` (its lanes use `role.bulk`, else `plumb_worker`); implementer work goes to `plumb_worker`, whose model lives in `.codex/agents/` |
 | `role.bulk` when unset | `plumb_bulk`, only after the fan-out independence test passes |
 | Same-family verification | `plumb_judge` |
 | `role.judge` | The command configured by `<plugin-root>/bin/plumb-config role.judge`; see the family rule below |
