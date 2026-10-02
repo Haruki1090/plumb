@@ -120,6 +120,30 @@ and a concurrency cap of four. Named agents spend Luna `max` only on bounded jud
 ambiguous implementation and integration stay on Sol. Sol and Luna are the same GPT-5.6 family, so this
 does not pretend to satisfy plumb's genuinely different-family judge requirement.
 
+### Updating
+
+Claude Code does not auto-update third-party marketplaces by default. To turn it on once, open
+`/plugin`, go to the **Marketplaces** tab, select `plumb`, and choose **Enable auto-update**. Claude Code
+then checks for a new version at startup; start a new session or run `/reload-plugins` to apply it.
+
+To update by hand instead:
+
+    claude plugin marketplace update plumb
+    claude plugin update plumb@plumb
+
+Restart Claude Code afterwards. If you set `DISABLE_AUTOUPDATER`, plugin auto-update stops too; add
+`FORCE_AUTOUPDATE_PLUGINS=1` to keep updating plugins while Claude Code itself stays pinned.
+
+For Codex, refresh the marketplace snapshot, then reinstall the plugin:
+
+```bash
+codex plugin marketplace upgrade plumb
+codex plugin add plumb@plumb
+```
+
+If you ran `$plumb:setup`, run it again in a new session so the copied profile and `plumb-*` agents
+match the new version; it asks before overwriting files that differ.
+
 ## Claude configuration
 
 plumb works with nothing configured. Unset roles fall back to the main session (the

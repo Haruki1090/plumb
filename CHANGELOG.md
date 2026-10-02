@@ -2,6 +2,14 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.13.1] - 2026-10-03
+
+### Added
+
+- README: an "Updating" section. It covers turning on auto-update for the plumb marketplace in
+  Claude Code, the manual update commands for Claude Code and Codex, and re-running `$plumb:setup`
+  so the copied Codex profile and agents follow the new version.
+
 ## [0.13.0] - 2026-09-30
 
 ### Added
