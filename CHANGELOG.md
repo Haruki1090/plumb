@@ -30,8 +30,9 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
 
 ### Changed
 
-- The spec identifies a request without `requestId` by `message.id` (measured: in one cloud
-  session 248 of 917 assistant records carried `requestId`).
+- The spec identifies a Claude request by `message.id` alone: every assistant record carries it and
+  the copies of one request share it, while `requestId` is absent on many records (in one cloud
+  session only 248 of 917 carried it), and mixing the two keys counts one request twice.
 
 ## [0.14.0] - 2026-10-30
 
