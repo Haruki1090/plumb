@@ -2,6 +2,37 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.15.0] - 2026-10-30
+
+### Added
+
+- `plumb-ledger changes`: one record per landed change of a repository and period, from GitHub REST
+  and the local clone: the landing (merge, squash, rebase), attribution from the pull request's own
+  commits (marked `incomplete` with a second source when the 250-commit list is cut short), classes
+  from the contract's `ledger.classify` rules, and the `Fixes-PR:` line parsed with
+  `plumb-check-fixes`'s grammar. Direct commits are separate records. A shallow clone short of the
+  period exits 2 with the fetch it needs.
+- `plumb-ledger rework`: the rework rate over a period for the contract's `required_authors`, with
+  pending windows reported instead of counted clean and a fix listing several originals counted for
+  each.
+- Cost per task, opt-in with `ledger.capture = on`: plumb's first hook (`Stop`) captures each new
+  request's tokens and attribution in the background, reading transcripts incrementally;
+  `plumb-ledger capture` does the same by hand, for Claude Code and Codex. Records hold only an
+  allowlist of fields and live in `~/.claude/plumb/ledger`.
+- A versioned price table (`assets/prices.json`, checked 2026-10-30) with per-request long-context
+  tiers; unknown models and missing tokens give unknown cost, counted.
+- `plumb-ledger export`: pushes each session's records to the owner's private store
+  (`ledger.store`) at `refs/plumb-ledger/<runtime>/<session>`, idempotently and non-interactively;
+  a failure keeps them pending. `plumb-ledger prs` and `plumb-ledger report`: unique task assignment
+  (repository, head ref, pull request) and the weekly report with coverage.
+- `plumb-doctor` gains a `ledger` block (capture on or off, the store preflight).
+- `docs/ledger.md`.
+
+### Changed
+
+- The spec identifies a request without `requestId` by `message.id` (measured: in one cloud
+  session 248 of 917 assistant records carried `requestId`).
+
 ## [0.14.0] - 2026-10-30
 
 ### Added

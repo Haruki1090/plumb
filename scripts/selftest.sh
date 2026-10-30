@@ -1394,6 +1394,15 @@ else
 fi
 
 if command -v python3 >/dev/null 2>&1; then
+  python3 -B "$root/scripts/test-ledger-changes.py" >/dev/null \
+    && ok "work ledger: landed changes (merge, squash, rebase, pagination, shallow clone) and the rework rate" \
+    || ng "work ledger: landed changes and the rework rate (run scripts/test-ledger-changes.py)"
+  python3 -B "$root/scripts/test-ledger-cost.py" >/dev/null \
+    && ok "cost per task: capture, identity, price, export, task assignment, report, hook latency" \
+    || ng "cost per task (run scripts/test-ledger-cost.py)"
+fi
+
+if command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-skill-evals.py" >/dev/null \
     && ok "skill evals: trigger observation, scoring, and lead-grade checks on synthetic transcripts" \
     || ng "skill evals: trigger observation, scoring, and lead-grade checks on synthetic transcripts"

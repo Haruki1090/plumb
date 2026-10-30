@@ -21,6 +21,10 @@
 #   cost.session_budget_usd = <usd>     expected spend for one session; plumb-statusline-cost
 #                                        colours the running cost at 50 / 80 / 100 % of it
 #   cost.jpy_per_usd        = <rate>    adds a yen figure beside the dollar one
+#   ledger.capture          = on        turn on the Stop hook that records each request's tokens
+#                                        and attribution (off unless exactly `on`; docs/ledger.md)
+#   ledger.store            = <git URL> the owner's private repository the records are exported
+#                                        to, one ref per session; unset keeps them local
 #
 # **"Not configured" is not an error.** Unset still exits 0 and returns the default.
 # Exit 1 here and every caller ends up writing || true, which hides the real failures.
