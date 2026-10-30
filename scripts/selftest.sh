@@ -1041,6 +1041,106 @@ else
   printf '  %-4s %s\n' "--" "python3 not on PATH, plumb-project assertions skipped"
 fi
 
+# plumb-check-fixes: the Fixes-PR line. The checker never reads policy itself; the caller passes
+# the author, the required-authors list and the pull request number from a trusted source.
+if command -v python3 >/dev/null 2>&1; then
+  cf_dir="$sandbox_root/cf"; mkdir -p "$cf_dir"
+  # cfr <args>: sets cf_code (exit status) and cf_err (stderr); stdout is not used.
+  cfr() { cf_out=$("$root/bin/plumb-check-fixes" "$@" 2>"$sandbox_root/cf-err"); cf_code=$?; cf_err=$(cat "$sandbox_root/cf-err"); }
+  # cfb <body> <pr>: check a body (printf %b escapes) as the required author alice.
+  cfb() { printf '%b' "$1" > "$cf_dir/body"; cfr --author alice --required-authors alice --pr "${2:-9}" --body-file "$cf_dir/body"; }
+
+  cfr --author bob --required-authors alice --pr 5 --body-file "$cf_dir/does-not-exist"
+  eq "plumb-check-fixes: a non-required author passes without opening the body file" "$cf_code|$cf_err" "0|"
+  cfr --author bob --required-authors "" --pr 5 --body-file "$cf_dir/does-not-exist"
+  eq "plumb-check-fixes: an empty required list requires nobody" "$cf_code" "0"
+  cfr --author "" --required-authors "" --body-file "$cf_dir/does-not-exist"
+  eq "plumb-check-fixes: no author and nobody required passes" "$cf_code" "0"
+  printf 'Fixes-PR: none\n' > "$cf_dir/body"
+  cfr --author ALICE --required-authors " bob , ,Alice" --pr 9 --body-file "$cf_dir/body"
+  eq "plumb-check-fixes: the author match is case-insensitive and trims the list" "$cf_code" "0"
+  cfr --author alice --required-authors alice --pr 9 --body-file "$cf_dir/does-not-exist"
+  eq "plumb-check-fixes: a required author with an unreadable body file fails" "$cf_code" "1"
+  cfr --author "" --required-authors alice --pr 9 --body-file "$cf_dir/body"
+  eq "plumb-check-fixes: an empty author with a non-empty required list fails closed" "$cf_code" "1"
+  cfr --author alice --required-authors alice --body-file "$cf_dir/body"
+  eq "plumb-check-fixes: a required author without --pr fails" "$cf_code" "1"
+  for cf_pr in abc 0 -3 1x "" 1234567890; do
+    cfr --author alice --required-authors alice --pr "$cf_pr" --body-file "$cf_dir/body"
+    eq "plumb-check-fixes: a required author with --pr [$cf_pr] fails" "$cf_code" "1"
+  done
+
+  cfb 'Fixes-PR: none\n';                       eq "plumb-check-fixes: none is ok" "$cf_code" "0"
+  cfb 'Fixes-PR:none\n';                        eq "plumb-check-fixes: no space after the colon is ok" "$cf_code" "0"
+  cfb 'Fixes-PR: #12\n';                        eq "plumb-check-fixes: one number is ok" "$cf_code" "0"
+  cfb 'Fixes-PR: #12, #34\n';                   eq "plumb-check-fixes: a list with spaces is ok" "$cf_code" "0"
+  cfb 'Fixes-PR: #12,#34\n';                    eq "plumb-check-fixes: a list without spaces is ok" "$cf_code" "0"
+  cfb '## Why\r\ntext\r\nFixes-PR: #12\r\n\r\nmore\r\n'; eq "plumb-check-fixes: CRLF line endings are ok" "$cf_code" "0"
+  cfb 'intro\nFixes-PR: none'; eq "plumb-check-fixes: a last line with no newline is ok" "$cf_code" "0"
+  cfb '<!-- Fixes-PR: #1 -->\nFixes-PR: none\n'; eq "plumb-check-fixes: a Fixes-PR line inside a comment is not counted" "$cf_code" "0"
+  cfb 'a\n<!-- open\nFixes-PR: none\n';         eq "plumb-check-fixes: an unclosed comment is kept as text" "$cf_code" "0"
+  cfb 'Fixes-PR: none<!-- note -->\n';          eq "plumb-check-fixes: a trailing comment is removed" "$cf_code" "0"
+
+  # Each failure names its rule and exits 1.
+  while IFS='|' read -r cf_body cf_rule; do
+    [ -n "$cf_rule" ] || continue
+    cfb "$cf_body" 5
+    case "$cf_code|$cf_out|$cf_err" in "1||plumb-check-fixes: "*"$cf_rule"*) ok "plumb-check-fixes rejects: $cf_rule" ;;
+      *) ng "plumb-check-fixes did not reject [$cf_rule] for [$cf_body]: [$cf_code|$cf_out|$cf_err]" ;; esac
+  done <<'FIXES'
+no line here\n|no Fixes-PR line
+<!-- Fixes-PR: none -->\n|no Fixes-PR line
+  Fixes-PR: none\n|no Fixes-PR line
+fixes-pr: none\n|no Fixes-PR line
+Fixes-PR: none\nFixes-PR: none\n|more than one Fixes-PR line
+Fixes-PR: #1\nx\nFixes-PR: #2\n|more than one Fixes-PR line
+Fixes-PR:\n|malformed item
+Fixes-PR: None\n|malformed item
+Fixes-PR: #\n|malformed item
+Fixes-PR: #abc\n|malformed item
+Fixes-PR: 12\n|malformed item
+Fixes-PR: #1234567890\n|malformed item
+Fixes-PR: #12,\n|malformed item
+Fixes-PR: #12,,#13\n|malformed item
+Fixes-PR: none, #3\n|malformed item
+Fixes-PR: #1 #2\n|malformed item
+Fixes-PR: #12, #12\n|duplicate number
+Fixes-PR: #12, #034, #0012\n|duplicate number
+Fixes-PR: #5\n|lists this pull request
+Fixes-PR: #3, #5\n|lists this pull request
+FIXES
+  cfb 'Fixes-PR: #secretzzz\n'
+  case "$cf_err" in *zzz*) ng "plumb-check-fixes echoed the body" ;; *) ok "plumb-check-fixes never echoes the body in a message" ;; esac
+
+  cfr; eq "plumb-check-fixes with no arguments is a usage error" "$cf_code" "2"
+  cfr --author alice --required-authors alice --pr 5 --bogus; eq "plumb-check-fixes rejects an unknown option" "$cf_code" "2"
+  cfr --author --required-authors alice; eq "plumb-check-fixes treats a flag as a missing value" "$cf_code" "2"
+  cfr --author alice --required-authors alice --pr 5; eq "plumb-check-fixes: a required author without --body-file is a usage error" "$cf_code" "2"
+  cf_out=$("$root/bin/plumb-check-fixes" --help 2>/dev/null); cf_code=$?
+  case "$cf_code|$cf_out" in "0|usage: plumb-check-fixes"*) ok "plumb-check-fixes --help prints usage and exits 0" ;;
+    *) ng "plumb-check-fixes --help: [$cf_code|$cf_out]" ;; esac
+
+  # Stress: a 5 MB body must be answered in under 2 seconds whatever its shape (linear time, no
+  # backtracking). Measured in milliseconds around the call.
+  cf_stress() { # <label> <expected exit> <python expression building the body>
+    python3 -c "import sys; sys.stdout.write($3)" > "$cf_dir/stress"
+    cf_t0=$(date +%s%N)
+    cfr --author alice --required-authors alice --pr 5 --body-file "$cf_dir/stress"
+    cf_ms=$(( ($(date +%s%N) - cf_t0) / 1000000 ))
+    eq "plumb-check-fixes 5 MB $1: exit status" "$cf_code" "$2"
+    [ "$cf_ms" -lt 2000 ] && ok "plumb-check-fixes 5 MB $1 took ${cf_ms} ms (< 2000)" || ng "plumb-check-fixes 5 MB $1 took ${cf_ms} ms (limit 2000)"
+  }
+  cf_stress "Fixes-PR line of repeated numbers" 1 '"Fixes-PR: " + "#1, " * (5 * 1024 * 1024 // 4)'
+  cf_stress "line without a newline" 1 '"x" * (5 * 1024 * 1024)'
+  cf_stress "Fixes-PR line of distinct numbers" 0 '"Fixes-PR: " + ", ".join("#%d" % i for i in range(10, 700000))[:5 * 1024 * 1024].rsplit(",", 1)[0] + "\n"'
+  cf_stress "unclosed comments" 1 '"<!-- " * (5 * 1024 * 1024 // 5)'
+  cf_stress "closed comments" 1 '"<!-- x -->" * (5 * 1024 * 1024 // 10)'
+  cf_stress "many Fixes-PR lines" 1 '"Fixes-PR: none\n" * (5 * 1024 * 1024 // 15)'
+  cf_stress "carriage returns" 1 '"\r" * (5 * 1024 * 1024)'
+else
+  printf '  %-4s %s\n' "--" "python3 not on PATH, plumb-check-fixes assertions skipped"
+fi
+
 # doctor: a role holding a command line needs only its first word on PATH, and a fresh HOME that
 # has never run a Claude session (no ~/.claude/projects/) is "not yet", not NG.
 fresh_home="$sandbox_root/fresh-home"; mkdir -p "$fresh_home"
