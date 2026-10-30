@@ -915,11 +915,14 @@ def hook_input(sb: Sandbox, transcript: Path, cwd: Path) -> str:
 
 
 def python_shim(sb: Sandbox) -> tuple[Path, Path]:
-    """A python3 on PATH that leaves a mark when started, then runs the real one."""
+    """A python3 on PATH that leaves a mark when started and another when it exits."""
     shim_dir, mark = sb.root / "shim", sb.root / "python-started"
     shim_dir.mkdir()
     real = shutil.which("python3")
-    (shim_dir / "python3").write_text(f'#!/bin/sh\necho started >> "{mark}"\nexec "{real}" "$@"\n')
+    # Not exec: the shim outlives the real python by one line so it can mark the end. A process
+    # table is not portable (macOS has no /proc), the mark file is.
+    (shim_dir / "python3").write_text(f'#!/bin/sh\necho started >> "{mark}"\n"{real}" "$@"\nstatus=$?\n'
+                                      f'echo finished >> "{mark}"\nexit $status\n')
     (shim_dir / "python3").chmod(0o755)
     return shim_dir, mark
 
@@ -952,16 +955,6 @@ def _():
     assert run_hook(sb, payload, shim) < 0.2
     time.sleep(0.3)
     assert not mark.exists() and not sb.ledger.exists(), "Python was started or state was written with capture off"
-
-
-def hook_captures_running() -> bool:
-    for cmdline in Path("/proc").glob("[0-9]*/cmdline"):
-        try:
-            if b"ledger.py\0capture\0--hook-input" in cmdline.read_bytes():
-                return True
-        except OSError:
-            continue
-    return False
 
 
 def wait_for(predicate, seconds: float = 180) -> bool:
@@ -1008,7 +1001,7 @@ def _():
     assert wait_for(captured), "the background capture did not finish"
     assert wait_for(lambda: len(sb.pending()) == distinct), (len(sb.pending()), distinct)
     # Every queued hook run must have finished (they find nothing new) before the next bytes are appended.
-    assert wait_for(lambda: mark.read_text().count("started") == 24 and not hook_captures_running()), "hook runs did not drain"
+    assert wait_for(lambda: mark.read_text().count("finished") == 24), "hook runs did not drain"
     extra = [assistant(f"msg_new{i}", "2026-10-10T01:00:00Z", repo, "feat/a") for i in range(3)]
     with open(path, "a") as handle:
         handle.write("\n".join(extra) + "\n")
