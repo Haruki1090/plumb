@@ -139,7 +139,7 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
 ### E. Improvement loop
 
 - **Failure record.** `docs/failure-taxonomy.md` defines the record: a GitHub issue or pull request
-  labelled `agent-failure` whose body carries one `<!-- plumb-failure v1 {...} -->` block
+  labelled `agent-failure` whose body carries one `<!-- plumb:failure v1 {...} -->` block
   (`code`, `kind`, `category`, `layer`, `evidence`, `origin` — the change that introduced it), or a
   `findings.jsonl` line written by `plumb:verify`. The record's id is the issue number or the finding
   id. Collection is REST, paginated, and includes records **created** in the period even when updated

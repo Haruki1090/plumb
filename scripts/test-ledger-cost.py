@@ -500,6 +500,20 @@ def _():
     assert (report["unknown"]["ambiguous"], report["unknown"]["no_pull_request"], report["unknown"]["attribution"]) == (1, 2, 1)
 
 
+@case("--repo keeps one repository's requests and counts the others and the unknown ones without adding them")
+def _():
+    sb = Sandbox("repo-scope")
+    rows = [record(1, model=HAIKU, inp=50_000), record(2, repo="acme/other", model=HAIKU, inp=50_000),
+            record(3, repo=None, branch=None, model=HAIKU, inp=50_000)]  # under the long-context tier
+    put_pending(sb, "s1", rows)
+    everything = sb.report()
+    scoped = sb.report("--repo", "ACME/Widgets")
+    assert Decimal(everything["total_cost"]) == Decimal("0.015"), everything["total_cost"]
+    assert Decimal(scoped["total_cost"]) == Decimal("0.005"), scoped["total_cost"]
+    assert scoped["scope"] == {"repository": "ACME/Widgets", "other_repositories": 1, "unknown_repository": 1}, scoped["scope"]
+    assert "scope" not in everything
+
+
 @case("the report breaks cost down by model, frontier share, role, agent type and token kind, and the rework and landed splits")
 def _():
     sb = Sandbox("breakdown")

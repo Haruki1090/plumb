@@ -203,6 +203,14 @@ line) and what each task cost on which models. Cost capture is opt-in (`ledger.c
 (`ledger.store`), one ref per session, so cloud sessions are not lost with their container. Records,
 the allowlist and coverage are in [`docs/ledger.md`](docs/ledger.md).
 
+### The improvement loop
+
+An agent failure is recorded the same way everywhere: an `agent-failure` issue or pull request with
+one small block naming its code, kind, owning layer, evidence and origin
+([`docs/failure-taxonomy.md`](docs/failure-taxonomy.md)). `plumb:retro` reads a week of the ledger,
+cost and failures and proposes at most three changes; `plumb:failure-to-rule` takes one failure to
+the layer that should stop it, with the number that will show whether it did.
+
 ## Language
 
 plumb is written in English throughout — SKILL.md, the 24 playbooks, the 23

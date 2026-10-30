@@ -2,6 +2,29 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.16.0] - 2026-10-30
+
+### Added
+
+- `docs/failure-taxonomy.md`: what counts as an agent failure, the record (an `agent-failure`
+  issue or pull request carrying one `<!-- plumb:failure v1 {...} -->` block: code, kind, category,
+  layer, evidence, origin), the codes C01–C15 each defined by a repository-independent mechanism,
+  and which layer owns a fix.
+- `plumb-ledger failures`: collects failure records over REST, page by page, keeping every record
+  created in the period even when it was updated after it. A missing or malformed block is counted
+  with unknown fields, never guessed.
+- `plumb:retro`: the weekly look back for one repository (rework, cost, failures, coverage), ending
+  in at most three changes, each with its owning layer and the number to watch. It stops with the
+  failing command when a dependency is missing.
+- `plumb:failure-to-rule`: one failure to the layer that stops it, a measurement decided before the
+  change, and a draft change; a repository CI rule is proposed, never landed.
+- `evals/improvement-loop/`: trigger cases for both skills, and a worked example taken end to end
+  from a real failure (the "open a PR" routing fixed in 0.14.0, trigger recall 0.20 → 1.00).
+
+### Changed
+
+- The spec's failure record marker is `plumb:failure` (it was written `plumb-failure`, a shape
+  check-harness and readers take for a command).
 ## [0.15.2] - 2026-10-30
 
 ### Fixed

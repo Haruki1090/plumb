@@ -1,0 +1,11 @@
+id,prompt,expect
+R1,Run the weekly retro for this repository.,plumb:retro
+R2,Look back at last week: how did the agents do?,plumb:retro
+R3,What did the agent work cost this week and what should we change?,plumb:retro
+F1,Turn the agent-failure in issue #41 into a rule so it doesn't happen again.,plumb:failure-to-rule
+F2,Classify this agent failure and decide which layer should stop it.,plumb:failure-to-rule
+F3,Make sure the mistake in #37 doesn't happen again.,plumb:failure-to-rule
+N1,Fix the crash in the login form when the email field is empty.,-
+N2,Review https://github.com/octo/app/pull/42,plumb:pr-review
+N3,Show me this month's AWS bill.,-
+N4,Write a plan for the notification redesign.,-

@@ -1368,6 +1368,8 @@ def report_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rework", metavar="FILE", help="output of `plumb-ledger rework --json`: adds the cost of reworked changes")
     parser.add_argument("--store-cache", metavar="DIR", help="the cache repository for the store's refs (default: <ledger dir>/store-cache-<hash of the store URL>.git)")
     parser.add_argument("--ledger-dir", action="append", default=[], metavar="DIR", help="look here for local records (repeatable)")
+    parser.add_argument("--repo", metavar="OWNER/NAME", help="only this repository's requests; requests of other "
+                        "repositories, and those whose repository is unknown, are counted and left out")
     parser.add_argument("--timezone", metavar="ZONE", help="calendar days in this zone (default: ledger.timezone of the contract, else UTC)")
     parser.add_argument("--prices", metavar="FILE", default=str(PRICES_FILE), help=argparse.SUPPRESS)
     parser.add_argument("--now", metavar="ISO", help=argparse.SUPPRESS)
@@ -1398,6 +1400,15 @@ def cmd_report(argv: list[str]) -> int:
         if moment is not None and start <= moment < end:
             in_period.append(record)
     outside_time = sum(1 for record in merged if parse_time(record["time"]) is None)
+    scope = None
+    if args.repo:
+        # One repository's retro must not carry another's cost. A request whose repository is unknown
+        # cannot be placed: it is counted, never added.
+        wanted = args.repo.lower()
+        other = sum(1 for r in in_period if r.get("repository") and str(r["repository"]).lower() != wanted)
+        unknown = sum(1 for r in in_period if not r.get("repository"))
+        in_period = [r for r in in_period if r.get("repository") and str(r["repository"]).lower() == wanted]
+        scope = {"repository": args.repo, "other_repositories": other, "unknown_repository": unknown}
     pulls = load_prs(args.prs) if args.prs else None
     result = build_report(in_period, pulls, versions, now)
     period_ids = {record["id"] for record in in_period if record["id"]}
@@ -1411,6 +1422,8 @@ def cmd_report(argv: list[str]) -> int:
         "note": "cloud sessions are not covered (ledger.store is unset)" if not store else "",
     }
     result["period"] = {"since": args.since, "until": args.until, "timezone": label}
+    if scope:
+        result["scope"] = scope
     if args.changes:
         landed = landed_numbers(args.changes)
         split = {"landed": Decimal(0), "not_landed": Decimal(0)}
@@ -1495,6 +1508,10 @@ def print_report(result: dict[str, Any]) -> None:
           f"no pull request: {unknown['no_pull_request']}")
     print(f"  unidentified requests: {unknown['unidentified']}   id conflicts: {unknown['id_conflicts']}   "
           f"without a time: {unknown['time']}")
+    if result.get("scope"):
+        scope = result["scope"]
+        print(f"\nrepository: {scope['repository']} only; left out: {scope['other_repositories']} request(s) of other "
+              f"repositories, {scope['unknown_repository']} whose repository is unknown")
     print("\ncoverage: " + ("complete" if coverage["complete"] else "INCOMPLETE"))
     print(f"  pending export: {coverage['pending_records']} requests in {coverage['pending_sessions']} session(s)")
     print(f"  store: {coverage['store_detail']}" + (f" ({coverage['note']})" if coverage["note"] else ""))

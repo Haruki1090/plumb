@@ -80,6 +80,8 @@ Playbooks name principles; read a named principle in full when you apply it.
 | Read the repository's project contract (rework authors, verify commands, ledger classes) | `plumb-project`; the schema and the CI wiring are in `docs/project-contract.md` |
 | Check the `Fixes-PR:` line of a pull request body | `plumb-check-fixes` |
 | Which changes landed, which were fixed later (rework rate), and what each task cost | `plumb-ledger`; records, store and coverage are in `docs/ledger.md` |
+| The weekly look back: rework, cost, failures, and at most three changes | `plumb:retro` |
+| Turn one agent failure into the change that stops it next time | `plumb:failure-to-rule`; codes and layers are in `docs/failure-taxonomy.md` |
 | Decide which configuration of a playbook to run, with a number | `playbooks/evaluating-an-agent.md` |
 
 ### Decide, and design

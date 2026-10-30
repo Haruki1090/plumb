@@ -1,0 +1,5 @@
+{"id": "F1", "time": "2026-10-14T10:00:00Z", "code": "C08", "kind": "product", "layer": "contract", "evidence": "runs/2026-10-14/x", "origin": "ab12cd3"}
+{"id": "F2", "time": "2026-09-01T10:00:00Z", "code": "C01", "kind": "product"}
+{"id": "F3", "code": "C05", "kind": "stale_scenario", "layer": "bogus"}
+not json
+

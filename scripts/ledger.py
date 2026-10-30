@@ -3,6 +3,7 @@
 
     plumb-ledger changes ...   one record per landed change (scripts/ledger_changes.py)
     plumb-ledger rework  ...   the rework rate over a period (scripts/ledger_changes.py)
+    plumb-ledger failures ...  agent failure records created in a period (scripts/ledger_failures.py)
     plumb-ledger capture ...   per-request records from transcripts (scripts/ledger_cost.py)
     plumb-ledger export  ...   push captured records to the owner's store (scripts/ledger_cost.py)
     plumb-ledger prs     ...   pull requests by head ref, for task assignment (scripts/ledger_cost.py)
@@ -18,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 CHANGES = {"changes", "rework"}
+FAILURES = {"failures"}
 COST = {"capture", "export", "prs", "report"}
 
 
@@ -28,6 +30,9 @@ def main(argv: list[str]) -> int:
     if argv[0] in CHANGES:
         import ledger_changes
         return ledger_changes.main(argv)
+    if argv[0] in FAILURES:
+        import ledger_failures
+        return ledger_failures.main(argv)
     if argv[0] in COST:
         import ledger_cost
         return ledger_cost.main(argv)
