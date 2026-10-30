@@ -101,7 +101,10 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
   marked `attribution_source = worktree_at_capture`; otherwise `unknown`. Later reads never infer a
   past branch from today's checkout. plumb ships no hook today; this is the first, and its cost is a
   release gate (below).
-- **Identity.** Request ids are runtime-qualified: `claude:<requestId>`; Codex ids are synthetic per
+- **Identity.** Request ids are runtime-qualified: `claude:<requestId>`, or `claude:<message.id>`
+  when the record has no `requestId` (amended 2026-10-30: in one cloud session only 248 of 917
+  assistant records carried `requestId`, while every record carries `message.id` and the copies of
+  one request share it); Codex ids are synthetic per
   session and become `codex:<session>:<n>`, never deduplicated across sessions. A request without an
   id is kept, counted as unidentified, and never merged with another. Copies of one request in a
   forked or copied transcript share the Claude id and count once; conflicting copies of one id are
