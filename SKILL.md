@@ -77,6 +77,8 @@ Playbooks name principles; read a named principle in full when you apply it.
 | Add a different model family's axis to that review | `plumb:interrogate` |
 | Check whether the environment plumb claims still exists | `plumb:doctor` |
 | See what a session spent its context on | `plumb-session-audit` |
+| Read the repository's project contract (rework authors, verify commands, ledger classes) | `plumb-project`; the schema and the CI wiring are in `docs/project-contract.md` |
+| Check the `Fixes-PR:` line of a pull request body | `plumb-check-fixes` |
 | Decide which configuration of a playbook to run, with a number | `playbooks/evaluating-an-agent.md` |
 
 ### Decide, and design
