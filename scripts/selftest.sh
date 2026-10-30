@@ -1141,6 +1141,75 @@ else
   printf '  %-4s %s\n' "--" "python3 not on PATH, plumb-check-fixes assertions skipped"
 fi
 
+# Integration: the base-commit wiring of docs/project-contract.md, run as a small shell function in a
+# scratch repository. The base commit carries the policy; the head commit (the proposed branch) may
+# carry anything, and is never read. The job must fail when the base contract is invalid or the
+# parser is unavailable, require the author the base lists even when the head drops them, and
+# opt out when the base has no contract.
+if command -v python3 >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
+  wr_repo="$sandbox_root/wr-repo"; mkdir -p "$wr_repo/.plumb"; git -C "$wr_repo" init -q
+  wr_git() { git -C "$wr_repo" -c user.name=selftest -c user.email=selftest@users.noreply.github.com -c commit.gpgsign=false "$@"; }
+  wr_commit() { # <message> <contract lines...>; no lines removes the contract. Prints the new commit's SHA.
+    local msg=$1; shift
+    if [ "$#" -gt 0 ]; then printf '%s\n' "$@" > "$wr_repo/.plumb/project.toml"; else rm -f "$wr_repo/.plumb/project.toml"; fi
+    printf '%s\n' "$msg" > "$wr_repo/change.txt"
+    wr_git add -A && wr_git commit -q --allow-empty -m "$msg" && wr_git rev-parse HEAD
+  }
+  # wiring <base sha> <author> <body file> [env...]: the documented steps. The policy step runs with
+  # `set -euo pipefail` inside a checkout of the base SHA, like the workflow's run script.
+  wr_n=0
+  wiring() {
+    local base=$1 author=$2 body=$3; shift 3
+    wr_n=$((wr_n + 1)); local dir="$sandbox_root/wr-base-$wr_n"
+    wr_git worktree add -q --detach "$dir" "$base" >/dev/null 2>&1 || return 99
+    (
+      set -euo pipefail
+      cd "$dir"
+      authors=$(env "$@" "$root/bin/plumb-project" --enforce rework.required_authors)
+      authors=$(printf '%s' "$authors" | paste -sd, -)
+      env "$@" "$root/bin/plumb-check-fixes" --author "$author" --required-authors "$authors" --pr 9 --body-file "$body"
+    ) 2>"$sandbox_root/wr-err"
+  }
+  grep -qF '"$GITHUB_WORKSPACE/plumb/bin/plumb-project" --enforce rework.required_authors' "$root/docs/project-contract.md" \
+    && ok "the docs show the policy step this fixture runs" || ng "docs/project-contract.md no longer shows the policy step the integration fixture runs"
+
+  wr_block="$sandbox_root/wr-block"; mkdir -p "$wr_block"
+  printf 'raise ImportError("blocked for the selftest")\n' > "$wr_block/tomllib.py"
+  wr_good_body="$sandbox_root/wr-good"; printf 'Why\nFixes-PR: none\n' > "$wr_good_body"
+  wr_bad_body="$sandbox_root/wr-bad"; printf 'Why\nno line here\n' > "$wr_bad_body"
+
+  if python3 -c 'import tomllib' >/dev/null 2>&1; then
+    wr_bad_base=$(wr_commit "base: invalid contract" 'schema = 2' '[rework]' 'required_authors = ["alice"]')
+    wr_head=$(wr_commit "head: valid contract without the author" 'schema = 1' '[rework]' 'required_authors = []')
+    eq "fixture: the proposed head really drops the author" \
+      "$(git -C "$wr_repo" show "$wr_head:.plumb/project.toml" | grep -c 'required_authors = \[\]')" "1"
+    wiring "$wr_bad_base" alice "$wr_good_body"; wr_code=$?
+    eq "base-commit wiring: an invalid base contract fails the job (head ignored)" "$wr_code" "2"
+    wiring "$wr_bad_base" bob "$wr_good_body"; wr_code=$?
+    eq "base-commit wiring: an invalid base contract fails the job for any author" "$wr_code" "2"
+
+    wr_ok_base=$(wr_commit "base: valid contract listing alice" 'schema = 1' '[rework]' 'required_authors = ["Alice"]')
+    wr_head=$(wr_commit "head: the branch removes alice from the policy" 'schema = 1' '[rework]' 'required_authors = []')
+    wiring "$wr_ok_base" alice "$wr_bad_body"; wr_code=$?
+    eq "base-commit wiring: the base's author is required, so a missing line fails (the head's weakened contract is not read)" "$wr_code" "1"
+    wiring "$wr_ok_base" alice "$wr_good_body"; wr_code=$?
+    eq "base-commit wiring: the base's author with a Fixes-PR line passes" "$wr_code" "0"
+    wiring "$wr_ok_base" bob "$wr_bad_body"; wr_code=$?
+    eq "base-commit wiring: an author the base does not list passes without the line" "$wr_code" "0"
+    wr_head_policy=$(cd "$wr_repo" && wr_git checkout -q "$wr_head" && "$root/bin/plumb-project" rework.required_authors)
+    eq "fixture: reading the policy from the head would have required nobody" "$wr_head_policy" ""
+    wiring "$wr_ok_base" alice "$wr_good_body" PYTHONPATH="$wr_block"; wr_code=$?
+    eq "base-commit wiring: an unavailable parser fails the job" "$wr_code" "3"
+  else
+    printf '  %-4s %s\n' "--" "base-commit wiring cases that parse are skipped: this python3 has no tomllib"
+  fi
+  wr_none_base=$(wr_commit "base: no contract")
+  wiring "$wr_none_base" alice "$wr_bad_body"; wr_code=$?
+  eq "base-commit wiring: a base without a contract opts out" "$wr_code" "0"
+else
+  printf '  %-4s %s\n' "--" "python3 or git not on PATH, base-commit wiring fixture skipped"
+fi
+
 # doctor: a role holding a command line needs only its first word on PATH, and a fresh HOME that
 # has never run a Claude session (no ~/.claude/projects/) is "not yet", not NG.
 fresh_home="$sandbox_root/fresh-home"; mkdir -p "$fresh_home"
