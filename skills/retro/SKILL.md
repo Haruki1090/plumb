@@ -32,14 +32,18 @@ gh api user --jq .login                 # GitHub REST reachable
 
 ```bash
 OUT="$(plumb-path run --mkdir)/retro/$SINCE"; mkdir -p "$OUT"
-plumb-ledger changes  --repo <owner/name> --since <SINCE minus 14 days> --until "$UNTIL" --out "$OUT/changes.jsonl"
+plumb-ledger changes  --repo <owner/name> --since <SINCE minus 14 days> --until <today> --out "$OUT/changes.jsonl"
 plumb-ledger rework   --changes "$OUT/changes.jsonl" --since "$SINCE" --until "$UNTIL" --json > "$OUT/rework.json"
 plumb-ledger prs      --repo <owner/name> --since <SINCE minus 14 days> --out "$OUT/prs.json"
-plumb-ledger report   --since "$SINCE" --until "$UNTIL" --prs "$OUT/prs.json" --changes "$OUT/changes.jsonl" --rework "$OUT/rework.json" --json > "$OUT/cost.json"
+plumb-ledger report   --repo <owner/name> --since "$SINCE" --until "$UNTIL" --prs "$OUT/prs.json" --changes "$OUT/changes.jsonl" --rework "$OUT/rework.json" --json > "$OUT/cost.json"
 plumb-ledger failures --repo <owner/name> --since "$SINCE" --until "$UNTIL" --json > "$OUT/failures.json"
 ```
 
-Changes start 14 days early so that work landed last week and fixed this week is seen. If any
+Changes run from 14 days before the period to today: the cohort is still only what landed in the
+period (`rework` bounds it), but a fix that landed after the period and inside its look-ahead window
+must be in the file, or its original is counted clean. The report is scoped to this repository with
+`--repo`; requests of other repositories and those whose repository is unknown are counted beside
+it, never added. If any
 command fails, stop there and report the command and the first line of its stderr; never estimate
 the missing number. Records and bodies stay in `$OUT`: the review carries numbers and pull request
 numbers only.
