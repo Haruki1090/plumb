@@ -1,6 +1,6 @@
 ---
 name: failure-to-rule
-description: Take one agent failure (an issue or pull request labelled agent-failure, a failed trial, a finding) to the layer that should stop it next time, with a measurement and a draft change. Use when asked to "turn this failure into a rule", "make sure this doesn't happen again", "work this agent-failure out" or "classify this failure", or when plumb:retro picked a failure to work. Not for fixing the defect itself (playbooks/fixing-a-bug.md) or for the weekly look back (plumb:retro).
+description: Take one agent failure (an issue or pull request labelled agent-failure, a failed trial, a finding, a mistake an agent made) to the layer that should stop it next time, with a measurement and a draft change. Load this first, before reading the issue or the code, whenever asked to "turn this failure into a rule", "make sure this mistake doesn't happen again", "stop this from recurring", "work this agent-failure out" or "classify this failure", or when plumb:retro picked a failure to work. Not for fixing the defect itself (playbooks/fixing-a-bug.md) or for the weekly look back (plumb:retro).
 ---
 
 # One failure to the layer that stops it
