@@ -101,8 +101,9 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
   marked `attribution_source = worktree_at_capture`; otherwise `unknown`. Later reads never infer a
   past branch from today's checkout. plumb ships no hook today; this is the first, and its cost is a
   release gate (below).
-- **Identity.** Request ids are runtime-qualified: `claude:<requestId>`; Codex ids are synthetic per
-  session and become `codex:<session>:<n>`, never deduplicated across sessions. A request without an
+- **Identity.** Request ids are runtime-qualified. Claude ids are `claude:<message.id>`, because
+  `requestId` is absent on many records and mixing the two keys double-counts; Codex ids are
+  synthetic per session and become `codex:<session>:<n>`, never deduplicated across sessions. A request without an
   id is kept, counted as unidentified, and never merged with another. Copies of one request in a
   forked or copied transcript share the Claude id and count once; conflicting copies of one id are
   reported. `scripts/session-audit.py`'s existing audit output is unchanged; the reader gains the
@@ -113,7 +114,7 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
   rounds.
 - **Store (personal layer).** Captured records are pushed to a private repository the owner names in
   `~/.claude/plumb/config` (`ledger.store`), one ref per session
-  (`refs/plumb-ledger/<runtime>/<session>`), so parallel sessions never share a push target and a
+  (`refs/heads/plumb-ledger/<runtime>/<session>`), so parallel sessions never share a push target and a
   re-push of the same session is idempotent (a lost acknowledgement is retried with the same commit).
   The product repository is never written. Only allowlisted fields leave the machine (request id,
   time, model, token kinds, cost version, repository, branch, role, agent id); the owner opts in by

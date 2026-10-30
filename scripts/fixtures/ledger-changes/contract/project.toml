@@ -1,0 +1,17 @@
+schema = 1
+
+[repo]
+base_branch = "develop"
+
+[rework]
+required_authors = ["Alice"]
+lookahead_days = 7
+
+[ledger]
+classify = [
+  { glob = "frontend/**", class = "frontend" },
+  { glob = "docs/**", class = "docs" },
+  { glob = "**/*.ts", class = "typescript" },
+  { glob = "*.md", class = "docs" },
+]
+timezone = "Asia/Tokyo"

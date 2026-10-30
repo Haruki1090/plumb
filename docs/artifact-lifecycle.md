@@ -16,6 +16,9 @@ plumb-path spec --mkdir   # create it if it is missing
 plumb-path project   # the repository's contract file (docs/project-contract.md)
 ```
 
+Cost records are not under the run root: they are personal, live in `~/.claude/plumb/ledger` for
+every repository, and leave the machine only through `plumb-ledger export` (`docs/ledger.md`).
+
 `plumb-path project` is the contract, not an artifact: it is tracked with the code and **is not
 moved by `PLUMB_ROOT`** or `root=`, and `--mkdir` does not apply (people write it).
 

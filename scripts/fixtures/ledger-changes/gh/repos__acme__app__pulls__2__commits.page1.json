@@ -1,0 +1,14 @@
+[
+  {
+    "sha": "@S1@",
+    "commit": {
+      "message": "feat: s1\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+    }
+  },
+  {
+    "sha": "@S2@",
+    "commit": {
+      "message": "fix: s2\n\nCo-Authored-By: Cursor Agent <cursoragent@cursor.com>"
+    }
+  }
+]

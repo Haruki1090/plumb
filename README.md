@@ -194,6 +194,15 @@ the app for verification, how to classify paths. The file is optional; without i
 `plumb-doctor` reports it, and `plumb-check-fixes` validates the pull request line in CI. The schema,
 the four outcomes and the trusted CI wiring are in [`docs/project-contract.md`](docs/project-contract.md).
 
+### Work ledger and cost per task
+
+`plumb-ledger` counts which landed changes were fixed later (the rework rate, from the `Fixes-PR:`
+line) and what each task cost on which models. Cost capture is opt-in (`ledger.capture = on`): a
+`Stop` hook records each request's tokens and attribution in the background, under
+`~/.claude/plumb/ledger`, and `plumb-ledger export` pushes them to a private repository you name
+(`ledger.store`), one ref per session, so cloud sessions are not lost with their container. Records,
+the allowlist and coverage are in [`docs/ledger.md`](docs/ledger.md).
+
 ## Language
 
 plumb is written in English throughout — SKILL.md, the 24 playbooks, the 23

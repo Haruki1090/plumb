@@ -1,0 +1,21 @@
+plumb session-audit: session-audit  sessions=1  records=5  requests=3  synthetic=0  turns=1  skipped_lines=0
+work ratios       turns/session 1.00   requests/turn 3.00   requests/session 3.00
+context/request   p50 1,503   p90 3,004   max 3,004
+context/request (main) p50 1,503   p90 3,004   max 3,004
+first request     p50 1,503   max 1,503
+tool results      0   over 40KB 0 (--)
+idle >60m         0       cache rebuilt after 0
+output tokens     220   thinking --
+cache creation    1h 14%   5m 86%
+model (main)      claude-opus-5-5: 3
+model (sidechain) -  (none in these transcripts)
+
+flags
+  CTX-P90-OVER      0 sessions   p90 context above 400,000 - compact, or fold what you will not read again
+  TOOL-RESULT-OVER  0 results   above 40KB - return a pointer, not the payload
+  IDLE-REBUILD      0 sessions    resumed after >60m with a full cache rebuild - fold before you resume
+  FIRST-REQUEST-OVER 0 sessions   first request above 50,000 tokens - weigh the fixed prompt with plumb-prompt-weight
+
+per session (worst first, --all)
+  session   requests  ctx_p90  ctx_p90(main)  tool>40KB  idle_rebuilds  flags
+  session          3    3,004          3,004               0              0  --

@@ -1,0 +1,17 @@
+{"kind": "pull_request", "number": 9, "author": "alice", "merged_at": "2026-09-28T10:00:00Z", "fixes_pr": []}
+{"kind": "pull_request", "number": 10, "author": "Alice", "merged_at": "2026-10-02T10:00:00Z", "fixes_pr": []}
+{"kind": "pull_request", "number": 11, "author": "alice", "merged_at": "2026-10-03T10:00:00Z", "fixes_pr": []}
+{"kind": "pull_request", "number": 12, "author": "alice", "merged_at": "2026-10-04T10:00:00Z", "fixes_pr": []}
+{"kind": "pull_request", "number": 13, "author": "alice", "merged_at": "2026-10-05T10:00:00Z", "fixes_pr": null, "fixes_pr_error": "Fixes-PR: malformed item"}
+{"kind": "pull_request", "number": 14, "author": "alice", "merged_at": "2026-10-06T10:00:00Z", "fixes_pr": []}
+{"kind": "pull_request", "number": 15, "author": "alice", "merged_at": "2026-10-27T10:00:00Z", "fixes_pr": []}
+{"kind": "pull_request", "number": 16, "author": "alice", "merged_at": "2026-10-28T08:00:00Z", "fixes_pr": []}
+{"kind": "pull_request", "number": 17, "author": "alice", "merged_at": "2026-10-09T10:00:00Z", "fixes_pr": null, "fixes_pr_error": null}
+{"kind": "pull_request", "number": 18, "author": "bob", "merged_at": "2026-10-08T10:00:00Z", "fixes_pr": []}
+{"kind": "pull_request", "number": 19, "author": "bob", "merged_at": "2026-10-04T10:00:00Z", "fixes_pr": [13]}
+{"kind": "pull_request", "number": 20, "author": "bob", "merged_at": "2026-10-04T12:00:00Z", "fixes_pr": [10]}
+{"kind": "pull_request", "number": 21, "author": "bob", "merged_at": "2026-10-05T12:00:00Z", "fixes_pr": [11, 12]}
+{"kind": "pull_request", "number": 22, "author": "bob", "merged_at": "2026-10-20T10:00:00Z", "fixes_pr": [14]}
+{"kind": "pull_request", "number": 23, "author": "bob", "merged_at": "2026-10-29T09:00:00Z", "fixes_pr": [15]}
+{"kind": "direct", "number": null, "author": "Dana", "merged_at": "2026-10-10T10:00:00Z", "fixes_pr": null}
+{"kind": "direct", "number": null, "author": "Dana", "merged_at": "2026-10-15T10:00:00Z", "fixes_pr": null}
