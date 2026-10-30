@@ -850,6 +850,32 @@ eq "plumb-path outside a repository works with an absolute PLUMB_ROOT" \
   "$pp_out/art/run
 made"
 
+# plumb-path project: the contract file belongs to the checkout, never moved by PLUMB_ROOT or
+# `root =` in .plumb/config, and it is written by people (no --mkdir).
+mkdir -p "$pp_repo/sub/dir"
+eq "plumb-path project prints the contract path (file need not exist)" \
+  "$(cd "$pp_repo" && PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" project)" "$pp_repo/.plumb/project.toml"
+eq "plumb-path project works from a subdirectory" \
+  "$(cd "$pp_repo/sub/dir" && PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" project)" "$pp_repo/.plumb/project.toml"
+eq "plumb-path project from a linked worktree is that worktree's own file" \
+  "$(cd "$pp_wt" && PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" project)" "$pp_wt/.plumb/project.toml"
+eq "plumb-path project ignores PLUMB_ROOT" \
+  "$(cd "$pp_repo" && PLUMB_ROOT=/tmp/x bash "$root/scripts/plumb-path.sh" project)" "$pp_repo/.plumb/project.toml"
+printf "root = 'art'\n" > "$pp_repo/.plumb/config"
+eq "plumb-path project ignores root = in .plumb/config" \
+  "$(cd "$pp_repo" && PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" project)" "$pp_repo/.plumb/project.toml"
+rm -f "$pp_repo/.plumb/config"
+eq "plumb-path project takes a repo argument" \
+  "$(PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" project "$pp_repo")" "$pp_repo/.plumb/project.toml"
+(cd "$pp_repo" && bash "$root/scripts/plumb-path.sh" project --mkdir >/dev/null 2>&1)
+eq "plumb-path project --mkdir exits 2" "$?" "2"
+[ -e "$pp_repo/.plumb/project.toml" ] && ng "plumb-path project --mkdir created the contract" \
+  || ok "plumb-path project --mkdir creates nothing"
+pp_msg=$(cd "$pp_out" && GIT_CEILING_DIRECTORIES="$sandbox_root" PLUMB_ROOT= \
+  bash "$root/scripts/plumb-path.sh" project 2>&1); pp_code=$?
+case "$pp_code|$pp_msg" in 1*"git repository"*) ok "plumb-path project outside a repository exits 1 with the existing message" ;;
+  *) ng "plumb-path project outside a repository: code=$pp_code output=[$pp_msg]" ;; esac
+
 # doctor: a role holding a command line needs only its first word on PATH, and a fresh HOME that
 # has never run a Claude session (no ~/.claude/projects/) is "not yet", not NG.
 fresh_home="$sandbox_root/fresh-home"; mkdir -p "$fresh_home"

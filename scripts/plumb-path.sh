@@ -2,7 +2,7 @@
 # Resolve where plumb's artifacts go, in one place.
 #
 #   plumb-path.sh <kind> [--mkdir] [repo]
-#   kind: root | spec | plan | history | run
+#   kind: root | spec | plan | history | run | project
 #
 # The default is <repo root>/.plumb. To change it, in this order:
 #   1. the PLUMB_ROOT environment variable
@@ -15,13 +15,18 @@
 # written from a worktree survives `git worktree remove`. Outside a git repository, only an
 # absolute PLUMB_ROOT gives an answer.
 #
+# project is different: it is the repository's contract file (<checkout top level>/.plumb/project.toml,
+# see docs/project-contract.md), printed whether or not the file exists. It belongs to the checkout,
+# so PLUMB_ROOT and `root =` (which move run artifacts) do not apply, and a linked worktree answers
+# with its own top level. People write it; there is no --mkdir.
+#
 # **Do not spell paths out in prose.** Do it and one of the two copies goes stale (stepped on it
 # twice on 2026-08-29).
 set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-usage: plumb-path root|spec|plan|history|run [--mkdir] [repo]
+usage: plumb-path root|spec|plan|history|run|project [--mkdir] [repo]
 
   root     <repo>/.plumb, or PLUMB_ROOT, or root = <path> in <repo>/.plumb/config
   spec     approved designs (tracked, per checkout)
@@ -29,6 +34,9 @@ usage: plumb-path root|spec|plan|history|run [--mkdir] [repo]
   history  finished plans (tracked, per checkout)
   run      ledgers and decision logs (untracked; from a linked worktree it resolves
            through the main worktree, so it outlives the worktree)
+  project  <checkout top level>/.plumb/project.toml, the repository's contract, whether or not it
+           exists. PLUMB_ROOT and root = do not move it; a linked worktree answers with its own
+           top level. People write it, so --mkdir is an error here (exit 2)
   --mkdir  create the directory, and a .gitignore holding run/ beside it
 
 Outside a git repository, pass a repo path or set PLUMB_ROOT to an absolute path.
@@ -41,9 +49,23 @@ mk=0; repo=""
 for a in "$@"; do
   case "$a" in --mkdir) mk=1 ;; -h|--help) usage; exit 0 ;; *) repo="$a" ;; esac
 done
-case "$kind" in root|spec|plan|history|run) ;; *) usage >&2; exit 2 ;; esac
+case "$kind" in root|spec|plan|history|run|project) ;; *) usage >&2; exit 2 ;; esac
 
 [ -n "$repo" ] || repo=$(git rev-parse --show-toplevel 2>/dev/null || true)
+
+# The contract is checked out with the code: no PLUMB_ROOT, no config, no common dir.
+if [ "$kind" = project ]; then
+  if [ "$mk" -eq 1 ]; then
+    echo "plumb-path: project has no --mkdir; the contract is written by people (docs/project-contract.md)" >&2
+    exit 2
+  fi
+  if [ -z "$repo" ]; then
+    echo "run this inside a git repository, pass a repo path, or set PLUMB_ROOT to an absolute path" >&2
+    exit 1
+  fi
+  printf '%s\n' "$repo/.plumb/project.toml"
+  exit 0
+fi
 
 # run/ outlives a linked worktree: resolve it from the main worktree. A bare repository or a
 # submodule has no main working tree in the usual place, so it keeps the checkout it was given.
