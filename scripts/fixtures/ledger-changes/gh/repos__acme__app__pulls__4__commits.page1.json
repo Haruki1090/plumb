@@ -1,0 +1,14 @@
+[
+  {
+    "sha": "@X1@",
+    "commit": {
+      "message": "feat: x1\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_BBB"
+    }
+  },
+  {
+    "sha": "@X2@",
+    "commit": {
+      "message": "chore: x2"
+    }
+  }
+]

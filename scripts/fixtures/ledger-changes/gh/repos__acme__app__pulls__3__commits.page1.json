@@ -1,0 +1,14 @@
+[
+  {
+    "sha": "@R1@",
+    "commit": {
+      "message": "feat: r1\n\nCo-Authored-By: Codex <codex@openai.com>"
+    }
+  },
+  {
+    "sha": "@R2@",
+    "commit": {
+      "message": "feat: r2"
+    }
+  }
+]

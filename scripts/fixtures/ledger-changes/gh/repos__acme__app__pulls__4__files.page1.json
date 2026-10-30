@@ -1,0 +1,14 @@
+[
+  {
+    "filename": "frontend/x.ts",
+    "status": "added"
+  },
+  {
+    "filename": "docs/x.md",
+    "status": "added"
+  },
+  {
+    "filename": "src/x.py",
+    "status": "added"
+  }
+]

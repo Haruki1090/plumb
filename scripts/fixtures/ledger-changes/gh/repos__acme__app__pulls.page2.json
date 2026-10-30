@@ -1,0 +1,74 @@
+[
+  {
+    "number": 3,
+    "state": "closed",
+    "user": {
+      "login": "carol"
+    },
+    "head": {
+      "ref": "feat/r"
+    },
+    "base": {
+      "ref": "develop"
+    },
+    "created_at": "2026-10-07T08:00:00Z",
+    "closed_at": "2026-10-08T10:00:00Z",
+    "merged_at": "2026-10-08T10:00:00Z",
+    "merge_commit_sha": "@R2P@",
+    "body": "Fixes-PR: #3"
+  },
+  {
+    "number": 2,
+    "state": "closed",
+    "user": {
+      "login": "bob"
+    },
+    "head": {
+      "ref": "feat/s"
+    },
+    "base": {
+      "ref": "develop"
+    },
+    "created_at": "2026-10-05T08:00:00Z",
+    "closed_at": "2026-10-06T10:00:00Z",
+    "merged_at": "2026-10-06T10:00:00Z",
+    "merge_commit_sha": "@SQ@",
+    "body": "<!-- Fixes-PR: #99 -->\nFixes-PR: #11, #12\r\n"
+  },
+  {
+    "number": 1,
+    "state": "closed",
+    "user": {
+      "login": "alice"
+    },
+    "head": {
+      "ref": "feat/m"
+    },
+    "base": {
+      "ref": "develop"
+    },
+    "created_at": "2026-10-03T08:00:00Z",
+    "closed_at": "2026-10-04T10:00:00Z",
+    "merged_at": "2026-10-04T10:00:00Z",
+    "merge_commit_sha": "@M1@",
+    "body": "Adds m.\n\nFixes-PR: none\nSECRET-BODY-SENTINEL"
+  },
+  {
+    "number": 6,
+    "state": "closed",
+    "user": {
+      "login": "alice"
+    },
+    "head": {
+      "ref": "feat/old"
+    },
+    "base": {
+      "ref": "develop"
+    },
+    "created_at": "2026-09-24T08:00:00Z",
+    "closed_at": "2026-09-25T10:00:00Z",
+    "merged_at": "2026-09-25T10:00:00Z",
+    "merge_commit_sha": "1111111111111111111111111111111111111111",
+    "body": "Fixes-PR: none"
+  }
+]
