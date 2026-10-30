@@ -377,7 +377,7 @@ def _():
     assert sb.pending()[0]["repository"] == "acme/widgets"
     code, out, err = sb.ledger_cmd("export")
     assert code == 0, err
-    blob = subprocess.run(["git", "-C", str(store), "show", "refs/plumb-ledger/claude/sess-priv:records.jsonl"],
+    blob = subprocess.run(["git", "-C", str(store), "show", "refs/heads/plumb-ledger/claude/sess-priv:records.jsonl"],
                           capture_output=True, text=True).stdout
     assert SECRET not in blob and "feat/a" in blob
 
@@ -597,8 +597,8 @@ def _():
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for s in ("sess-a", "sess-b")]
     results = [(p.wait(timeout=120), p.stderr.read()) for p in procs]
     assert all(code == 0 for code, _ in results), results
-    assert set(refs(store)) == {"refs/plumb-ledger/claude/sess-a", "refs/plumb-ledger/claude/sess-b"}, refs(store)
-    counts = {s: len(subprocess.run(["git", "-C", str(store), "show", f"refs/plumb-ledger/claude/{s}:records.jsonl"],
+    assert set(refs(store)) == {"refs/heads/plumb-ledger/claude/sess-a", "refs/heads/plumb-ledger/claude/sess-b"}, refs(store)
+    counts = {s: len(subprocess.run(["git", "-C", str(store), "show", f"refs/heads/plumb-ledger/claude/{s}:records.jsonl"],
                                     capture_output=True, text=True).stdout.splitlines()) for s in ("sess-a", "sess-b")}
     assert counts == {"sess-a": 3, "sess-b": 4}, counts
     assert sb.pending() == [] and len(sb.exported()) == 7
@@ -619,7 +619,7 @@ def _():
     code, out, err = sb.ledger_cmd("export")
     assert code == 0, err
     assert refs(store) == first, (first, refs(store))
-    commit = first["refs/plumb-ledger/claude/sess-a"]
+    commit = first["refs/heads/plumb-ledger/claude/sess-a"]
     meta = subprocess.run(["git", "-C", str(store), "show", "-s", "--format=%an <%ae>|%cn <%ce>|%at|%P", commit],
                           capture_output=True, text=True).stdout.strip()
     assert meta == "plumb-ledger <ledger@plumb.invalid>|plumb-ledger <ledger@plumb.invalid>|" \
@@ -627,7 +627,7 @@ def _():
     # New records after an export join the old ones: the ref holds the whole session.
     put_pending(sb, "sess-a", [record(9, "2026-10-11T00:00:00.000Z", session="sess-a", rid="sess-a")])
     assert sb.ledger_cmd("export")[0] == 0
-    body = subprocess.run(["git", "-C", str(store), "show", "refs/plumb-ledger/claude/sess-a:records.jsonl"],
+    body = subprocess.run(["git", "-C", str(store), "show", "refs/heads/plumb-ledger/claude/sess-a:records.jsonl"],
                           capture_output=True, text=True).stdout
     assert len(body.splitlines()) == 4
 
@@ -639,7 +639,7 @@ def _():
     twin = record(0, "2026-10-10T00:00:00.000Z", rid=None)
     put_pending(sb, "sess-n", [twin, twin, record(1, "2026-10-10T00:00:01.000Z", rid="n")])
     assert sb.ledger_cmd("export")[0] == 0
-    body = subprocess.run(["git", "-C", str(store), "show", "refs/plumb-ledger/claude/sess-n:records.jsonl"],
+    body = subprocess.run(["git", "-C", str(store), "show", "refs/heads/plumb-ledger/claude/sess-n:records.jsonl"],
                           capture_output=True, text=True).stdout
     assert len(body.splitlines()) == 3 and body.count('"id":null') == 2, body
     assert len(sb.exported()) == 3
@@ -676,7 +676,7 @@ def export_quietly(sb: Sandbox, session: str, store: Path) -> None:
 
 
 def stored_lines(store: Path, session: str) -> list[str]:
-    return subprocess.run(["git", "-C", str(store), "show", f"refs/plumb-ledger/claude/{session}:records.jsonl"],
+    return subprocess.run(["git", "-C", str(store), "show", f"refs/heads/plumb-ledger/claude/{session}:records.jsonl"],
                           capture_output=True, text=True).stdout.splitlines()
 
 
@@ -758,13 +758,13 @@ def _():
     capture(sb, write_transcript(sb.root / "proj", "sess-cx", conflict_lines([], repo)))
     capture(sb, write_transcript(sb.root / "proj", "sess-plain", [assistant("msg_p", "2026-10-10T00:00:00Z", repo, "feat/a")]))
     assert sb.ledger_cmd("export")[0] == 0
-    tree = subprocess.run(["git", "-C", str(store), "ls-tree", "--name-only", "refs/plumb-ledger/claude/sess-cx"],
+    tree = subprocess.run(["git", "-C", str(store), "ls-tree", "--name-only", "refs/heads/plumb-ledger/claude/sess-cx"],
                           capture_output=True, text=True).stdout.split()
     assert tree == ["conflicts.jsonl", "records.jsonl"], tree
-    body = subprocess.run(["git", "-C", str(store), "show", "refs/plumb-ledger/claude/sess-cx:conflicts.jsonl"],
+    body = subprocess.run(["git", "-C", str(store), "show", "refs/heads/plumb-ledger/claude/sess-cx:conflicts.jsonl"],
                           capture_output=True, text=True).stdout
     assert body == '{"id": "claude:msg_c"}\n', body
-    plain = subprocess.run(["git", "-C", str(store), "ls-tree", "--name-only", "refs/plumb-ledger/claude/sess-plain"],
+    plain = subprocess.run(["git", "-C", str(store), "ls-tree", "--name-only", "refs/heads/plumb-ledger/claude/sess-plain"],
                            capture_output=True, text=True).stdout.split()
     assert plain == ["records.jsonl"], plain
     first = refs(store)
@@ -865,7 +865,7 @@ def _():
     assert sb.ledger_cmd("export")[0] == 0
     shutil.rmtree(sb.ledger / "exported")  # the store is the only holder
     assert sb.report()["requests"] == 7
-    subprocess.run(["git", "-C", str(store), "update-ref", "-d", "refs/plumb-ledger/claude/sess-b"], check=True)
+    subprocess.run(["git", "-C", str(store), "update-ref", "-d", "refs/heads/plumb-ledger/claude/sess-b"], check=True)
     report = sb.report()
     assert report["requests"] == 3 and report["coverage"]["store"] == "ok", report["requests"]
 

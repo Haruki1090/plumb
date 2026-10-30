@@ -53,7 +53,9 @@ SAFE = re.compile(r"[\w./@+:#=,%~\-\[\]]{1,200}")
 SAFE_SESSION = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,127}")
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
 HOOK_TEMP_PREFIX = "plumb-ledger-hook."
-STORE_REFS = "refs/plumb-ledger"
+# Under refs/heads/: a cloud session's git proxy accepts branch pushes (forced ones too) but drops a
+# push to any other ref namespace (measured 2026-10-30). The store holds nothing but these branches.
+STORE_REFS = "refs/heads/plumb-ledger"
 GIT_TIMEOUT = 120
 PREFLIGHT_TIMEOUT = 20
 
@@ -857,7 +859,7 @@ def export_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="plumb-ledger export",
         description="Push captured sessions to the store named by ledger.store: one commit per "
-                    "session, to refs/plumb-ledger/<runtime>/<session>. Non-interactive. A failure keeps "
+                    "session, to refs/heads/plumb-ledger/<runtime>/<session>. Non-interactive. A failure keeps "
                     "the records pending and exits non-zero. Unset store: exit 0, records stay local.")
     parser.add_argument("--session", metavar="ID", help="export only this session")
     parser.add_argument("--runtime", choices=RUNTIMES, help="export only this runtime")

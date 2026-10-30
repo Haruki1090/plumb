@@ -90,8 +90,12 @@ counted and shown, never zero. Sums keep full precision; only the display rounds
 
 ### Store and export
 
-Set `ledger.store = <git URL>` to the owner's private repository. `plumb-ledger export` pushes each
-captured session as one commit to `refs/plumb-ledger/<runtime>/<session>`. The commit holds
+Set `ledger.store = <git URL>` to the owner's private repository, one that holds nothing else (it
+fills with one branch per session). `plumb-ledger export` pushes each captured session as one commit
+to the branch `refs/heads/plumb-ledger/<runtime>/<session>`. The records are branches, not a custom
+ref namespace, because a cloud session's git proxy accepts branch pushes (forced ones too) and drops
+a push to any other ref; it also refuses deleting a branch, so retire sessions from a local clone.
+The commit holds
 `records.jsonl` (that session's records) and, when the session had conflicting copies of a request,
 `conflicts.jsonl` (the conflicting ids, one `{"id": ...}` per line, nothing else), so a report built
 from the store alone still counts the conflicts after the container that saw them is gone. A conflict

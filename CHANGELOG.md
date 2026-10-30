@@ -22,7 +22,7 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
 - A versioned price table (`assets/prices.json`, checked 2026-10-30) with per-request long-context
   tiers; unknown models and missing tokens give unknown cost, counted.
 - `plumb-ledger export`: pushes each session's records to the owner's private store
-  (`ledger.store`) at `refs/plumb-ledger/<runtime>/<session>`, idempotently and non-interactively;
+  (`ledger.store`) at `refs/heads/plumb-ledger/<runtime>/<session>`, idempotently and non-interactively;
   a failure keeps them pending. `plumb-ledger prs` and `plumb-ledger report`: unique task assignment
   (repository, head ref, pull request) and the weekly report with coverage.
 - `plumb-doctor` gains a `ledger` block (capture on or off, the store preflight).

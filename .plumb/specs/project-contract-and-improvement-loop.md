@@ -114,7 +114,7 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
   rounds.
 - **Store (personal layer).** Captured records are pushed to a private repository the owner names in
   `~/.claude/plumb/config` (`ledger.store`), one ref per session
-  (`refs/plumb-ledger/<runtime>/<session>`), so parallel sessions never share a push target and a
+  (`refs/heads/plumb-ledger/<runtime>/<session>`), so parallel sessions never share a push target and a
   re-push of the same session is idempotent (a lost acknowledgement is retried with the same commit).
   The product repository is never written. Only allowlisted fields leave the machine (request id,
   time, model, token kinds, cost version, repository, branch, role, agent id); the owner opts in by
