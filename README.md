@@ -186,6 +186,14 @@ For Codex diagnostics, run `PLUMB_RUNTIME=codex <plugin-root>/bin/plumb-doctor`;
 identifies the plugin root. The runtime adapter documents routing configuration and the explicit
 `--runtime codex` session-audit mode for scoped native transcripts.
 
+### Project contract
+
+A repository can hand plumb the facts plumb cannot know through one tracked file, resolved with
+`plumb-path project` and read with `plumb-project`: who must write a `Fixes-PR:` line, how to start
+the app for verification, how to classify paths. The file is optional; without it nothing changes.
+`plumb-doctor` reports it, and `plumb-check-fixes` validates the pull request line in CI. The schema,
+the four outcomes and the trusted CI wiring are in [`docs/project-contract.md`](docs/project-contract.md).
+
 ## Language
 
 plumb is written in English throughout — SKILL.md, the 24 playbooks, the 23

@@ -850,6 +850,378 @@ eq "plumb-path outside a repository works with an absolute PLUMB_ROOT" \
   "$pp_out/art/run
 made"
 
+# plumb-path project: the contract file belongs to the checkout, never moved by PLUMB_ROOT or
+# `root =` in .plumb/config, and it is written by people (no --mkdir).
+mkdir -p "$pp_repo/sub/dir"
+eq "plumb-path project prints the contract path (file need not exist)" \
+  "$(cd "$pp_repo" && PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" project)" "$pp_repo/.plumb/project.toml"
+eq "plumb-path project works from a subdirectory" \
+  "$(cd "$pp_repo/sub/dir" && PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" project)" "$pp_repo/.plumb/project.toml"
+eq "plumb-path project from a linked worktree is that worktree's own file" \
+  "$(cd "$pp_wt" && PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" project)" "$pp_wt/.plumb/project.toml"
+eq "plumb-path project ignores PLUMB_ROOT" \
+  "$(cd "$pp_repo" && PLUMB_ROOT=/tmp/x bash "$root/scripts/plumb-path.sh" project)" "$pp_repo/.plumb/project.toml"
+printf "root = 'art'\n" > "$pp_repo/.plumb/config"
+eq "plumb-path project ignores root = in .plumb/config" \
+  "$(cd "$pp_repo" && PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" project)" "$pp_repo/.plumb/project.toml"
+rm -f "$pp_repo/.plumb/config"
+eq "plumb-path project takes a repo argument" \
+  "$(PLUMB_ROOT= bash "$root/scripts/plumb-path.sh" project "$pp_repo")" "$pp_repo/.plumb/project.toml"
+(cd "$pp_repo" && bash "$root/scripts/plumb-path.sh" project --mkdir >/dev/null 2>&1)
+eq "plumb-path project --mkdir exits 2" "$?" "2"
+[ -e "$pp_repo/.plumb/project.toml" ] && ng "plumb-path project --mkdir created the contract" \
+  || ok "plumb-path project --mkdir creates nothing"
+pp_msg=$(cd "$pp_out" && GIT_CEILING_DIRECTORIES="$sandbox_root" PLUMB_ROOT= \
+  bash "$root/scripts/plumb-path.sh" project 2>&1); pp_code=$?
+case "$pp_code|$pp_msg" in 1*"git repository"*) ok "plumb-path project outside a repository exits 1 with the existing message" ;;
+  *) ng "plumb-path project outside a repository: code=$pp_code output=[$pp_msg]" ;; esac
+
+# plumb-project: the contract reader. Each case runs in a temp repository; the file is parsed as a
+# whole, so a break anywhere makes every key invalid.
+if command -v python3 >/dev/null 2>&1; then
+  pj_repo="$sandbox_root/pj-repo"; mkdir -p "$pj_repo/.plumb"
+  git -C "$pj_repo" init -q
+  pj_repo=$(cd -P "$pj_repo" && pwd)
+  pj_file="$pj_repo/.plumb/project.toml"
+  pj_has_toml=0; python3 -c 'import tomllib' >/dev/null 2>&1 && pj_has_toml=1
+  # pjr <args>: sets pj_out (stdout), pj_err (stderr), pj_code (exit status).
+  pjr() {
+    pj_out=$(cd "$pj_repo" && "$root/bin/plumb-project" "$@" 2>"$sandbox_root/pj-err"); pj_code=$?
+    pj_err=$(cat "$sandbox_root/pj-err")
+  }
+  # pjj <json>: outcome|key|value|message from one JSON answer.
+  pjj() { python3 -c 'import json, sys
+d = json.loads(sys.argv[1])
+assert sorted(d) == ["key", "message", "outcome", "value"], sorted(d)
+print("|".join([d["outcome"], str(d["key"]), json.dumps(d["value"], sort_keys=True), d["message"]]))' "$1"; }
+  pjw() { printf '%s\n' "$@" > "$pj_file"; }
+
+  rm -f "$pj_file"
+  pjr rework.required_authors
+  eq "plumb-project with no contract prints nothing and exits 0" "$pj_code|$pj_out|$pj_err" "0||"
+  pjr --json rework.required_authors
+  eq "plumb-project --json with no contract is absent" "$(pjj "$pj_out")|$pj_code" 'absent|rework.required_authors|null|no contract file|0'
+  pjr --enforce rework.required_authors
+  eq "plumb-project --enforce with no contract is empty and exits 0" "$pj_code|$pj_out" "0|"
+  pjr --json
+  eq "plumb-project --json without a key and without a file is absent" "$(pjj "$pj_out")" 'absent|None|null|no contract file'
+
+  if [ "$pj_has_toml" = 1 ]; then
+    pjw 'schema = 1'
+    pjr rework.required_authors
+    eq "plumb-project with the key unset prints nothing and exits 0" "$pj_code|$pj_out|$pj_err" "0||"
+    pjr --json rework.required_authors
+    eq "plumb-project --json with the key unset is absent" "$(pjj "$pj_out")" 'absent|rework.required_authors|null|key not set'
+    pjr --json
+    eq "plumb-project --json without a key returns the whole contract" "$(pjj "$pj_out")" 'set|None|{"schema": 1}|'
+    pjr nonsense.key
+    eq "plumb-project treats a key outside the schema as unset" "$pj_code|$pj_out|$pj_err" "0||"
+
+    pjw 'schema = 1' '[repo]' 'base_branch = "develop"' \
+        '[rework]' 'required_authors = ["Alice", "bot-1"]' 'lookahead_days = 7' \
+        '[ledger]' 'classify = [ { glob = "frontend/**", class = "frontend" } ]' 'timezone = "Asia/Tokyo"' \
+        '[verify]' 'lookup = "node a.mjs"' 'up = "node b.mjs"' 'down = "node c.mjs"' 'scenarios = "docs/x"' \
+        '[failure]' 'extra_codes = [ { code = "P01", mechanism = "m" } ]'
+    pjr repo.base_branch;                eq "plumb-project prints a string as-is" "$pj_code|$pj_out" "0|develop"
+    pjr rework.required_authors;         eq "plumb-project prints an array of strings one per line" "$pj_code|$pj_out" $'0|Alice\nbot-1'
+    pjr rework.lookahead_days;           eq "plumb-project prints an integer" "$pj_code|$pj_out" "0|7"
+    pjr ledger.timezone;                 eq "plumb-project prints the time zone" "$pj_code|$pj_out" "0|Asia/Tokyo"
+    pjr ledger.classify;                 eq "plumb-project prints an array of tables as JSON" "$pj_code|$pj_out" '0|[{"glob": "frontend/**", "class": "frontend"}]'
+    pjr verify.lookup;                   eq "plumb-project prints verify.lookup" "$pj_code|$pj_out" "0|node a.mjs"
+    pjr failure.extra_codes;             eq "plumb-project prints failure.extra_codes as JSON" "$pj_code|$pj_out" '0|[{"code": "P01", "mechanism": "m"}]'
+    pjr --enforce rework.required_authors; eq "plumb-project --enforce returns the value of a set key" "$pj_code|$pj_out" $'0|Alice\nbot-1'
+    pjr --json rework.lookahead_days
+    eq "plumb-project --json for a set key" "$(pjj "$pj_out")" 'set|rework.lookahead_days|7|'
+
+    # Every type error is invalid, names the key, prints nothing on stdout, and exits 2.
+    while IFS='|' read -r pj_body pj_key; do
+      [ -n "$pj_key" ] || continue
+      printf 'schema = 1\n%b\n' "$pj_body" > "$pj_file"
+      pjr repo.base_branch
+      case "$pj_code|$pj_out|$pj_err" in "2||plumb-project: invalid: $pj_key: "*) ok "plumb-project rejects $pj_key" ;;
+        *) ng "plumb-project did not reject $pj_key: [$pj_code|$pj_out|$pj_err]" ;; esac
+    done <<'TYPES'
+repo = 3|repo
+[repo]\nbase_branch = 3|repo.base_branch
+[rework]\nrequired_authors = "alice"|rework.required_authors
+[rework]\nrequired_authors = ["a", 1]|rework.required_authors[1]
+[rework]\nlookahead_days = 0|rework.lookahead_days
+[rework]\nlookahead_days = "7"|rework.lookahead_days
+[rework]\nlookahead_days = true|rework.lookahead_days
+[rework]\nlookahead_days = 1.5|rework.lookahead_days
+[ledger]\nclassify = "x"|ledger.classify
+[ledger]\nclassify = ["x"]|ledger.classify[0]
+[ledger]\nclassify = [ { glob = "a" } ]|ledger.classify[0].class
+[ledger]\nclassify = [ { glob = 1, class = "a" } ]|ledger.classify[0].glob
+[ledger]\ntimezone = 5|ledger.timezone
+[ledger]\ntimezone = "Not/AZone"|ledger.timezone
+[verify]\nup = 1|verify.up
+[verify]\nscenarios = ["a"]|verify.scenarios
+[failure]\nextra_codes = [ { code = "P01" } ]|failure.extra_codes[0].mechanism
+[failure]\nextra_codes = "P01"|failure.extra_codes
+TYPES
+
+    pjw 'schema = 1' '[rework]' 'required_authors = ["alice"]' '[verify]' 'up = 1'
+    pjr rework.required_authors
+    case "$pj_code|$pj_out|$pj_err" in "2||plumb-project: invalid: verify.up: "*) ok "plumb-project: one bad value makes every key invalid" ;;
+      *) ng "plumb-project trusted part of a broken file: [$pj_code|$pj_out|$pj_err]" ;; esac
+    pjr --json rework.required_authors
+    eq "plumb-project --json for an invalid file" "$(pjj "$pj_out" | cut -d'|' -f1,2,3)|$pj_code" 'invalid|rework.required_authors|null|2'
+    pjr --enforce rework.required_authors
+    eq "plumb-project --enforce exits 2 for an invalid file" "$pj_code|$pj_out" "2|"
+
+    pjw 'schema = 2'
+    pjr repo.base_branch
+    case "$pj_code|$pj_err" in "2|plumb-project: invalid: schema: "*) ok "plumb-project rejects schema = 2" ;; *) ng "schema = 2: [$pj_code|$pj_err]" ;; esac
+    pjw 'schema = "1"'
+    pjr repo.base_branch; eq "plumb-project rejects schema = \"1\" (a string)" "$pj_code" "2"
+    pjw '[repo]' 'base_branch = "develop"'
+    pjr repo.base_branch
+    case "$pj_code|$pj_err" in "2|plumb-project: invalid: schema: missing"*) ok "plumb-project rejects a missing schema" ;; *) ng "missing schema: [$pj_code|$pj_err]" ;; esac
+
+    # A syntax error names the line and never echoes the file's contents.
+    pjw 'schema = 1' 'secret_token_zzz = "unterminated'
+    pjr repo.base_branch
+    case "$pj_code|$pj_out|$pj_err" in "2||plumb-project: invalid: .plumb/project.toml: TOML syntax error at line 2")
+        ok "plumb-project names the line of a TOML syntax error" ;;
+      *) ng "bad TOML message: [$pj_code|$pj_out|$pj_err]" ;; esac
+    case "$pj_err" in *zzz*) ng "plumb-project echoed the contract's contents" ;; *) ok "plumb-project does not echo the contract's contents" ;; esac
+    printf 'schema = 1\n\377\376\n' > "$pj_file"
+    pjr repo.base_branch; eq "plumb-project rejects a file that is not UTF-8" "$pj_code" "2"
+    rm -f "$pj_file"; mkdir "$pj_file"
+    pjr repo.base_branch; eq "plumb-project rejects a directory where the file should be" "$pj_code" "2"
+    rmdir "$pj_file"
+
+    pjw 'schema = 1' 'future = 1' '[extra]' 'x = 1' '[repo]' 'base_branch = "d"' 'weird = 1'
+    pjr repo.base_branch
+    eq "plumb-project succeeds with unknown keys" "$pj_code|$pj_out" "0|d"
+    for pj_unknown in future extra repo.weird; do
+      case "$pj_err" in *"warning: unknown key $pj_unknown"*) ok "plumb-project warns about unknown key $pj_unknown" ;;
+        *) ng "plumb-project did not warn about $pj_unknown: [$pj_err]" ;; esac
+    done
+  else
+    printf '  %-4s %s\n' "--" "plumb-project parsing cases skipped: this python3 has no tomllib"
+  fi
+
+  # No tomllib, simulated without a product flag: the module is blocked, then the script runs as __main__.
+  pj_nolib() {
+    pj_out=$(cd "$pj_repo" && python3 -c 'import os, runpy, sys
+sys.modules["tomllib"] = None
+sys.argv = ["plumb-project"] + sys.argv[1:]
+runpy.run_path(os.environ["PJ_SCRIPT"], run_name="__main__")' "$@" 2>"$sandbox_root/pj-err"); pj_code=$?
+    pj_err=$(cat "$sandbox_root/pj-err")
+  }
+  export PJ_SCRIPT="$root/scripts/plumb-project.py"
+  pjw 'schema = 1' '[rework]' 'required_authors = ["alice"]'
+  pj_nolib rework.required_authors
+  eq "plumb-project without tomllib is unavailable (exit 3)" "$pj_code|$pj_out|$pj_err" \
+    "3||plumb-project: unavailable: Python 3.11+ (tomllib) is required"
+  pj_nolib --enforce rework.required_authors
+  eq "plumb-project --enforce without tomllib exits 3" "$pj_code|$pj_out" "3|"
+  pj_nolib --json rework.required_authors
+  eq "plumb-project --json without tomllib is unavailable" "$(pjj "$pj_out")|$pj_code" \
+    'unavailable|rework.required_authors|null|Python 3.11+ (tomllib) is required|3'
+  rm -f "$pj_file"
+  pj_nolib --enforce rework.required_authors
+  eq "plumb-project without tomllib and without a file is still absent (no policy to read)" "$pj_code|$pj_out" "0|"
+  unset PJ_SCRIPT
+
+  pjr; eq "plumb-project with no arguments is a usage error" "$pj_code" "2"
+  pjr --enforce; eq "plumb-project --enforce without a key is a usage error" "$pj_code" "2"
+  pjr --bogus x; eq "plumb-project rejects an unknown option" "$pj_code" "2"
+  pjr 'a..b'; eq "plumb-project rejects a malformed key" "$pj_code" "2"
+  pj_out=$("$root/bin/plumb-project" --help 2>/dev/null); pj_code=$?
+  case "$pj_code|$pj_out" in "0|usage: plumb-project"*) ok "plumb-project --help prints usage and exits 0" ;;
+    *) ng "plumb-project --help: [$pj_code|$pj_out]" ;; esac
+  # Outside a git repository there is nowhere the contract could be: fail closed, not "no policy".
+  pj_outside="$sandbox_root/pj-outside"; mkdir -p "$pj_outside"
+  pj_out=$(cd "$pj_outside" && GIT_CEILING_DIRECTORIES="$sandbox_root" "$root/bin/plumb-project" --enforce rework.required_authors 2>/dev/null); pj_code=$?
+  eq "plumb-project outside a git repository fails closed" "$pj_code|$pj_out" "2|"
+else
+  printf '  %-4s %s\n' "--" "python3 not on PATH, plumb-project assertions skipped"
+fi
+
+# plumb-check-fixes: the Fixes-PR line. The checker never reads policy itself; the caller passes
+# the author, the required-authors list and the pull request number from a trusted source.
+if command -v python3 >/dev/null 2>&1; then
+  cf_dir="$sandbox_root/cf"; mkdir -p "$cf_dir"
+  # cfr <args>: sets cf_code (exit status) and cf_err (stderr); stdout is not used.
+  cfr() { cf_out=$("$root/bin/plumb-check-fixes" "$@" 2>"$sandbox_root/cf-err"); cf_code=$?; cf_err=$(cat "$sandbox_root/cf-err"); }
+  # cfb <body> <pr>: check a body (printf %b escapes) as the required author alice.
+  cfb() { printf '%b' "$1" > "$cf_dir/body"; cfr --author alice --required-authors alice --pr "${2:-9}" --body-file "$cf_dir/body"; }
+
+  cfr --author bob --required-authors alice --pr 5 --body-file "$cf_dir/does-not-exist"
+  eq "plumb-check-fixes: a non-required author passes without opening the body file" "$cf_code|$cf_err" "0|"
+  cfr --author bob --required-authors "" --pr 5 --body-file "$cf_dir/does-not-exist"
+  eq "plumb-check-fixes: an empty required list requires nobody" "$cf_code" "0"
+  cfr --author "" --required-authors "" --body-file "$cf_dir/does-not-exist"
+  eq "plumb-check-fixes: no author and nobody required passes" "$cf_code" "0"
+  printf 'Fixes-PR: none\n' > "$cf_dir/body"
+  cfr --author ALICE --required-authors " bob , ,Alice" --pr 9 --body-file "$cf_dir/body"
+  eq "plumb-check-fixes: the author match is case-insensitive and trims the list" "$cf_code" "0"
+  # A CI variable may end in a newline or span lines: the trimmed name must still be required.
+  printf 'no fixes line\n' > "$cf_dir/nofixes"
+  cfr --author alice --required-authors $'alice\n' --pr 9 --body-file "$cf_dir/nofixes"
+  eq "plumb-check-fixes: a trailing newline on the list does not exempt the author" "$cf_code" "1"
+  cfr --author alice --required-authors $'bob,\r\n alice\r\n' --pr 9 --body-file "$cf_dir/nofixes"
+  eq "plumb-check-fixes: CR/LF around a required name still requires that author" "$cf_code" "1"
+  cfr --author $'alice\n' --required-authors alice --pr 9 --body-file "$cf_dir/nofixes"
+  eq "plumb-check-fixes: a trailing newline on --author does not exempt the author" "$cf_code" "1"
+  cfr --author alice --required-authors alice --pr 9 --body-file "$cf_dir/does-not-exist"
+  eq "plumb-check-fixes: a required author with an unreadable body file fails" "$cf_code" "1"
+  cfr --author "" --required-authors alice --pr 9 --body-file "$cf_dir/body"
+  eq "plumb-check-fixes: an empty author with a non-empty required list fails closed" "$cf_code" "1"
+  cfr --author alice --required-authors alice --body-file "$cf_dir/body"
+  eq "plumb-check-fixes: a required author without --pr fails" "$cf_code" "1"
+  for cf_pr in abc 0 -3 1x "" 1234567890; do
+    cfr --author alice --required-authors alice --pr "$cf_pr" --body-file "$cf_dir/body"
+    eq "plumb-check-fixes: a required author with --pr [$cf_pr] fails" "$cf_code" "1"
+  done
+
+  cfb 'Fixes-PR: none\n';                       eq "plumb-check-fixes: none is ok" "$cf_code" "0"
+  cfb 'Fixes-PR:none\n';                        eq "plumb-check-fixes: no space after the colon is ok" "$cf_code" "0"
+  cfb 'Fixes-PR: #12\n';                        eq "plumb-check-fixes: one number is ok" "$cf_code" "0"
+  cfb 'Fixes-PR: #12, #34\n';                   eq "plumb-check-fixes: a list with spaces is ok" "$cf_code" "0"
+  cfb 'Fixes-PR: #12,#34\n';                    eq "plumb-check-fixes: a list without spaces is ok" "$cf_code" "0"
+  cfb '## Why\r\ntext\r\nFixes-PR: #12\r\n\r\nmore\r\n'; eq "plumb-check-fixes: CRLF line endings are ok" "$cf_code" "0"
+  cfb 'intro\nFixes-PR: none'; eq "plumb-check-fixes: a last line with no newline is ok" "$cf_code" "0"
+  cfb '<!-- Fixes-PR: #1 -->\nFixes-PR: none\n'; eq "plumb-check-fixes: a Fixes-PR line inside a comment is not counted" "$cf_code" "0"
+  cfb 'a\n<!-- open\nFixes-PR: none\n';         eq "plumb-check-fixes: an unclosed comment is kept as text" "$cf_code" "0"
+  cfb 'Fixes-PR: none<!-- note -->\n';          eq "plumb-check-fixes: a trailing comment is removed" "$cf_code" "0"
+
+  # Each failure names its rule and exits 1.
+  while IFS='|' read -r cf_body cf_rule; do
+    [ -n "$cf_rule" ] || continue
+    cfb "$cf_body" 5
+    case "$cf_code|$cf_out|$cf_err" in "1||plumb-check-fixes: "*"$cf_rule"*) ok "plumb-check-fixes rejects: $cf_rule" ;;
+      *) ng "plumb-check-fixes did not reject [$cf_rule] for [$cf_body]: [$cf_code|$cf_out|$cf_err]" ;; esac
+  done <<'FIXES'
+no line here\n|no Fixes-PR line
+<!-- Fixes-PR: none -->\n|no Fixes-PR line
+  Fixes-PR: none\n|no Fixes-PR line
+fixes-pr: none\n|no Fixes-PR line
+Fixes-PR: none\nFixes-PR: none\n|more than one Fixes-PR line
+Fixes-PR: #1\nx\nFixes-PR: #2\n|more than one Fixes-PR line
+Fixes-PR:\n|malformed item
+Fixes-PR: None\n|malformed item
+Fixes-PR: #\n|malformed item
+Fixes-PR: #abc\n|malformed item
+Fixes-PR: 12\n|malformed item
+Fixes-PR: #1234567890\n|malformed item
+Fixes-PR: #12,\n|malformed item
+Fixes-PR: #12,,#13\n|malformed item
+Fixes-PR: none, #3\n|malformed item
+Fixes-PR: #1 #2\n|malformed item
+Fixes-PR: #12, #12\n|duplicate number
+Fixes-PR: #12, #034, #0012\n|duplicate number
+Fixes-PR: #5\n|lists this pull request
+Fixes-PR: #3, #5\n|lists this pull request
+FIXES
+  cfb 'Fixes-PR: #secretzzz\n'
+  case "$cf_err" in *zzz*) ng "plumb-check-fixes echoed the body" ;; *) ok "plumb-check-fixes never echoes the body in a message" ;; esac
+
+  cfr; eq "plumb-check-fixes with no arguments is a usage error" "$cf_code" "2"
+  cfr --author alice --required-authors alice --pr 5 --bogus; eq "plumb-check-fixes rejects an unknown option" "$cf_code" "2"
+  cfr --author --required-authors alice; eq "plumb-check-fixes treats a flag as a missing value" "$cf_code" "2"
+  cfr --author alice --required-authors alice --pr 5; eq "plumb-check-fixes: a required author without --body-file is a usage error" "$cf_code" "2"
+  cf_out=$("$root/bin/plumb-check-fixes" --help 2>/dev/null); cf_code=$?
+  case "$cf_code|$cf_out" in "0|usage: plumb-check-fixes"*) ok "plumb-check-fixes --help prints usage and exits 0" ;;
+    *) ng "plumb-check-fixes --help: [$cf_code|$cf_out]" ;; esac
+
+  # Stress: a 5 MB body must be answered in under 2 seconds whatever its shape (linear time, no
+  # backtracking). Measured in milliseconds around the call.
+  cf_stress() { # <label> <expected exit> <python expression building the body>
+    python3 -c "import sys; sys.stdout.write($3)" > "$cf_dir/stress"
+    # Time the call inside one Python process: BSD date (stock macOS) has no %N, and monotonic readings
+    # from two processes are not comparable on every platform (macOS before Python 3.10).
+    read -r cf_code cf_ms < <(python3 -c 'import subprocess, sys, time
+t = time.monotonic()
+r = subprocess.run(sys.argv[1:], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+print(r.returncode, int((time.monotonic() - t) * 1000))' \
+      "$root/bin/plumb-check-fixes" --author alice --required-authors alice --pr 5 --body-file "$cf_dir/stress")
+    eq "plumb-check-fixes 5 MB $1: exit status" "$cf_code" "$2"
+    [ "$cf_ms" -lt 2000 ] && ok "plumb-check-fixes 5 MB $1 took ${cf_ms} ms (< 2000)" || ng "plumb-check-fixes 5 MB $1 took ${cf_ms} ms (limit 2000)"
+  }
+  cf_stress "Fixes-PR line of repeated numbers" 1 '"Fixes-PR: " + "#1, " * (5 * 1024 * 1024 // 4)'
+  cf_stress "line without a newline" 1 '"x" * (5 * 1024 * 1024)'
+  cf_stress "Fixes-PR line of distinct numbers" 0 '"Fixes-PR: " + ", ".join("#%d" % i for i in range(10, 700000))[:5 * 1024 * 1024].rsplit(",", 1)[0] + "\n"'
+  cf_stress "unclosed comments" 1 '"<!-- " * (5 * 1024 * 1024 // 5)'
+  cf_stress "closed comments" 1 '"<!-- x -->" * (5 * 1024 * 1024 // 10)'
+  cf_stress "many Fixes-PR lines" 1 '"Fixes-PR: none\n" * (5 * 1024 * 1024 // 15)'
+  cf_stress "carriage returns" 1 '"\r" * (5 * 1024 * 1024)'
+else
+  printf '  %-4s %s\n' "--" "python3 not on PATH, plumb-check-fixes assertions skipped"
+fi
+
+# Integration: the base-commit wiring of docs/project-contract.md, run as a small shell function in a
+# scratch repository. The base commit carries the policy; the head commit (the proposed branch) may
+# carry anything, and is never read. The job must fail when the base contract is invalid or the
+# parser is unavailable, require the author the base lists even when the head drops them, and
+# opt out when the base has no contract.
+if command -v python3 >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
+  wr_repo="$sandbox_root/wr-repo"; mkdir -p "$wr_repo/.plumb"; git -C "$wr_repo" init -q
+  wr_git() { git -C "$wr_repo" -c user.name=selftest -c user.email=selftest@users.noreply.github.com -c commit.gpgsign=false "$@"; }
+  wr_commit() { # <message> <contract lines...>; no lines removes the contract. Prints the new commit's SHA.
+    local msg=$1; shift
+    if [ "$#" -gt 0 ]; then printf '%s\n' "$@" > "$wr_repo/.plumb/project.toml"; else rm -f "$wr_repo/.plumb/project.toml"; fi
+    printf '%s\n' "$msg" > "$wr_repo/change.txt"
+    wr_git add -A && wr_git commit -q --allow-empty -m "$msg" && wr_git rev-parse HEAD
+  }
+  # wiring <base sha> <author> <body file> [env...]: the documented steps. The policy step runs with
+  # `set -euo pipefail` inside a checkout of the base SHA, like the workflow's run script.
+  wr_n=0
+  wiring() {
+    local base=$1 author=$2 body=$3; shift 3
+    wr_n=$((wr_n + 1)); local dir="$sandbox_root/wr-base-$wr_n"
+    wr_git worktree add -q --detach "$dir" "$base" >/dev/null 2>&1 || return 99
+    (
+      set -euo pipefail
+      cd "$dir"
+      authors=$(env "$@" "$root/bin/plumb-project" --enforce rework.required_authors)
+      authors=$(printf '%s' "$authors" | paste -sd, -)
+      env "$@" "$root/bin/plumb-check-fixes" --author "$author" --required-authors "$authors" --pr 9 --body-file "$body"
+    ) 2>"$sandbox_root/wr-err"
+  }
+  grep -qF '"$GITHUB_WORKSPACE/plumb/bin/plumb-project" --enforce rework.required_authors' "$root/docs/project-contract.md" \
+    && ok "the docs show the policy step this fixture runs" || ng "docs/project-contract.md no longer shows the policy step the integration fixture runs"
+
+  wr_block="$sandbox_root/wr-block"; mkdir -p "$wr_block"
+  printf 'raise ImportError("blocked for the selftest")\n' > "$wr_block/tomllib.py"
+  wr_good_body="$sandbox_root/wr-good"; printf 'Why\nFixes-PR: none\n' > "$wr_good_body"
+  wr_bad_body="$sandbox_root/wr-bad"; printf 'Why\nno line here\n' > "$wr_bad_body"
+
+  if python3 -c 'import tomllib' >/dev/null 2>&1; then
+    wr_bad_base=$(wr_commit "base: invalid contract" 'schema = 2' '[rework]' 'required_authors = ["alice"]')
+    wr_head=$(wr_commit "head: valid contract without the author" 'schema = 1' '[rework]' 'required_authors = []')
+    eq "fixture: the proposed head really drops the author" \
+      "$(git -C "$wr_repo" show "$wr_head:.plumb/project.toml" | grep -c 'required_authors = \[\]')" "1"
+    wiring "$wr_bad_base" alice "$wr_good_body"; wr_code=$?
+    eq "base-commit wiring: an invalid base contract fails the job (head ignored)" "$wr_code" "2"
+    wiring "$wr_bad_base" bob "$wr_good_body"; wr_code=$?
+    eq "base-commit wiring: an invalid base contract fails the job for any author" "$wr_code" "2"
+
+    wr_ok_base=$(wr_commit "base: valid contract listing alice" 'schema = 1' '[rework]' 'required_authors = ["Alice"]')
+    wr_head=$(wr_commit "head: the branch removes alice from the policy" 'schema = 1' '[rework]' 'required_authors = []')
+    wiring "$wr_ok_base" alice "$wr_bad_body"; wr_code=$?
+    eq "base-commit wiring: the base's author is required, so a missing line fails (the head's weakened contract is not read)" "$wr_code" "1"
+    wiring "$wr_ok_base" alice "$wr_good_body"; wr_code=$?
+    eq "base-commit wiring: the base's author with a Fixes-PR line passes" "$wr_code" "0"
+    wiring "$wr_ok_base" bob "$wr_bad_body"; wr_code=$?
+    eq "base-commit wiring: an author the base does not list passes without the line" "$wr_code" "0"
+    wr_head_policy=$(cd "$wr_repo" && wr_git checkout -q "$wr_head" && "$root/bin/plumb-project" rework.required_authors)
+    eq "fixture: reading the policy from the head would have required nobody" "$wr_head_policy" ""
+    wiring "$wr_ok_base" alice "$wr_good_body" PYTHONPATH="$wr_block"; wr_code=$?
+    eq "base-commit wiring: an unavailable parser fails the job" "$wr_code" "3"
+  else
+    printf '  %-4s %s\n' "--" "base-commit wiring cases that parse are skipped: this python3 has no tomllib"
+  fi
+  wr_none_base=$(wr_commit "base: no contract")
+  wiring "$wr_none_base" alice "$wr_bad_body"; wr_code=$?
+  eq "base-commit wiring: a base without a contract opts out" "$wr_code" "0"
+else
+  printf '  %-4s %s\n' "--" "python3 or git not on PATH, base-commit wiring fixture skipped"
+fi
+
 # doctor: a role holding a command line needs only its first word on PATH, and a fresh HOME that
 # has never run a Claude session (no ~/.claude/projects/) is "not yet", not NG.
 fresh_home="$sandbox_root/fresh-home"; mkdir -p "$fresh_home"
@@ -868,6 +1240,89 @@ out=$(HOME="$fresh_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUN
       PLUMB_IN_SELFTEST=1 PLUMB_CONFIG="$role_cfg" bash "$root/scripts/doctor.sh" "$root" 2>&1)
 printf '%s\n' "$out" | grep -q '^  NG   role.judge = plumb-no-such-command exec is configured but plumb-no-such-command is not on PATH$' \
   && ok "doctor names the missing first word of a role command" || ng "doctor missing role line: [$out]"
+
+# doctor: the contract block. Absent, partial, full, invalid, a command that does not resolve, and a
+# Python without tomllib (blocked with a shadowing tomllib.py on PYTHONPATH, no product flag).
+if command -v python3 >/dev/null 2>&1; then
+  dr_repo="$sandbox_root/dr-repo"; mkdir -p "$dr_repo/.plumb" "$dr_repo/tools"
+  git -C "$dr_repo" init -q
+  printf '#!/bin/sh\nexit 0\n' > "$dr_repo/tools/ver.sh"; chmod +x "$dr_repo/tools/ver.sh"
+  printf '#!/bin/sh\nexit 0\n' > "$dr_repo/tools/not-exec.sh"
+  dr_block="$sandbox_root/dr-block"; mkdir -p "$dr_block"
+  printf 'raise ImportError("blocked for the selftest")\n' > "$dr_block/tomllib.py"
+  # dr <extra env assignments...>: doctor inside dr_repo; sets dr_out and dr_code.
+  dr() {
+    dr_out=$(cd "$dr_repo" && env "$@" HOME="$fresh_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUNTIME=claude \
+      PLUMB_IN_SELFTEST=1 PLUMB_CONFIG=/nonexistent bash "$root/scripts/doctor.sh" "$root" 2>&1); dr_code=$?
+  }
+  drw() { printf '%s\n' "$@" > "$dr_repo/.plumb/project.toml"; }
+  dr_ng() { printf '%s\n' "$dr_out" | grep -c '^  NG ' || true; }
+  dr_has() { printf '%s\n' "$dr_out" | grep -qxF -- "$1"; }
+
+  rm -f "$dr_repo/.plumb/project.toml"
+  dr X=1
+  dr_has '  --   contract: none' && ok "doctor says contract: none when there is no file" || ng "doctor contract none line: [$dr_out]"
+  eq "doctor with no contract has no NG" "$(dr_ng)" "0"
+
+  if python3 -c 'import tomllib' >/dev/null 2>&1; then
+    drw 'schema = 1' '[rework]' 'required_authors = ["alice"]' '[verify]' 'lookup = "git status"'
+    dr X=1
+    dr_has '  ok   rework.required_authors' && ok "doctor marks a set contract key ok" || ng "doctor set key line: [$dr_out]"
+    dr_has '  --   rework.lookahead_days' && ok "doctor marks an unset contract key --" || ng "doctor unset key line: [$dr_out]"
+    dr_has '  ok   verify.lookup' && ok "doctor marks a resolving verify command ok" || ng "doctor verify.lookup line: [$dr_out]"
+    dr_has '  --   verify.up' && ok "doctor marks an unset verify command --" || ng "doctor verify.up line: [$dr_out]"
+    eq "doctor with a partial contract has no NG" "$(dr_ng)|$dr_code" "0|0"
+
+    drw 'schema = 1' '[repo]' 'base_branch = "develop"' \
+        '[rework]' 'required_authors = ["alice"]' 'lookahead_days = 7' \
+        '[ledger]' 'classify = [ { glob = "a/**", class = "a" } ]' 'timezone = "Asia/Tokyo"' \
+        '[verify]' 'lookup = "git status"' 'up = "tools/ver.sh --up"' 'down = "git"' 'scenarios = "docs/x"' \
+        '[failure]' 'extra_codes = [ { code = "P01", mechanism = "m" } ]'
+    dr X=1
+    dr_full=0
+    for dr_key in repo.base_branch rework.required_authors rework.lookahead_days ledger.classify ledger.timezone \
+                  verify.lookup verify.up verify.down verify.scenarios failure.extra_codes; do
+      dr_has "  ok   $dr_key" || { dr_full=1; ng "doctor full contract: no ok line for $dr_key"; }
+    done
+    [ "$dr_full" = 0 ] && ok "doctor lists every schema key as ok for a full contract"
+    eq "doctor with a full contract has no NG" "$(dr_ng)|$dr_code" "0|0"
+
+    drw 'schema = 1' '[rework]' 'required_authors = ["alice"]' 'lookahead_days = 0'
+    dr X=1
+    printf '%s\n' "$dr_out" | grep -q '^  NG   rework.lookahead_days: expected an integer >= 1$' \
+      && ok "doctor names the invalid key and reason" || ng "doctor invalid line: [$dr_out]"
+    eq "doctor with an invalid contract reports one NG and exits 1" "$(dr_ng)|$dr_code" "1|1"
+    printf '%s\n' "$dr_out" | grep -q '^  ok   rework.required_authors' \
+      && ng "doctor kept listing keys of an invalid contract" || ok "doctor stops listing keys once the contract is invalid"
+    drw 'schema = 1' 'oops = "unterminated'
+    dr X=1
+    printf '%s\n' "$dr_out" | grep -q '^  NG   .plumb/project.toml: TOML syntax error at line 2$' \
+      && ok "doctor reports a TOML syntax error with its line" || ng "doctor syntax error line: [$dr_out]"
+
+    drw 'schema = 1' '[verify]' 'lookup = "plumb-no-such-command run"' 'up = "tools/not-exec.sh"' 'down = "tools/missing.sh"' 'scenarios = "docs/x"'
+    dr X=1
+    for dr_key in lookup up down; do
+      printf '%s\n' "$dr_out" | grep -q "^  NG   verify.$dr_key: .* does not resolve" \
+        && ok "doctor flags verify.$dr_key whose command does not resolve" || ng "doctor verify.$dr_key line: [$dr_out]"
+    done
+    dr_has '  ok   verify.scenarios' && ok "doctor does not command-check verify.scenarios" || ng "doctor verify.scenarios line: [$dr_out]"
+    eq "doctor counts each unresolved verify command" "$(dr_ng)|$dr_code" "3|1"
+
+    drw 'schema = 1' '[rework]' 'required_authors = ["alice"]'
+    dr PYTHONPATH="$dr_block"
+    dr_has '  --   contract: skipped, Python 3.11+ (tomllib) is unavailable' \
+      && ok "doctor skips the contract block without tomllib" || ng "doctor unavailable line: [$dr_out]"
+    eq "doctor without tomllib has no NG" "$(dr_ng)|$dr_code" "0|0"
+  else
+    printf '  %-4s %s\n' "--" "doctor contract cases that parse are skipped: this python3 has no tomllib"
+  fi
+
+  dr_outside="$sandbox_root/dr-outside"; mkdir -p "$dr_outside"
+  dr_out=$(cd "$dr_outside" && GIT_CEILING_DIRECTORIES="$sandbox_root" HOME="$fresh_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" \
+    PLUMB_RUNTIME=claude PLUMB_IN_SELFTEST=1 PLUMB_CONFIG=/nonexistent bash "$root/scripts/doctor.sh" "$root" 2>&1)
+  printf '%s\n' "$dr_out" | grep -q '^  --   contract: cannot check' \
+    && ok "doctor outside a git repository cannot check the contract (not NG)" || ng "doctor outside a repository: contract line missing"
+fi
 
 # prompt-weight: a synthetic home with one enabled and one disabled plugin. Never the real one.
 if command -v python3 >/dev/null 2>&1; then

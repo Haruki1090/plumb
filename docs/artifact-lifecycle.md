@@ -13,7 +13,11 @@ plumb-path plan      # plans being executed
 plumb-path history   # finished plans
 plumb-path run       # ledgers, decision logs, briefs
 plumb-path spec --mkdir   # create it if it is missing
+plumb-path project   # the repository's contract file (docs/project-contract.md)
 ```
+
+`plumb-path project` is the contract, not an artifact: it is tracked with the code and **is not
+moved by `PLUMB_ROOT`** or `root=`, and `--mkdir` does not apply (people write it).
 
 The default is `<repo root>/.plumb/`. Override it with `PLUMB_ROOT`, or with `root=` in
 `.plumb/config`. **Spell a path out in prose and one of the two copies goes stale**

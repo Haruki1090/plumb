@@ -1,0 +1,7 @@
+id,prompt,expect
+D1,Is plumb healthy?,plumb:doctor
+D2,Run plumb's doctor.,plumb:doctor
+D3,I just moved some skills around. Check that the harness still points at real things.,plumb:doctor
+N1,Open a PR for this fix.,-
+N2,What does .plumb/project.toml say about required authors?,-
+N3,Run the test suite.,-

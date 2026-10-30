@@ -43,6 +43,9 @@ Conventional Commits, `type(scope): subject`. The types are `feat` `fix` `docs` 
 | `## Blast Radius` | Who and what it touches. Why it is safe, or why it is risky. If main stays red without this fix, write the continuing cost of that |
 | `## Verification` | **How you ran each check, and how strict it is.** Name the path you actually ran. Write the result, not the name of the command |
 
+**Lines the repository requires** (the `Fixes-PR:` line, and stopping on a broken contract) are
+`plumb:open-pr`. Run it before writing these sections; it is the only place those rules are written.
+
 If you have a screenshot or a video that proves the claim, attach it after the section.
 **Do not use the `## Summary` and `## Test plan` boilerplate.** A commit body does not restate its
 subject.
