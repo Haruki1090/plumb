@@ -43,14 +43,8 @@ Conventional Commits, `type(scope): subject`. The types are `feat` `fix` `docs` 
 | `## Blast Radius` | Who and what it touches. Why it is safe, or why it is risky. If main stays red without this fix, write the continuing cost of that |
 | `## Verification` | **How you ran each check, and how strict it is.** Name the path you actually ran. Write the result, not the name of the command |
 
-**The `Fixes-PR:` line.** When `plumb-project rework.required_authors` lists you (the pull request's
-author), write exactly one line `Fixes-PR: none` or `Fixes-PR: #<n>`, with further `, #<n>` items,
-naming the earlier landed pull requests this one fixes. Two lines, a repeated number, or this pull
-request's own number are errors; `plumb-check-fixes` and `docs/project-contract.md` have the grammar.
-Read its exit status, not only its output. Exit 0 with nothing printed (no contract, or the key
-unset) means the line is not required. **Exit 2 (`invalid`) or 3 (`unavailable`) is not an opt-out:**
-stop before opening the pull request and report the stderr line; a broken contract is fixed or
-reported, never read as "no policy".
+**Lines the repository requires** (the `Fixes-PR:` line, and stopping on a broken contract) are
+`plumb:open-pr`. Run it before writing these sections; it is the only place those rules are written.
 
 If you have a screenshot or a video that proves the claim, attach it after the section.
 **Do not use the `## Summary` and `## Test plan` boilerplate.** A commit body does not restate its

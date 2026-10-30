@@ -1,0 +1,11 @@
+id,prompt,expect
+P1,Open a PR for this fix.,plumb:open-pr
+P2,Make this a pull request. It fixes #12.,plumb:open-pr
+P3,Send this fix up for review.,plumb:open-pr
+P4,Write the PR description for this branch.,plumb:open-pr
+P5,Create a draft pull request with these changes.,plumb:open-pr
+N1,Review https://github.com/octo/app/pull/42,plumb:pr-review
+N2,List the open pull requests in this repository.,-
+N3,Answer the review comments on my pull request.,-
+N4,Is plumb healthy?,plumb:doctor
+N5,Fix the crash in the login form when the email field is empty.,-

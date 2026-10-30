@@ -54,7 +54,7 @@ Playbooks name principles; read a named principle in full when you apply it.
 | Job | Playbook |
 |---|---|
 | **Close out a branch** (decide between merge / PR / leave it) | `playbooks/closing-a-branch.md` |
-| Open a PR | `playbooks/opening-a-pr.md` |
+| Open a PR | `plumb:open-pr` (lines the repository requires), then `playbooks/opening-a-pr.md` |
 | Get it green and land it | `playbooks/landing-a-stack.md` |
 
 ### Keep going

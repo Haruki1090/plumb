@@ -21,6 +21,12 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
   adversarial body is answered in well under a second. The checker never reads policy: the CI passes
   it from a trusted source, and `docs/project-contract.md` shows two wirings (a repository variable,
   the base commit's contract) and names the wrong one.
+- `plumb:open-pr`: the skill an everyday "open a PR" request reaches. It reads the contract, writes
+  exactly one `Fixes-PR:` line when the repository requires it, stops on an invalid (2) or
+  unavailable (3) contract instead of reading it as "no policy", and checks the body with
+  `plumb-check-fixes` before the pull request is opened. A session trial showed the playbook alone
+  was never reached: the root skill does not fire on "open a PR". `evals/open-pr/triggers.csv`
+  checks the routing.
 - `plumb-doctor` prints a `contract` block: `none` when absent, `ok` or `--` per key, an `NG` for an
   invalid file or a verify command that does not resolve, and a skip line without `tomllib`.
 - Selftest covers the path kind, every outcome, the `Fixes-PR:` rules, the stress bodies, the doctor
@@ -30,9 +36,8 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
 
 ### Changed
 
-- `playbooks/opening-a-pr.md` writes the `Fixes-PR:` line when the contract lists the author, and
-  reads the lookup's exit status: an invalid (2) or unavailable (3) contract stops the pull request
-  instead of reading as "no policy". The router and `docs/artifact-lifecycle.md` index the new
+- `playbooks/opening-a-pr.md` hands the lines a repository requires to `plumb:open-pr` (below) and
+  keeps the title, sections and evidence. The router and `docs/artifact-lifecycle.md` index the new
   commands and kind.
 
 ## [0.13.1] - 2026-10-03

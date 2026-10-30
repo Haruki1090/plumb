@@ -47,6 +47,17 @@ judge <fixtures>/absent   # T3: nobody is required, so a body that exists passes
 
 T4 fails if `invalid/body.md` exists and the transcript shows no `invalid` outcome being reported.
 
+## Routing to `plumb:open-pr`
+
+T2 and T4 pass only if an everyday "open a PR" request reaches `plumb:open-pr`, which holds the
+contract rules. `evals/open-pr/triggers.csv` checks that routing (five asks it owns, five near misses
+that belong to `plumb:pr-review`, `plumb:doctor` or nothing). Run it before T2–T4:
+
+```bash
+plumb-trigger-eval --cases evals/open-pr/triggers.csv --skill plumb:open-pr \
+  --cwd <fixtures>/set --plugin-dir <this plumb checkout> --out <run>/open-pr-triggers
+```
+
 ## Doctor triggering
 
 `triggers.csv` covers `plumb:doctor` (three asks it owns, three near misses). Run it in the `set`
