@@ -120,8 +120,10 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
   time, model, token kinds, cost version, repository, branch, role, agent id); the owner opts in by
   setting the key; retention is the store's. Unset store: records stay local under the run root and
   the report says cloud sessions are not covered.
-- **Export is separate from capture** (`plumb-ledger export`, run explicitly, at the end of a cloud
-  session's setup-defined teardown, or by the owner). It is non-interactive (`GIT_TERMINAL_PROMPT=0`),
+- **Export is separate from capture** (`plumb-ledger export`, run explicitly or by the owner, or, with
+  `ledger.export = on-stop`, by the Stop hook's background job for that session after its capture;
+  amended 2026-10-30: a cloud container is reclaimed after idle with no reliable end-of-session event,
+  so a teardown step would not run). It is non-interactive (`GIT_TERMINAL_PROMPT=0`),
   authenticates with the git credential for the store's URL (in a cloud session, the token the setup
   script provisions for that repository; the product repository's token is never assumed to reach
   it), and runs a preflight (`git ls-remote`) that `plumb-doctor` and `plumb-bootstrap` also run. A
@@ -174,8 +176,9 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
 ### G. Cloud bootstrap
 
 - `docs/cloud-setup.md`: the lines a cloud environment's setup script runs — the existing marketplace
-  install commands, writing `~/.claude/plumb/config` from environment variables, the judge's login
-  check, `plumb-doctor`. `plumb-bootstrap` wraps those lines; it reuses the existing install paths
+  install commands, writing `~/.claude/plumb/config` from literal arguments (amended 2026-10-30: a
+  setup script cannot read the environment's saved variables or secrets, and no config value is a
+  secret), the judge's login check, `plumb-doctor`. `plumb-bootstrap` wraps those lines; it reuses the existing install paths
   (`claude plugin …`, `plumb-codex-install`) and adds no second installer.
 
 ## What is merged
@@ -262,7 +265,8 @@ reader meets first.
   SAKUJI's contract detects a deliberately introduced regression through the whole path, and one
   live run with a failed start reports `incomplete`.
 - **G:** a fresh cloud session whose setup script holds only the documented lines has plumb loaded,
-  `plumb-doctor` reports the routed judge, and `plumb:verify --dry-run` finds the contract.
+  `plumb-doctor` reports the routed judge, and the session's records reach the store at the end of a
+  turn. (`plumb:verify --dry-run` finding the contract joins this check once lap 4 lands.)
 - **Every lap:** `bash scripts/check-harness.sh`; `bash scripts/selftest.sh`; both
   `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` pass their validators; `.codex/config.toml`
   passes `codex --strict-config` when the sidecar changed; a judge pass in a different model family,

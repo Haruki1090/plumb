@@ -2,6 +2,29 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.17.0] - 2026-10-30
+
+### Added
+
+- `docs/cloud-setup.md`: plumb in a cloud session. The facts of a cloud container that change what
+  plumb does there (a setup script cannot read saved variables or secrets, the container is
+  reclaimed after idle with no reliable end-of-session event, the git proxy accepts branch pushes
+  only and refuses GraphQL and numeric-id paths), the setup script's lines, attaching the store,
+  and how to check a new session.
+- `plumb-bootstrap`: run by a setup script after the plugin is installed. It writes the given keys
+  (`--store`, `--capture`, `--export`, `--judge`) into a block it owns in `~/.claude/plumb/config`,
+  idempotently and without touching other lines, then reports whether plumb is installed, the judge
+  resolves and is logged in, the store answers and `plumb-doctor` passes. Problems are reported and
+  exit 0 unless `--strict`.
+- `ledger.export = on-stop`: with capture on and a store set, the Stop hook's background job sends
+  that session's records to the store after capturing them, so a cloud session's records leave
+  before its container does. `plumb-doctor` reports the mode.
+
+### Changed
+
+- The spec writes the cloud config from literal arguments, not environment variables, and lets the
+  Stop hook export (`ledger.export = on-stop`) instead of a teardown step that would not run.
+
 ## [0.16.0] - 2026-10-30
 
 ### Added
