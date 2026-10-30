@@ -1,3 +1,7 @@
+> **This is history. Do not execute it.**
+> The current source of truth is `.plumb/specs/project-contract-and-improvement-loop.md`. **If this document disagrees with it, the source of
+> truth wins.** Do not sync this back up — syncing it revives the second source of truth.
+
 # Lap 2 — work ledger (C) and cost per task (D)
 
 Spec: `.plumb/specs/project-contract-and-improvement-loop.md` §C, §D, acceptance C and D, decision 1.
