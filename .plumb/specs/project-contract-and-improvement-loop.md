@@ -199,6 +199,22 @@ playbooks) for each candidate, done before additions so it can remove work:
 
 Nothing is deleted on suspicion.
 
+**Lap 0 result (2026-10-30): nothing is cut.** Evidence, from `git grep` over the corpus:
+
+- `pane.driver` appears in `skills/lead`, `skills/interrogate`, three playbooks, `docs/role-map.md`,
+  doctor and selftest. Unset, `plumb:lead` already falls back to isolated subagents with
+  `skip: pane.driver unset — lanes are not visible`; the cloud path is the unset path and works.
+- `stack.tool` / `gh-stack` appears in `playbooks/landing-a-stack.md`, the role map, doctor and
+  selftest; unset drops to "Land it with bare gh". Same conclusion.
+- `docs/path-map.md` is read by `playbooks/session-pickup.md`, `opening-a-pr.md`, `worktree-setup.md`,
+  `worktree-cleanup.md`, `scripts/worktree-audit.sh`, `scripts/prompt-weight.py` and `plumb:doctor`
+  as the source of truth for transcript and worktree locations. Live, not lineage.
+- `docs/scope.md` is cited by `SKILL.md` and `opening-a-pr.md` (the missing pixel-diff harness). Live.
+
+What changes instead goes into G: `docs/cloud-setup.md` states that in a cloud session `pane.driver`
+and `stack.tool` are unset by design and names the fallbacks above, so the cloud path is the one the
+reader meets first.
+
 ## Decisions
 
 | # | Decision | Why | Rejected |
