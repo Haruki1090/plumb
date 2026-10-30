@@ -876,6 +876,171 @@ pp_msg=$(cd "$pp_out" && GIT_CEILING_DIRECTORIES="$sandbox_root" PLUMB_ROOT= \
 case "$pp_code|$pp_msg" in 1*"git repository"*) ok "plumb-path project outside a repository exits 1 with the existing message" ;;
   *) ng "plumb-path project outside a repository: code=$pp_code output=[$pp_msg]" ;; esac
 
+# plumb-project: the contract reader. Each case runs in a temp repository; the file is parsed as a
+# whole, so a break anywhere makes every key invalid.
+if command -v python3 >/dev/null 2>&1; then
+  pj_repo="$sandbox_root/pj-repo"; mkdir -p "$pj_repo/.plumb"
+  git -C "$pj_repo" init -q
+  pj_repo=$(cd -P "$pj_repo" && pwd)
+  pj_file="$pj_repo/.plumb/project.toml"
+  pj_has_toml=0; python3 -c 'import tomllib' >/dev/null 2>&1 && pj_has_toml=1
+  # pjr <args>: sets pj_out (stdout), pj_err (stderr), pj_code (exit status).
+  pjr() {
+    pj_out=$(cd "$pj_repo" && "$root/bin/plumb-project" "$@" 2>"$sandbox_root/pj-err"); pj_code=$?
+    pj_err=$(cat "$sandbox_root/pj-err")
+  }
+  # pjj <json>: outcome|key|value|message from one JSON answer.
+  pjj() { python3 -c 'import json, sys
+d = json.loads(sys.argv[1])
+assert sorted(d) == ["key", "message", "outcome", "value"], sorted(d)
+print("|".join([d["outcome"], str(d["key"]), json.dumps(d["value"], sort_keys=True), d["message"]]))' "$1"; }
+  pjw() { printf '%s\n' "$@" > "$pj_file"; }
+
+  rm -f "$pj_file"
+  pjr rework.required_authors
+  eq "plumb-project with no contract prints nothing and exits 0" "$pj_code|$pj_out|$pj_err" "0||"
+  pjr --json rework.required_authors
+  eq "plumb-project --json with no contract is absent" "$(pjj "$pj_out")|$pj_code" 'absent|rework.required_authors|null|no contract file|0'
+  pjr --enforce rework.required_authors
+  eq "plumb-project --enforce with no contract is empty and exits 0" "$pj_code|$pj_out" "0|"
+  pjr --json
+  eq "plumb-project --json without a key and without a file is absent" "$(pjj "$pj_out")" 'absent|None|null|no contract file'
+
+  if [ "$pj_has_toml" = 1 ]; then
+    pjw 'schema = 1'
+    pjr rework.required_authors
+    eq "plumb-project with the key unset prints nothing and exits 0" "$pj_code|$pj_out|$pj_err" "0||"
+    pjr --json rework.required_authors
+    eq "plumb-project --json with the key unset is absent" "$(pjj "$pj_out")" 'absent|rework.required_authors|null|key not set'
+    pjr --json
+    eq "plumb-project --json without a key returns the whole contract" "$(pjj "$pj_out")" 'set|None|{"schema": 1}|'
+    pjr nonsense.key
+    eq "plumb-project treats a key outside the schema as unset" "$pj_code|$pj_out|$pj_err" "0||"
+
+    pjw 'schema = 1' '[repo]' 'base_branch = "develop"' \
+        '[rework]' 'required_authors = ["Alice", "bot-1"]' 'lookahead_days = 7' \
+        '[ledger]' 'classify = [ { glob = "frontend/**", class = "frontend" } ]' 'timezone = "Asia/Tokyo"' \
+        '[verify]' 'lookup = "node a.mjs"' 'up = "node b.mjs"' 'down = "node c.mjs"' 'scenarios = "docs/x"' \
+        '[failure]' 'extra_codes = [ { code = "P01", mechanism = "m" } ]'
+    pjr repo.base_branch;                eq "plumb-project prints a string as-is" "$pj_code|$pj_out" "0|develop"
+    pjr rework.required_authors;         eq "plumb-project prints an array of strings one per line" "$pj_code|$pj_out" $'0|Alice\nbot-1'
+    pjr rework.lookahead_days;           eq "plumb-project prints an integer" "$pj_code|$pj_out" "0|7"
+    pjr ledger.timezone;                 eq "plumb-project prints the time zone" "$pj_code|$pj_out" "0|Asia/Tokyo"
+    pjr ledger.classify;                 eq "plumb-project prints an array of tables as JSON" "$pj_code|$pj_out" '0|[{"glob": "frontend/**", "class": "frontend"}]'
+    pjr verify.lookup;                   eq "plumb-project prints verify.lookup" "$pj_code|$pj_out" "0|node a.mjs"
+    pjr failure.extra_codes;             eq "plumb-project prints failure.extra_codes as JSON" "$pj_code|$pj_out" '0|[{"code": "P01", "mechanism": "m"}]'
+    pjr --enforce rework.required_authors; eq "plumb-project --enforce returns the value of a set key" "$pj_code|$pj_out" $'0|Alice\nbot-1'
+    pjr --json rework.lookahead_days
+    eq "plumb-project --json for a set key" "$(pjj "$pj_out")" 'set|rework.lookahead_days|7|'
+
+    # Every type error is invalid, names the key, prints nothing on stdout, and exits 2.
+    while IFS='|' read -r pj_body pj_key; do
+      [ -n "$pj_key" ] || continue
+      printf 'schema = 1\n%b\n' "$pj_body" > "$pj_file"
+      pjr repo.base_branch
+      case "$pj_code|$pj_out|$pj_err" in "2||plumb-project: invalid: $pj_key: "*) ok "plumb-project rejects $pj_key" ;;
+        *) ng "plumb-project did not reject $pj_key: [$pj_code|$pj_out|$pj_err]" ;; esac
+    done <<'TYPES'
+repo = 3|repo
+[repo]\nbase_branch = 3|repo.base_branch
+[rework]\nrequired_authors = "alice"|rework.required_authors
+[rework]\nrequired_authors = ["a", 1]|rework.required_authors[1]
+[rework]\nlookahead_days = 0|rework.lookahead_days
+[rework]\nlookahead_days = "7"|rework.lookahead_days
+[rework]\nlookahead_days = true|rework.lookahead_days
+[rework]\nlookahead_days = 1.5|rework.lookahead_days
+[ledger]\nclassify = "x"|ledger.classify
+[ledger]\nclassify = ["x"]|ledger.classify[0]
+[ledger]\nclassify = [ { glob = "a" } ]|ledger.classify[0].class
+[ledger]\nclassify = [ { glob = 1, class = "a" } ]|ledger.classify[0].glob
+[ledger]\ntimezone = 5|ledger.timezone
+[ledger]\ntimezone = "Not/AZone"|ledger.timezone
+[verify]\nup = 1|verify.up
+[verify]\nscenarios = ["a"]|verify.scenarios
+[failure]\nextra_codes = [ { code = "P01" } ]|failure.extra_codes[0].mechanism
+[failure]\nextra_codes = "P01"|failure.extra_codes
+TYPES
+
+    pjw 'schema = 1' '[rework]' 'required_authors = ["alice"]' '[verify]' 'up = 1'
+    pjr rework.required_authors
+    case "$pj_code|$pj_out|$pj_err" in "2||plumb-project: invalid: verify.up: "*) ok "plumb-project: one bad value makes every key invalid" ;;
+      *) ng "plumb-project trusted part of a broken file: [$pj_code|$pj_out|$pj_err]" ;; esac
+    pjr --json rework.required_authors
+    eq "plumb-project --json for an invalid file" "$(pjj "$pj_out" | cut -d'|' -f1,2,3)|$pj_code" 'invalid|rework.required_authors|null|2'
+    pjr --enforce rework.required_authors
+    eq "plumb-project --enforce exits 2 for an invalid file" "$pj_code|$pj_out" "2|"
+
+    pjw 'schema = 2'
+    pjr repo.base_branch
+    case "$pj_code|$pj_err" in "2|plumb-project: invalid: schema: "*) ok "plumb-project rejects schema = 2" ;; *) ng "schema = 2: [$pj_code|$pj_err]" ;; esac
+    pjw 'schema = "1"'
+    pjr repo.base_branch; eq "plumb-project rejects schema = \"1\" (a string)" "$pj_code" "2"
+    pjw '[repo]' 'base_branch = "develop"'
+    pjr repo.base_branch
+    case "$pj_code|$pj_err" in "2|plumb-project: invalid: schema: missing"*) ok "plumb-project rejects a missing schema" ;; *) ng "missing schema: [$pj_code|$pj_err]" ;; esac
+
+    # A syntax error names the line and never echoes the file's contents.
+    pjw 'schema = 1' 'secret_token_zzz = "unterminated'
+    pjr repo.base_branch
+    case "$pj_code|$pj_out|$pj_err" in "2||plumb-project: invalid: .plumb/project.toml: TOML syntax error at line 2")
+        ok "plumb-project names the line of a TOML syntax error" ;;
+      *) ng "bad TOML message: [$pj_code|$pj_out|$pj_err]" ;; esac
+    case "$pj_err" in *zzz*) ng "plumb-project echoed the contract's contents" ;; *) ok "plumb-project does not echo the contract's contents" ;; esac
+    printf 'schema = 1\n\377\376\n' > "$pj_file"
+    pjr repo.base_branch; eq "plumb-project rejects a file that is not UTF-8" "$pj_code" "2"
+    rm -f "$pj_file"; mkdir "$pj_file"
+    pjr repo.base_branch; eq "plumb-project rejects a directory where the file should be" "$pj_code" "2"
+    rmdir "$pj_file"
+
+    pjw 'schema = 1' 'future = 1' '[extra]' 'x = 1' '[repo]' 'base_branch = "d"' 'weird = 1'
+    pjr repo.base_branch
+    eq "plumb-project succeeds with unknown keys" "$pj_code|$pj_out" "0|d"
+    for pj_unknown in future extra repo.weird; do
+      case "$pj_err" in *"warning: unknown key $pj_unknown"*) ok "plumb-project warns about unknown key $pj_unknown" ;;
+        *) ng "plumb-project did not warn about $pj_unknown: [$pj_err]" ;; esac
+    done
+  else
+    printf '  %-4s %s\n' "--" "plumb-project parsing cases skipped: this python3 has no tomllib"
+  fi
+
+  # No tomllib, simulated without a product flag: the module is blocked, then the script runs as __main__.
+  pj_nolib() {
+    pj_out=$(cd "$pj_repo" && python3 -c 'import os, runpy, sys
+sys.modules["tomllib"] = None
+sys.argv = ["plumb-project"] + sys.argv[1:]
+runpy.run_path(os.environ["PJ_SCRIPT"], run_name="__main__")' "$@" 2>"$sandbox_root/pj-err"); pj_code=$?
+    pj_err=$(cat "$sandbox_root/pj-err")
+  }
+  export PJ_SCRIPT="$root/scripts/plumb-project.py"
+  pjw 'schema = 1' '[rework]' 'required_authors = ["alice"]'
+  pj_nolib rework.required_authors
+  eq "plumb-project without tomllib is unavailable (exit 3)" "$pj_code|$pj_out|$pj_err" \
+    "3||plumb-project: unavailable: Python 3.11+ (tomllib) is required"
+  pj_nolib --enforce rework.required_authors
+  eq "plumb-project --enforce without tomllib exits 3" "$pj_code|$pj_out" "3|"
+  pj_nolib --json rework.required_authors
+  eq "plumb-project --json without tomllib is unavailable" "$(pjj "$pj_out")|$pj_code" \
+    'unavailable|rework.required_authors|null|Python 3.11+ (tomllib) is required|3'
+  rm -f "$pj_file"
+  pj_nolib --enforce rework.required_authors
+  eq "plumb-project without tomllib and without a file is still absent (no policy to read)" "$pj_code|$pj_out" "0|"
+  unset PJ_SCRIPT
+
+  pjr; eq "plumb-project with no arguments is a usage error" "$pj_code" "2"
+  pjr --enforce; eq "plumb-project --enforce without a key is a usage error" "$pj_code" "2"
+  pjr --bogus x; eq "plumb-project rejects an unknown option" "$pj_code" "2"
+  pjr 'a..b'; eq "plumb-project rejects a malformed key" "$pj_code" "2"
+  pj_out=$("$root/bin/plumb-project" --help 2>/dev/null); pj_code=$?
+  case "$pj_code|$pj_out" in "0|usage: plumb-project"*) ok "plumb-project --help prints usage and exits 0" ;;
+    *) ng "plumb-project --help: [$pj_code|$pj_out]" ;; esac
+  # Outside a git repository there is nowhere the contract could be: fail closed, not "no policy".
+  pj_outside="$sandbox_root/pj-outside"; mkdir -p "$pj_outside"
+  pj_out=$(cd "$pj_outside" && GIT_CEILING_DIRECTORIES="$sandbox_root" "$root/bin/plumb-project" --enforce rework.required_authors 2>/dev/null); pj_code=$?
+  eq "plumb-project outside a git repository fails closed" "$pj_code|$pj_out" "2|"
+else
+  printf '  %-4s %s\n' "--" "python3 not on PATH, plumb-project assertions skipped"
+fi
+
 # doctor: a role holding a command line needs only its first word on PATH, and a fresh HOME that
 # has never run a Claude session (no ~/.claude/projects/) is "not yet", not NG.
 fresh_home="$sandbox_root/fresh-home"; mkdir -p "$fresh_home"
