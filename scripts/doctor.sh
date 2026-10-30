@@ -101,6 +101,84 @@ else
   command -v "$st" >/dev/null 2>&1 && note "ok" "stack.tool = $st" || bad "stack.tool = $st is not on PATH"
 fi
 
+# 2b. The project contract (docs/project-contract.md): <checkout>/.plumb/project.toml.
+#     Absent is normal ("none"), not a failure: most repositories have no contract. A file that
+#     exists but does not parse is NG, because every consumer treats a broken contract as invalid
+#     for all keys. plumb-project does the validating; this block only reports what it says.
+#     A verify command is checked by its first word: with a / it is a file relative to the
+#     repository top level (absolute paths as-is) and must be executable; without one it must be on
+#     PATH, which is how it will be run.
+echo "— contract"
+contract_keys="repo.base_branch rework.required_authors rework.lookahead_days ledger.classify ledger.timezone verify.lookup verify.up verify.down verify.scenarios failure.extra_codes"
+cmd_resolves() { # <command line> <repository top level>
+  local first path
+  read -r first _ <<<"$1"
+  [ -n "$first" ] || return 1
+  case "$first" in
+    */*)
+      case "$first" in /*) path=$first ;; *) path="$2/$first" ;; esac
+      [ -f "$path" ] && [ -x "$path" ] ;;
+    *) command -v "$first" >/dev/null 2>&1 ;;
+  esac
+}
+if ! cpath=$(bash "$root/scripts/plumb-path.sh" project 2>/dev/null); then
+  note "--" "contract: cannot check (outside a git repository. Run doctor inside the repository you mean)"
+elif [ ! -e "$cpath" ] && [ ! -L "$cpath" ]; then
+  note "--" "contract: none"
+elif ! command -v python3 >/dev/null 2>&1; then
+  note "--" "contract: skipped, python3 is not on PATH"
+else
+  ctop=${cpath%/.plumb/project.toml}
+  # Line 1: the outcome. Line 2: its message. Then, for a valid file, <set|unset><TAB><key><TAB><value>.
+  cinfo=$(python3 "$root/scripts/plumb-project.py" --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    outcome, message = str(d["outcome"]), str(d["message"]).replace("\n", " ")
+except (ValueError, KeyError, TypeError):
+    print("broken"); print("")
+    sys.exit(0)
+print(outcome); print(message)
+if outcome == "set":
+    for key in sys.argv[1:]:
+        node = d["value"]
+        for part in key.split("."):
+            node = node.get(part) if isinstance(node, dict) else None
+        if node is None:
+            print("unset\t" + key + "\t")
+        else:
+            text = node if isinstance(node, str) else json.dumps(node)
+            print("set\t" + key + "\t" + text.replace("\n", " "))
+' $contract_keys)
+  {
+    IFS= read -r coutcome
+    IFS= read -r cmessage
+    case "$coutcome" in
+      unavailable) note "--" "contract: skipped, Python 3.11+ (tomllib) is unavailable" ;;
+      invalid)     bad "$cmessage" ;;
+      set)
+        while IFS=$'\t' read -r cstate ckey cval; do
+          if [ "$cstate" = unset ]; then
+            note "--" "$ckey"
+          else
+            case "$ckey" in
+              verify.lookup|verify.up|verify.down)
+                if cmd_resolves "$cval" "$ctop"; then
+                  note "ok" "$ckey"
+                else
+                  read -r cfirst _ <<<"$cval"
+                  bad "$ckey: ${cfirst:-(empty)} does not resolve (not on PATH, or not an executable file under the repository top level)"
+                fi ;;
+              *) note "ok" "$ckey" ;;
+            esac
+          fi
+        done ;;
+      absent) note "--" "contract: none" ;;
+      *) bad "contract: plumb-project gave no usable answer; run plumb-project --json" ;;
+    esac
+  } <<<"$cinfo"
+fi
+
 # 3. There is no dependency on an outside plugin.
 #    Until 2026-08-30, plumb's router forwarded "fix a bug" and "run a plan task by task" to
 #    superpowers, and doctor checked whether that existed.

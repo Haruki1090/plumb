@@ -2,6 +2,35 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.14.0] - 2026-10-30
+
+### Added
+
+- The project contract: one tracked file per repository (`project.toml` under the checkout's
+  `.plumb/`) that hands plumb the facts it cannot know. `plumb-path project` resolves it from the
+  current worktree's top level and ignores `PLUMB_ROOT` and `root =`; `--mkdir` is an error.
+  `docs/project-contract.md` has the schema, the outcomes and the CI wiring.
+- `plumb-project`: reads the contract. `plumb-project <key>`, `--json [<key>]` and `--enforce <key>`
+  return one of four outcomes by exit status and in JSON: absent and set (exit 0), invalid (exit 2),
+  unavailable (no `tomllib`, exit 3). The whole file is validated against schema v1 at once, so a
+  broken contract is invalid for every key; unknown keys warn on stderr. Messages name the key or
+  the line and never echo the file.
+- `plumb-check-fixes`: validates the `Fixes-PR:` line of a pull request body for the authors a
+  repository requires (`none`, or `#<n>` items; one line; no duplicates; not the pull request itself).
+  A non-required author passes without the body file being opened. Parsing is linear, so a 5 MB
+  adversarial body is answered in well under a second. The checker never reads policy: the CI passes
+  it from a trusted source, and `docs/project-contract.md` shows two wirings (a repository variable,
+  the base commit's contract) and names the wrong one.
+- `plumb-doctor` prints a `contract` block: `none` when absent, `ok` or `--` per key, an `NG` for an
+  invalid file or a verify command that does not resolve, and a skip line without `tomllib`.
+- Selftest covers the path kind, every outcome, the `Fixes-PR:` rules, the stress bodies, the doctor
+  block and an integration fixture that runs the base-commit wiring.
+
+### Changed
+
+- `playbooks/opening-a-pr.md` writes the `Fixes-PR:` line when the contract lists the author. The
+  router and `docs/artifact-lifecycle.md` index the new commands and kind.
+
 ## [0.13.1] - 2026-10-03
 
 ### Added
