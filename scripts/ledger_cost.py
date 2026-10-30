@@ -733,14 +733,16 @@ def cmd_capture(argv: list[str]) -> int:
 def export_on_stop(summaries: list[dict[str, Any]], cwd: str | None) -> None:
     """The end of a turn in a cloud session: a container can be reclaimed with no session-end event,
     so when the owner opted in (ledger.capture = on, ledger.export = on-stop, ledger.store set) the
-    sessions this hook run captured something new for are exported now, by the same code path as
+    sessions this hook run captured something new for (a row, or a conflicting copy) are exported now, by the same code path as
     `plumb-ledger export --session <id>`. Only the hook path calls this, in its background job: it
     never raises, and what goes wrong leaves one line (type and a short, masked message) in the
     capture log while the records stay pending. A session with nothing new does not push."""
     try:
         if config("ledger.capture", "off") != "on" or config("ledger.export", "manual") != "on-stop":
             return
-        due = [s for s in summaries if s.get("new")]
+        # A conflicting copy found by this capture is news too, even with no new row: cmd_export
+        # sends a session whose conflicts changed, and the container may not wait for another turn.
+        due = [s for s in summaries if s.get("new") or s.get("conflicts")]
         if not due:
             return
         if not config("ledger.store"):

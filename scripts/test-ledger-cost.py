@@ -1094,6 +1094,27 @@ def _():
     assert not (sb.ledger / "capture.log").exists(), (sb.ledger / "capture.log").read_text()
 
 
+@case("on-stop: a turn that finds only a conflicting copy of an exported request still pushes the conflict")
+def _():
+    sb, repo, store = on_stop_sandbox("stop-conflict")
+    shim, mark, log = hook_shims(sb)
+    path = sb.root / "proj" / "sess-cf.jsonl"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(assistant("msg_cf", "2026-10-10T00:00:00Z", repo, "feat/a", use=usage(1000, 5)) + "\n")
+    run_hook(sb, hook_input(sb, path, repo), shim)
+    ref = "refs/heads/plumb-ledger/claude/sess-cf"
+    assert wait_for(lambda: ref in refs(store), 60) and wait_for(finished(mark, 1), 60), refs(store)
+    first = refs(store)[ref]
+    with open(path, "a") as handle:  # the same request again, with different usage: a conflict, no new row
+        handle.write(assistant("msg_cf", "2026-10-10T00:00:01Z", repo, "feat/a", use=usage(1000, 9)) + "\n")
+    run_hook(sb, hook_input(sb, path, repo), shim)
+    assert wait_for(finished(mark, 2), 60)
+    assert wait_for(lambda: refs(store).get(ref) not in (None, first), 60), "the conflict was not pushed"
+    tree = subprocess.run(["git", "-C", str(store), "ls-tree", "--name-only", ref], capture_output=True, text=True).stdout.split()
+    assert tree == ["conflicts.jsonl", "records.jsonl"], tree
+    assert len(stored_lines(store, "sess-cf")) == 1
+
+
 @case("ledger.export manual (default or explicit) captures but never pushes")
 def _():
     for name, extra in (("stop-manual-default", ""), ("stop-manual-explicit", "ledger.export = manual\n"),
