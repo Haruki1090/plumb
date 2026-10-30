@@ -126,7 +126,19 @@ capture appends meanwhile stays pending for the next export. Export runs non-int
 (`GIT_TERMINAL_PROMPT=0`) with git's own credential for that URL, after a `git ls-remote` preflight
 (`export --check`, which `plumb-doctor` also runs). A failed push keeps the records pending and exits
 non-zero. Without a store, records stay local and every report says that cloud sessions are not
-covered. Run `export` at the end of a cloud session: its container is reclaimed afterwards.
+covered. Run `export` at the end of a cloud session (its container is reclaimed afterwards), or set
+`ledger.export = on-stop` (below) so that every turn does.
+
+**Export at the end of every turn (`ledger.export = on-stop`).** A cloud session's container is
+reclaimed after idle with no reliable session-end event, so there is no "end of session" to export
+at. With `ledger.capture = on`, `ledger.export = on-stop` and `ledger.store` set, the Stop hook's
+background job runs, after that session's capture, the same code as `plumb-ledger export --session
+<id>`, for that session only. It stays in the background (the hook's latency is unchanged), a turn
+that captured nothing new does not push, and a failure (store unset, unreachable, denied) leaves one
+line in `capture.log` in the ledger directory, with the error type and a short message and any
+credential in a URL masked; the records stay pending for the next turn or a manual `export`.
+`ledger.export = manual` (the default; also unset) is the behaviour described above. `plumb-doctor`
+reports the key and flags `on-stop` without a store or with capture off.
 
 ### Tasks and the report
 

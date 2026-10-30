@@ -203,6 +203,14 @@ line) and what each task cost on which models. Cost capture is opt-in (`ledger.c
 (`ledger.store`), one ref per session, so cloud sessions are not lost with their container. Records,
 the allowlist and coverage are in [`docs/ledger.md`](docs/ledger.md).
 
+### Cloud sessions
+
+A cloud container is new for every session, so plumb comes from the environment's setup script: the
+two install commands and `plumb-bootstrap`, which writes the config and checks the judge and the cost
+store. With `ledger.export = on-stop`, each session's records leave at the end of every turn, before
+the container is reclaimed. The lines, and the container facts behind them, are in
+[`docs/cloud-setup.md`](docs/cloud-setup.md).
+
 ### The improvement loop
 
 An agent failure is recorded the same way everywhere: an `agent-failure` issue or pull request with

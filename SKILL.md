@@ -81,6 +81,7 @@ Playbooks name principles; read a named principle in full when you apply it.
 | Check the `Fixes-PR:` line of a pull request body | `plumb-check-fixes` |
 | Which changes landed, which were fixed later (rework rate), and what each task cost | `plumb-ledger`; records, store and coverage are in `docs/ledger.md` |
 | The weekly look back: rework, cost, failures, and at most three changes | `plumb:retro` |
+| Set plumb up for a cloud session (setup script, config, cost export) | `docs/cloud-setup.md`; the script it runs is `plumb-bootstrap` |
 | Turn one agent failure into the change that stops it next time | `plumb:failure-to-rule`; codes and layers are in `docs/failure-taxonomy.md` |
 | Decide which configuration of a playbook to run, with a number | `playbooks/evaluating-an-agent.md` |
 
