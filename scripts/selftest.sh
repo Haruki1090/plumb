@@ -1400,7 +1400,7 @@ else
 fi
 
 if [ -n "${PLUMB_SELFTEST_QUICK:-}" ]; then
-  printf '  %-4s %s\n' "--" "work ledger, cost-per-task and failure-record suites skipped: quick mode (run scripts/selftest.sh for them)"
+  printf '  %-4s %s\n' "--" "work ledger, cost-per-task, failure-record and bootstrap suites skipped: quick mode (run scripts/selftest.sh for them)"
 elif command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-ledger-changes.py" >/dev/null \
     && ok "work ledger: landed changes (merge, squash, rebase, pagination, shallow clone) and the rework rate" \
@@ -1411,6 +1411,9 @@ elif command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-ledger-failures.py" >/dev/null \
     && ok "failure records: created in the period, blocks in bodies and comments, problems kept, findings" \
     || ng "failure records (run scripts/test-ledger-failures.py)"
+  python3 -B "$root/scripts/test-bootstrap.py" >/dev/null \
+    && ok "cloud bootstrap: managed config block (create, replace, idempotent, block wins), install/judge/store checks, exit codes" \
+    || ng "cloud bootstrap (run scripts/test-bootstrap.py)"
 fi
 
 if command -v python3 >/dev/null 2>&1; then
