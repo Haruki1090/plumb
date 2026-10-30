@@ -2,6 +2,15 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.15.2] - 2026-10-30
+
+### Fixed
+
+- `scripts/test-ledger-cost.py` failed on macOS: the hook-latency case waited for the background
+  captures to finish by reading `/proc`, which macOS does not have, so it appended its new lines
+  while a capture was still running and found nothing left to read. The test's `python3` shim now
+  marks when each run ends, and the case waits for those marks. The capture itself was not affected.
+
 ## [0.15.1] - 2026-10-30
 
 ### Fixed
