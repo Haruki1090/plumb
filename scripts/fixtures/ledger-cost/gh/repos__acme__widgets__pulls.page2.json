@@ -1,0 +1,28 @@
+[
+ {
+  "number": 3,
+  "head": {
+   "ref": "feat/old"
+  },
+  "base": {
+   "ref": "main"
+  },
+  "created_at": "2026-08-01T00:00:00Z",
+  "closed_at": "2026-08-02T00:00:00Z",
+  "title": "ignored",
+  "body": "ignored"
+ },
+ {
+  "number": 4,
+  "head": {
+   "ref": "feat/a"
+  },
+  "base": {
+   "ref": "main"
+  },
+  "created_at": "2026-10-05T00:00:00Z",
+  "closed_at": "2026-10-06T00:00:00Z",
+  "title": "ignored",
+  "body": "ignored"
+ }
+]

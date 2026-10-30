@@ -1,0 +1,101 @@
+{
+  "cache_creation": {
+    "ephemeral_1h_input_tokens": 500,
+    "ephemeral_1h_percent": 14.3,
+    "ephemeral_5m_input_tokens": 3000,
+    "ephemeral_5m_percent": 85.7
+  },
+  "context_per_request": {
+    "max": 3004,
+    "p50": 1503,
+    "p90": 3004
+  },
+  "context_per_request_main": {
+    "max": 3004,
+    "p50": 1503,
+    "p90": 3004
+  },
+  "first_request": {
+    "max": 1503,
+    "p50": 1503
+  },
+  "flags": {
+    "CTX-P90-OVER": {
+      "sessions": 0
+    },
+    "FIRST-REQUEST-OVER": {
+      "sessions": 0
+    },
+    "IDLE-REBUILD": {
+      "sessions": 0
+    },
+    "TOOL-RESULT-OVER": {
+      "results": 0
+    }
+  },
+  "idle": {
+    "cache_rebuilt_after": 0,
+    "gaps": 0
+  },
+  "models": {
+    "main": {
+      "claude-opus-5-5": 3
+    },
+    "sidechain": {}
+  },
+  "output_tokens": {
+    "thinking": null,
+    "thinking_percent": null,
+    "total": 220
+  },
+  "project": "session-audit",
+  "record_count": 5,
+  "request_count": 3,
+  "requests_per_session": 3.0,
+  "requests_per_turn": 3.0,
+  "runtime": "claude",
+  "session_count": 1,
+  "sessions": [
+    {
+      "context_p90": 3004,
+      "first_context": 1503,
+      "flags": [],
+      "idle_rebuilds": 0,
+      "main_context_p90": 3004,
+      "record_count": 5,
+      "request_count": 3,
+      "session_id": "session",
+      "synthetic_count": 0,
+      "token_totals": {
+        "cache_creation": 3500,
+        "cache_read": 2500,
+        "input": 9,
+        "output": 220
+      },
+      "tool_results_over": 0,
+      "turn_count": 1
+    }
+  ],
+  "skipped_lines": 0,
+  "synthetic_count": 0,
+  "thresholds": {
+    "context_tokens": 400000,
+    "first_request_tokens": 50000,
+    "idle_minutes": 60,
+    "rebuild_tokens": 20000,
+    "tool_result_bytes": 40000
+  },
+  "token_totals": {
+    "cache_creation": 3500,
+    "cache_read": 2500,
+    "input": 9,
+    "output": 220
+  },
+  "tool_results": {
+    "over_percent": null,
+    "over_threshold": 0,
+    "total": 0
+  },
+  "turn_count": 1,
+  "turns_per_session": 1.0
+}

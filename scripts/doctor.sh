@@ -179,6 +179,31 @@ if outcome == "set":
   } <<<"$cinfo"
 fi
 
+# 2c. The work ledger (docs/ledger.md): is capture on, and does the store answer.
+#     Both are opt-in, so "off" and "unset" are `--`, never a failure. A store that is set but does
+#     not answer is NG; the reason is git's first line with any credentials in the URL masked
+#     (plumb-ledger export --check does the masking).
+echo "— ledger"
+lcap=$(cfg ledger.capture)
+case "$lcap" in
+  on)  note "ok" "ledger.capture = on (the Stop hook records requests in the background)" ;;
+  ""|off) note "--" "ledger.capture: off (set ledger.capture = on to record requests)" ;;
+  *)   bad "ledger.capture = $lcap (expected on or off; capture stays off)" ;;
+esac
+lstore=$(cfg ledger.store)
+if [ -z "$lstore" ]; then
+  note "--" "ledger.store: unset (records stay local; cloud sessions are not covered)"
+elif ! command -v python3 >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then
+  note "--" "ledger.store: cannot check (python3 and git are needed)"
+else
+  lcheck=$(python3 "$root/scripts/ledger.py" export --check 2>&1); lcode=$?
+  if [ "$lcode" -eq 0 ]; then
+    note "ok" "ledger.store answers (git ls-remote)"
+  else
+    bad "ledger.store: ${lcheck#NG }"
+  fi
+fi
+
 # 3. There is no dependency on an outside plugin.
 #    Until 2026-08-30, plumb's router forwarded "fix a bug" and "run a plan task by task" to
 #    superpowers, and doctor checked whether that existed.
