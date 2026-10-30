@@ -511,6 +511,29 @@ def readable_fixes_pr_share_and_direct_commits_are_reported():
 
 
 @case
+def a_fixer_in_another_repository_does_not_rework_a_change_with_the_same_number():
+    rows = [
+        {"kind": "pull_request", "repository": "acme/a", "number": 1, "author": "alice", "merged_at": "2026-10-02T10:00:00Z", "fixes_pr": []},
+        {"kind": "pull_request", "repository": "acme/b", "number": 1, "author": "alice", "merged_at": "2026-10-02T11:00:00Z", "fixes_pr": []},
+        {"kind": "pull_request", "repository": "acme/b", "number": 5, "author": "bob", "merged_at": "2026-10-03T10:00:00Z", "fixes_pr": [1]},
+        {"kind": "pull_request", "repository": "acme/c", "number": 7, "author": "alice", "merged_at": "2026-10-02T12:00:00Z", "fixes_pr": []},
+        {"kind": "pull_request", "number": 8, "author": "bob", "merged_at": "2026-10-03T12:00:00Z", "fixes_pr": [7]},
+        {"kind": "pull_request", "number": 9, "author": "alice", "merged_at": "2026-10-02T13:00:00Z", "fixes_pr": []},
+        {"kind": "pull_request", "number": 10, "author": "bob", "merged_at": "2026-10-03T13:00:00Z", "fixes_pr": [9]},
+    ]
+    changes = TMP / "mixed-changes.jsonl"
+    changes.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    command = [sys.executable, "-B", str(LEDGER), "rework", "--changes", str(changes), "--since", "2026-10-01",
+               "--until", "2026-10-28", "--json"]
+    done = subprocess.run(command, capture_output=True, text=True, env=dict(os.environ, PLUMB_LEDGER_NOW="2026-10-30T00:00:00Z"),
+                          cwd=str(rework_repo()))
+    same(done.returncode, 0, done.stderr)
+    result = json.loads(done.stdout)
+    same(result["reworked_changes"], [{"repository": "acme/b", "number": 1, "fixed_by": [5]},
+                                      {"repository": None, "number": 9, "fixed_by": [10]}], "only same-repository fixers rework")
+
+
+@case
 def an_invalid_contract_exits_2():
     repo = TMP / "rework-bad"
     git(TMP, "init", "-b", "develop", str(repo))

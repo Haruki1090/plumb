@@ -655,8 +655,11 @@ def rework_rate(records: list, required: list, start: datetime, end: datetime, d
     reworked, clean, pending = [], [], []
     window = timedelta(days=days)
     for record, when in cohort:
+        # `Fixes-PR: #1` names a pull request of the fixer's own repository: a fixer counts only
+        # when its repository is the original's (an unnamed one matches only unnamed originals).
         fixers = sorted(other["number"] for other, later in pulls
-                        if when < later <= when + window and record["number"] in (other.get("fixes_pr") or []))
+                        if when < later <= when + window and other.get("repository") == record.get("repository")
+                        and record["number"] in (other.get("fixes_pr") or []))
         if fixers:
             reworked.append({"repository": record.get("repository"), "number": record["number"], "fixed_by": fixers})
         elif when + window > now:

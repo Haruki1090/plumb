@@ -39,7 +39,9 @@ it needs. An invalid contract exits 2 and a missing parser exits 3; neither is r
 
 **The rate.** The cohort is pull requests by `rework.required_authors` that landed in the period.
 One counts as reworked when a later pull request (any author) lists it in `Fixes-PR` and landed
-within the look-ahead window (`rework.lookahead_days`, default 7). A change whose window is still
+within the look-ahead window (`rework.lookahead_days`, default 7). `Fixes-PR: #n` names a pull
+request of the fixer's own repository, so a fix counts only for originals of the same `repository`
+(a record with no repository matches only records with none). A change whose window is still
 open and has no fix yet is **pending**, not clean, and the rate (reworked ÷ (reworked + clean)) leaves
 it out. A fix listing several originals counts for each. Direct commits are counted separately and
 never enter the cohort. `--json` prints `reworked` (the count) and `reworked_changes` (the rows).
