@@ -2,6 +2,14 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.17.1] - 2026-10-30
+
+### Fixed
+
+- `docs/cloud-setup.md` said each cloud session installs plumb fresh. An environment that caches
+  its setup keeps the version installed when the script ran; the page now gives the session-start
+  update and `/reload-plugins`.
+
 ## [0.17.0] - 2026-10-30
 
 ### Added
