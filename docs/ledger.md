@@ -91,17 +91,19 @@ counted and shown, never zero. Sums keep full precision; only the display rounds
 ### Store and export
 
 Set `ledger.store = <git URL>` to the owner's private repository. `plumb-ledger export` pushes each
-captured session as one commit holding that session's records to
-`refs/plumb-ledger/<runtime>/<session>`: each session owns its ref, so parallel sessions never share
-a push target, and the commit is built from the content alone, so a re-export is a no-op. One
-session is exported by one process at a time (a per-session lock is held from reading its records
-through the push to moving them from pending to exported), and what a capture appends meanwhile
-stays pending for the next export. It runs
-non-interactively (`GIT_TERMINAL_PROMPT=0`) with git's own credential for that URL, after a
-`git ls-remote` preflight (`export --check`, which `plumb-doctor` also runs). A failed push keeps the
-records pending and exits non-zero. Without a store, records stay local and every report says that
-cloud sessions are not covered. Run `export` at the end of a cloud session: its container is
-reclaimed afterwards.
+captured session as one commit to `refs/plumb-ledger/<runtime>/<session>`. The commit holds
+`records.jsonl` (that session's records) and, when the session had conflicting copies of a request,
+`conflicts.jsonl` (the conflicting ids, one `{"id": ...}` per line, nothing else), so a report built
+from the store alone still counts the conflicts after the container that saw them is gone. A conflict
+found by a later capture that adds no record is exported on its own. Each session owns its ref, so
+parallel sessions never share a push target, and the commit is built from the content alone, so a
+re-export is a no-op. One session is exported by one process at a time (a per-session lock is held
+from reading its records through the push to moving them from pending to exported), and what a
+capture appends meanwhile stays pending for the next export. Export runs non-interactively
+(`GIT_TERMINAL_PROMPT=0`) with git's own credential for that URL, after a `git ls-remote` preflight
+(`export --check`, which `plumb-doctor` also runs). A failed push keeps the records pending and exits
+non-zero. Without a store, records stay local and every report says that cloud sessions are not
+covered. Run `export` at the end of a cloud session: its container is reclaimed afterwards.
 
 ### Tasks and the report
 

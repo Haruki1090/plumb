@@ -734,6 +734,66 @@ def _():
         assert len(stored_lines(store, session)) == 4 and sb.pending() == [], stored_lines(store, session)
 
 
+def conflict_lines(lines: list[str], repo: Path, second_output: int = 9) -> list[str]:
+    return lines + [assistant("msg_c", "2026-10-10T00:00:00Z", repo, "feat/a", use=usage(1000, 5)),
+                    assistant("msg_c", "2026-10-10T00:00:01Z", repo, "feat/a", use=usage(1000, second_output)),
+                    assistant("msg_ok", "2026-10-10T00:00:02Z", repo, "feat/a")]
+
+
+def store_only_report(sb: Sandbox) -> dict:
+    """The report as another machine sees it: an empty local ledger and the store."""
+    empty = sb.root / "empty-ledger"
+    empty.mkdir(exist_ok=True)
+    code, out, err = sb.ledger_cmd("report", "--since", "2026-09-01", "--until", "2026-10-31", "--json",
+                                   "--store-cache", str(sb.root / "other-cache.git"), extra_env={"PLUMB_LEDGER_DIR": str(empty)})
+    assert code == 0, err
+    return json.loads(out)
+
+
+@case("conflicting copies travel in the exported commit, ids only, so a report from the store alone shows them")
+def _():
+    sb = Sandbox("conflict-export")
+    store = bare_store(sb)
+    repo = make_repo(sb.root / "repo")
+    capture(sb, write_transcript(sb.root / "proj", "sess-cx", conflict_lines([], repo)))
+    capture(sb, write_transcript(sb.root / "proj", "sess-plain", [assistant("msg_p", "2026-10-10T00:00:00Z", repo, "feat/a")]))
+    assert sb.ledger_cmd("export")[0] == 0
+    tree = subprocess.run(["git", "-C", str(store), "ls-tree", "--name-only", "refs/plumb-ledger/claude/sess-cx"],
+                          capture_output=True, text=True).stdout.split()
+    assert tree == ["conflicts.jsonl", "records.jsonl"], tree
+    body = subprocess.run(["git", "-C", str(store), "show", "refs/plumb-ledger/claude/sess-cx:conflicts.jsonl"],
+                          capture_output=True, text=True).stdout
+    assert body == '{"id": "claude:msg_c"}\n', body
+    plain = subprocess.run(["git", "-C", str(store), "ls-tree", "--name-only", "refs/plumb-ledger/claude/sess-plain"],
+                           capture_output=True, text=True).stdout.split()
+    assert plain == ["records.jsonl"], plain
+    first = refs(store)
+    assert sb.ledger_cmd("export")[1].strip() == "export: nothing is pending"
+    assert refs(store) == first
+    report = store_only_report(sb)
+    assert report["requests"] == 3 and report["unknown"]["id_conflicts"] == 1, (report["requests"], report["unknown"])
+
+
+@case("a conflict found by a later capture that adds no rows is exported too")
+def _():
+    sb = Sandbox("conflict-late")
+    store = bare_store(sb)
+    repo = make_repo(sb.root / "repo")
+    path = write_transcript(sb.root / "proj", "sess-late", [assistant("msg_c", "2026-10-10T00:00:00Z", repo, "feat/a", use=usage(1000, 5))])
+    capture(sb, path)
+    assert sb.ledger_cmd("export")[0] == 0
+    before = refs(store)
+    with open(path, "a") as handle:
+        handle.write(assistant("msg_c", "2026-10-10T00:00:01Z", repo, "feat/a", use=usage(1000, 9)) + "\n")
+    summary = capture(sb, path)
+    assert summary["new"] == 0 and summary["conflicts"] == 1, summary
+    assert sb.ledger_cmd("export")[0] == 0
+    assert refs(store) != before
+    assert store_only_report(sb)["unknown"]["id_conflicts"] == 1
+    after = refs(store)
+    assert sb.ledger_cmd("export")[1].strip() == "export: nothing is pending" and refs(store) == after
+
+
 @case("an export with an unreachable store exits non-zero, keeps the records pending, and the report shows incomplete coverage")
 def _():
     sb = Sandbox("unreachable")

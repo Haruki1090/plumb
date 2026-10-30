@@ -586,6 +586,22 @@ def append_conflicts(directory: Path, runtime: str, session: str, ids: list[str]
                 handle.write(json.dumps({"id": identity}) + "\n")
 
 
+def read_conflict_ids(path: Path) -> list[str]:
+    """The conflicting request ids a conflicts file holds: ids only, sorted, once each. A line that
+    is not {"id": <token-like string>} is ignored, the same allowlist as every other record."""
+    ids: set[str] = set()
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    for line in lines:
+        with contextlib.suppress(ValueError, AttributeError):
+            identity = clean(json.loads(line).get("id"), 210)
+            if identity:
+                ids.add(identity)
+    return sorted(ids)
+
+
 def capture_one(directory: Path, runtime: str, main: Path, checkouts: Checkouts) -> dict[str, Any]:
     stem = safe_session(main.stem)
     state_path = directory / "state" / runtime / f"{stem}.json"
@@ -806,9 +822,12 @@ def preflight(store: str) -> tuple[bool, str]:
     return True, "ok"
 
 
-def build_commit(cache: Path, runtime: str, session: str, records: list[dict[str, Any]]) -> str:
-    """The same records always give the same commit: fixed identity, date from the newest record,
-    no parent, one file."""
+def build_commit(cache: Path, runtime: str, session: str, records: list[dict[str, Any]],
+                 conflicts: list[str] | None = None) -> str:
+    """The same records and conflict ids always give the same commit: fixed identity, date from the
+    newest record, no parent. Files: records.jsonl, and conflicts.jsonl (ids only, sorted) when the
+    session has conflicting copies; a session without any has the one file it always had."""
+    conflicts = sorted(set(conflicts or []))
     body = "".join(record_line(r) + "\n" for r in records)
     newest = max((parse_time(r["time"]) for r in records if r["time"]), default=None)
     stamp = f"{int(newest.timestamp()) if newest else 0} +0000"
@@ -823,9 +842,15 @@ def build_commit(cache: Path, runtime: str, session: str, records: list[dict[str
             raise LedgerError(f"git {args[0]} failed: {first_line(out.stderr) if out else 'no answer'}")
         return out.stdout.strip()
 
+    entries = ""
+    if conflicts:
+        blob = git(["hash-object", "-w", "--stdin"], "".join(json.dumps({"id": i}) + "\n" for i in conflicts))
+        entries += f"100644 blob {blob}\tconflicts.jsonl\n"
     blob = git(["hash-object", "-w", "--stdin"], body)
-    tree = git(["mktree"], f"100644 blob {blob}\trecords.jsonl\n")
-    return git(["commit-tree", tree, "-m", f"plumb-ledger {runtime}/{session}: {len(records)} records"])
+    entries += f"100644 blob {blob}\trecords.jsonl\n"
+    tree = git(["mktree"], entries)
+    note = f", {len(conflicts)} conflicts" if conflicts else ""
+    return git(["commit-tree", tree, "-m", f"plumb-ledger {runtime}/{session}: {len(records)} records{note}"])
 
 
 def export_parser() -> argparse.ArgumentParser:
@@ -858,12 +883,18 @@ def cmd_export(argv: list[str]) -> int:
         return 0 if good else 1
     work = []
     for directory in dirs:
-        for runtime, session, path in session_files(directory, "pending"):
+        # A session is due when it has pending rows, or conflict ids its last export did not carry
+        # (a later capture can find a conflicting copy without adding a row).
+        due = {(runtime, session) for runtime, session, _path in session_files(directory, "pending")}
+        for runtime, session, path in session_files(directory, "conflicts"):
+            if read_conflict_ids(path) != read_conflict_ids(directory / "exported-conflicts" / runtime / f"{session}.jsonl"):
+                due.add((runtime, session))
+        for runtime, session in sorted(due):
             if args.session and args.session != session:
                 continue
             if args.runtime and args.runtime != runtime:
                 continue
-            work.append((directory, runtime, session, path))
+            work.append((directory, runtime, session))
     if not work:
         print("export: nothing is pending")
         return 0
@@ -872,7 +903,7 @@ def cmd_export(argv: list[str]) -> int:
         print(f"export: the store is not reachable ({reason}); {len(work)} session(s) stay pending", file=sys.stderr)
         return 1
     failed = 0
-    for directory, runtime, session, path in work:
+    for directory, runtime, session in work:
         try:
             export_session(directory, runtime, session, store)
         except LedgerError as error:
@@ -892,11 +923,14 @@ def export_session(directory: Path, runtime: str, session: str, store: str) -> N
     snapshot that was pushed (counted, so a row appended later that equals one of them stays)."""
     pending_path = directory / "pending" / runtime / f"{session}.jsonl"
     exported_path = directory / "exported" / runtime / f"{session}.jsonl"
+    conflicts_path = directory / "conflicts" / runtime / f"{session}.jsonl"
+    exported_conflicts_path = directory / "exported-conflicts" / runtime / f"{session}.jsonl"
     with locked(directory, f"export-{runtime}-{session}.lock"):
         with locked(directory):
             pending = load_records(pending_path)
             merged = unique_records(load_records(exported_path) + pending)
-        if not pending:
+            conflicts = read_conflict_ids(conflicts_path)
+        if not merged or (not pending and conflicts == read_conflict_ids(exported_conflicts_path)):
             return
         sent = Counter(record_line(r) for r in pending)
         ref = f"{STORE_REFS}/{runtime}/{session}"
@@ -905,7 +939,7 @@ def export_session(directory: Path, runtime: str, session: str, store: str) -> N
             raise LedgerError("the session id is not a valid ref name")
         with locked(directory, "export.lock"):
             cache = git_cache(directory, "store.git")
-        commit = build_commit(cache, runtime, session, merged)
+        commit = build_commit(cache, runtime, session, merged, conflicts)
         out = run(["git", "-C", str(cache), "push", "--porcelain", store, f"+{commit}:{ref}"],
                   env=git_env(), timeout=GIT_TIMEOUT)
         if out is None or out.returncode != 0:
@@ -914,6 +948,8 @@ def export_session(directory: Path, runtime: str, session: str, store: str) -> N
         with locked(directory):
             now_pending = load_records(pending_path)
             atomic_write(exported_path, "".join(record_line(r) + "\n" for r in merged))
+            if conflicts:
+                atomic_write(exported_conflicts_path, "".join(json.dumps({"id": i}) + "\n" for i in conflicts))
             keep = []
             for r in now_pending:
                 line = record_line(r)
@@ -1114,30 +1150,32 @@ def collect_local(dirs: list[Path]) -> tuple[list[dict[str, Any]], list[dict[str
         for _runtime, _session, path in session_files(directory, "exported"):
             exported.extend(load_records(path))
         for _runtime, _session, path in session_files(directory, "conflicts"):
-            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-                with contextlib.suppress(ValueError, AttributeError):
-                    conflicts.add(json.loads(line)["id"])
+            conflicts.update(read_conflict_ids(path))
     return pending, exported, conflicts, sessions
 
 
-def fetch_store(store: str, cache: Path) -> tuple[list[dict[str, Any]], str]:
+def fetch_store(store: str, cache: Path) -> tuple[list[dict[str, Any]], set[str], str]:
+    """(records, conflict ids, status) of every session ref in the store. Each ref's commit holds
+    records.jsonl and, when the session had conflicting copies, conflicts.jsonl (ids only)."""
     repo = git_cache(cache.parent, cache.name)
     out = run(["git", "-C", str(repo), "fetch", "--quiet", "--no-tags", store,
                f"+{STORE_REFS}/*:{STORE_REFS}/*"], env=git_env(), timeout=GIT_TIMEOUT)
     if out is None or out.returncode != 0:
-        return [], "unreachable: " + (first_line(out.stderr) if out else "git did not answer")
+        return [], set(), "unreachable: " + (first_line(out.stderr) if out else "git did not answer")
     refs = run(["git", "-C", str(repo), "for-each-ref", "--format=%(refname)", STORE_REFS + "/"], timeout=30)
     names = [n for n in (refs.stdout.split() if refs and refs.returncode == 0 else [])]
     if not names:
-        return [], "ok"
-    batch = run(["git", "-C", str(repo), "cat-file", "--batch"], stdin="".join(f"{n}:records.jsonl\n" for n in names),
+        return [], set(), "ok"
+    wanted = [(name, file) for name in names for file in ("records.jsonl", "conflicts.jsonl")]
+    batch = run(["git", "-C", str(repo), "cat-file", "--batch"], stdin="".join(f"{n}:{f}\n" for n, f in wanted),
                 timeout=GIT_TIMEOUT)
     if batch is None or batch.returncode != 0:
-        return [], "unreachable: could not read the fetched refs"
+        return [], set(), "unreachable: could not read the fetched refs"
     records: list[dict[str, Any]] = []
+    conflicts: set[str] = set()
     text = batch.stdout
     index = 0
-    for name in names:
+    for _name, file in wanted:
         end = text.index("\n", index)
         header = text[index:end].split()
         if len(header) == 3 and header[1] == "blob":
@@ -1145,13 +1183,18 @@ def fetch_store(store: str, cache: Path) -> tuple[list[dict[str, Any]], str]:
             body = text[end + 1:end + 1 + size]
             index = end + 1 + size + 1
             for line in body.splitlines():
-                with contextlib.suppress(ValueError):
-                    record = project(json.loads(line))
-                    if record is not None:
-                        records.append(record)
+                with contextlib.suppress(ValueError, AttributeError):
+                    if file == "records.jsonl":
+                        record = project(json.loads(line))
+                        if record is not None:
+                            records.append(record)
+                    else:
+                        identity = clean(json.loads(line).get("id"), 210)
+                        if identity:
+                            conflicts.add(identity)
         else:
             index = end + 1
-    return records, "ok"
+    return records, conflicts, "ok"
 
 
 def merge_sources(sources: list[list[dict[str, Any]]], local_conflicts: set[str]) -> tuple[list[dict[str, Any]], set[str], int]:
@@ -1333,11 +1376,12 @@ def cmd_report(argv: list[str]) -> int:
 
     store = config("ledger.store")
     store_rows: list[dict[str, Any]] = []
+    store_conflicts: set[str] = set()
     store_status = "unset"
     if store:
         cache = Path(args.store_cache) if args.store_cache else (dirs[0] if dirs else ledger_dir(os.getcwd(), False)) / "store-cache.git"
-        store_rows, store_status = fetch_store(store, cache)
-    merged, conflicts, unidentified = merge_sources([pending, exported, store_rows], local_conflicts)
+        store_rows, store_conflicts, store_status = fetch_store(store, cache)
+    merged, conflicts, unidentified = merge_sources([pending, exported, store_rows], local_conflicts | store_conflicts)
     in_period = []
     for record in merged:
         moment = parse_time(record["time"])
