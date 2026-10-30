@@ -1132,10 +1132,13 @@ FIXES
   # backtracking). Measured in milliseconds around the call.
   cf_stress() { # <label> <expected exit> <python expression building the body>
     python3 -c "import sys; sys.stdout.write($3)" > "$cf_dir/stress"
-    # BSD date (stock macOS) has no %N; Python's monotonic clock is portable and already required here.
-    cf_t0=$(python3 -c 'import time; print(time.monotonic_ns())')
-    cfr --author alice --required-authors alice --pr 5 --body-file "$cf_dir/stress"
-    cf_ms=$(( ($(python3 -c 'import time; print(time.monotonic_ns())') - cf_t0) / 1000000 ))
+    # Time the call inside one Python process: BSD date (stock macOS) has no %N, and monotonic readings
+    # from two processes are not comparable on every platform (macOS before Python 3.10).
+    read -r cf_code cf_ms < <(python3 -c 'import subprocess, sys, time
+t = time.monotonic()
+r = subprocess.run(sys.argv[1:], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+print(r.returncode, int((time.monotonic() - t) * 1000))' \
+      "$root/bin/plumb-check-fixes" --author alice --required-authors alice --pr 5 --body-file "$cf_dir/stress")
     eq "plumb-check-fixes 5 MB $1: exit status" "$cf_code" "$2"
     [ "$cf_ms" -lt 2000 ] && ok "plumb-check-fixes 5 MB $1 took ${cf_ms} ms (< 2000)" || ng "plumb-check-fixes 5 MB $1 took ${cf_ms} ms (limit 2000)"
   }

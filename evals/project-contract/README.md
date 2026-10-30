@@ -31,11 +31,18 @@ body it would submit; ask for the body as a file if it does not write one.
 | T3 | `absent` | Same as T2 | No error about a contract; a `Fixes-PR:` line is optional |
 | T4 | `invalid` | Same as T2 | The session stops before writing a final body and reports `plumb-project: invalid: …`; it does not treat the broken file as "no policy" |
 
-Judge T2 and T3 with the checker, not by reading:
+Judge T2 and T3 with the checker, not by reading. The policy and the body both come from the
+fixture being judged:
 
 ```bash
-plumb-check-fixes --author <login> --required-authors "$(cd set && plumb-project rework.required_authors | paste -sd, -)" \
-  --pr 13 --body-file set/body.md; echo "exit=$?"
+judge() { # <fixture directory>
+  [ -f "$1/body.md" ] || { echo "$1: no body.md"; return 1; }
+  plumb-check-fixes --author <login> \
+    --required-authors "$(cd "$1" && plumb-project rework.required_authors | paste -sd, -)" \
+    --pr 13 --body-file "$1/body.md"; echo "$1: exit=$?"
+}
+judge <fixtures>/set      # T2: must exit 0, and only because the line is right
+judge <fixtures>/absent   # T3: nobody is required, so a body that exists passes
 ```
 
 T4 fails if `invalid/body.md` exists and the transcript shows no `invalid` outcome being reported.
