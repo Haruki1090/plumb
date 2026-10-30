@@ -857,6 +857,43 @@ def _():
     assert sb.report()["requests"] == 7  # the same ids in pending and in the store are one request each
 
 
+@case("a session ref deleted from the store no longer counts in the report")
+def _():
+    sb = Sandbox("store-prune")
+    store = bare_store(sb)
+    two_sessions(sb)
+    assert sb.ledger_cmd("export")[0] == 0
+    shutil.rmtree(sb.ledger / "exported")  # the store is the only holder
+    assert sb.report()["requests"] == 7
+    subprocess.run(["git", "-C", str(store), "update-ref", "-d", "refs/plumb-ledger/claude/sess-b"], check=True)
+    report = sb.report()
+    assert report["requests"] == 3 and report["coverage"]["store"] == "ok", report["requests"]
+
+
+@case("switching ledger.store never counts the old store's sessions; the cache is keyed by the URL without credentials")
+def _():
+    sb = Sandbox("store-switch")
+    bare_store(sb)
+    two_sessions(sb)
+    assert sb.ledger_cmd("export")[0] == 0
+    shutil.rmtree(sb.ledger / "exported")
+    assert sb.report()["requests"] == 7
+    other = sb.root / "other-store.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(other)], check=True)
+    sb.set_config(f"ledger.capture = on\nledger.store = {other}\n")
+    put_pending(sb, "sess-c", [record(i, f"2026-10-11T00:00:0{i}.000Z", session="sess-c", rid="sess-c") for i in range(2)])
+    assert sb.ledger_cmd("export")[0] == 0
+    shutil.rmtree(sb.ledger / "exported")
+    assert sb.report()["requests"] == 2, "the old store's sessions are still counted"
+    caches = sorted(p.name for p in sb.ledger.glob("store-cache*.git"))
+    assert len(caches) == 2, caches   # one cache per store URL
+    secret_url = f"http://deploy:{SECRET}@127.0.0.1:9/private/ledger.git"
+    plain_url = "http://127.0.0.1:9/private/ledger.git"
+    assert SECRET not in ledger_cost.store_cache_name(secret_url)
+    assert ledger_cost.store_cache_name(secret_url) == ledger_cost.store_cache_name(plain_url)
+    assert ledger_cost.store_cache_name(plain_url) != ledger_cost.store_cache_name(plain_url + "x")
+
+
 # ---------------------------------------------------------------- the hook
 
 def hook_input(sb: Sandbox, transcript: Path, cwd: Path) -> str:

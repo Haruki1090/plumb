@@ -1154,11 +1154,19 @@ def collect_local(dirs: list[Path]) -> tuple[list[dict[str, Any]], list[dict[str
     return pending, exported, conflicts, sessions
 
 
+def store_cache_name(store: str) -> str:
+    """The cache repository's directory name for a store: a hash of its URL with the credentials
+    stripped, so a different store never shares a cache and a secret never reaches a path."""
+    bare = re.sub(r"^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@", r"\1", store.strip())
+    bare = re.sub(r"^[^@/:]+@(?=[^/:]+:)", "", bare)  # git@host:owner/name
+    return "store-cache-" + hashlib.sha1(bare.encode("utf-8", "replace")).hexdigest()[:16] + ".git"
+
+
 def fetch_store(store: str, cache: Path) -> tuple[list[dict[str, Any]], set[str], str]:
     """(records, conflict ids, status) of every session ref in the store. Each ref's commit holds
     records.jsonl and, when the session had conflicting copies, conflicts.jsonl (ids only)."""
     repo = git_cache(cache.parent, cache.name)
-    out = run(["git", "-C", str(repo), "fetch", "--quiet", "--no-tags", store,
+    out = run(["git", "-C", str(repo), "fetch", "--quiet", "--no-tags", "--prune", store,
                f"+{STORE_REFS}/*:{STORE_REFS}/*"], env=git_env(), timeout=GIT_TIMEOUT)
     if out is None or out.returncode != 0:
         return [], set(), "unreachable: " + (first_line(out.stderr) if out else "git did not answer")
@@ -1356,7 +1364,7 @@ def report_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prs", action="append", default=[], metavar="FILE", help="output of `plumb-ledger prs` (repeatable, one per repository); without it tasks are repository @ branch")
     parser.add_argument("--changes", metavar="FILE", help="output of `plumb-ledger changes`: splits cost into landed and not landed pull requests")
     parser.add_argument("--rework", metavar="FILE", help="output of `plumb-ledger rework --json`: adds the cost of reworked changes")
-    parser.add_argument("--store-cache", metavar="DIR", help="the cache repository for the store's refs (default: <ledger dir>/store-cache.git)")
+    parser.add_argument("--store-cache", metavar="DIR", help="the cache repository for the store's refs (default: <ledger dir>/store-cache-<hash of the store URL>.git)")
     parser.add_argument("--ledger-dir", action="append", default=[], metavar="DIR", help="look here for local records (repeatable)")
     parser.add_argument("--timezone", metavar="ZONE", help="calendar days in this zone (default: ledger.timezone of the contract, else UTC)")
     parser.add_argument("--prices", metavar="FILE", default=str(PRICES_FILE), help=argparse.SUPPRESS)
@@ -1379,7 +1387,7 @@ def cmd_report(argv: list[str]) -> int:
     store_conflicts: set[str] = set()
     store_status = "unset"
     if store:
-        cache = Path(args.store_cache) if args.store_cache else (dirs[0] if dirs else ledger_dir(os.getcwd(), False)) / "store-cache.git"
+        cache = Path(args.store_cache) if args.store_cache else (dirs[0] if dirs else ledger_dir(os.getcwd(), False)) / store_cache_name(store)
         store_rows, store_conflicts, store_status = fetch_store(store, cache)
     merged, conflicts, unidentified = merge_sources([pending, exported, store_rows], local_conflicts | store_conflicts)
     in_period = []

@@ -118,7 +118,9 @@ is at or after the request's time: work before the pull request opened belongs t
 branch name sends later work to the later pull request. Two open pull requests for one head ref make
 it `ambiguous`; none make it `no pull request`. Neither is guessed.
 
-The report reads local records and the store's refs and prints: the total; cost by task (top 10),
+The report reads local records and the store's refs (fetched with prune into a cache repository
+named by a hash of the store URL without credentials, so a ref deleted from the store, or a store you
+switched away from, is not counted) and prints: the total; cost by task (top 10),
 model, frontier share (Fable, Mythos and Opus models), role and agent type, and token kind; with
 `--rework`, the cost of reworked changes and of their fixes; the counts of unknown cost, unknown
 attribution, ambiguous, no pull request, unidentified and conflicting requests; and coverage
