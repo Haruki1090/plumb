@@ -9,6 +9,8 @@ tempfile.mkdtemp(). No real transcript is read or copied.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import math
 import os
@@ -17,6 +19,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 from decimal import Decimal
@@ -644,6 +647,91 @@ def _():
     report = sb.report("--store-cache", str(sb.root / "cache.git"))
     assert report["requests"] == 3 and report["unknown"]["unidentified"] == 2, report["unknown"]
     assert Decimal(report["total_cost"]) == Decimal("0.0003"), report["total_cost"]
+
+
+def append_pending(sb: Sandbox, session: str, rows: list[dict]) -> None:
+    """What a capture does while an export is running: append to the pending file under the capture lock."""
+    path = sb.ledger / "pending" / "claude" / f"{session}.jsonl"
+    with ledger_cost.locked(sb.ledger):
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write("".join(json.dumps(r, separators=(",", ":")) + "\n" for r in rows))
+
+
+def during_first_push(action):
+    """Patch ledger_cost.run so that `action()` runs just before the first `git push`; returns the restore function."""
+    real, state = ledger_cost.run, {"done": False}
+
+    def hooked(cmd, *args, **kwargs):
+        if "push" in cmd and not state["done"]:
+            state["done"] = True
+            action()
+        return real(cmd, *args, **kwargs)
+    ledger_cost.run = hooked
+    return lambda: setattr(ledger_cost, "run", real)
+
+
+def export_quietly(sb: Sandbox, session: str, store: Path) -> None:
+    """In-process export; the caller silences stdout once (redirects from several threads would not nest)."""
+    ledger_cost.export_session(sb.ledger, "claude", session, str(store))
+
+
+def stored_lines(store: Path, session: str) -> list[str]:
+    return subprocess.run(["git", "-C", str(store), "show", f"refs/plumb-ledger/claude/{session}:records.jsonl"],
+                          capture_output=True, text=True).stdout.splitlines()
+
+
+@case("two overlapping exports of one session never leave an older snapshot over a newer one")
+def _():
+    with contextlib.redirect_stdout(io.StringIO()):
+        sb = Sandbox("export-race")
+        store = bare_store(sb)
+        session = "sess-race"
+        put_pending(sb, session, [record(i, f"2026-10-10T00:00:0{i}.000Z", session=session, rid=session) for i in range(3)])
+        newer = record(3, "2026-10-10T00:00:03.000Z", session=session, rid=session)
+        second: list = []
+
+        def overlap():
+            append_pending(sb, session, [newer])      # a capture lands after the first export took its snapshot ...
+
+            def other():                              # ... and a second export of the same session starts
+                try:
+                    export_quietly(sb, session, store)
+                except BaseException as error:  # noqa: BLE001 - reported by the assertion below
+                    second.append(error)
+            thread = threading.Thread(target=other)
+            second.append(thread)
+            thread.start()
+            thread.join(1.0)                          # without a per-session lock it finishes in this time
+        restore = during_first_push(overlap)
+        try:
+            export_quietly(sb, session, store)
+        finally:
+            restore()
+        second[0].join(60)
+        assert len(second) == 1, second
+        want = sorted(f"claude:{session}{i}" for i in range(4))
+        assert sorted(json.loads(l)["id"] for l in stored_lines(store, session)) == want, stored_lines(store, session)
+        assert sorted(r["id"] for r in sb.exported()) == want and sb.pending() == [], (sb.exported(), sb.pending())
+
+
+@case("rows captured while an export pushes stay pending, even a twin of an unidentified row in the snapshot")
+def _():
+    with contextlib.redirect_stdout(io.StringIO()):
+        sb = Sandbox("export-append")
+        store = bare_store(sb)
+        session = "sess-append"
+        twin = record(0, "2026-10-10T00:00:00.000Z", rid=None)
+        put_pending(sb, session, [twin, record(1, "2026-10-10T00:00:01.000Z", rid=session)])
+        late = record(2, "2026-10-10T00:00:02.000Z", rid=session)
+        restore = during_first_push(lambda: append_pending(sb, session, [twin, late]))
+        try:
+            export_quietly(sb, session, store)
+        finally:
+            restore()
+        assert len(stored_lines(store, session)) == 2
+        assert sorted(r["id"] or "" for r in sb.pending()) == ["", f"claude:{session}2"], sb.pending()
+        export_quietly(sb, session, store)
+        assert len(stored_lines(store, session)) == 4 and sb.pending() == [], stored_lines(store, session)
 
 
 @case("an export with an unreachable store exits non-zero, keeps the records pending, and the report shows incomplete coverage")

@@ -882,35 +882,50 @@ def cmd_export(argv: list[str]) -> int:
 
 
 def export_session(directory: Path, runtime: str, session: str, store: str) -> None:
+    """Push one session's records and move the pushed rows from pending to exported.
+
+    The session's own lock (export-<runtime>-<session>.lock) is held from the read of its records
+    through the push to the acknowledgement. Two overlapping exports of one session would otherwise
+    each build a commit from the records they read, and the older snapshot could be pushed last over
+    the newer one after its rows had left pending, losing requests. Capture does not take this lock:
+    it keeps appending to pending, so the acknowledgement removes only the rows that were in the
+    snapshot that was pushed (counted, so a row appended later that equals one of them stays)."""
     pending_path = directory / "pending" / runtime / f"{session}.jsonl"
     exported_path = directory / "exported" / runtime / f"{session}.jsonl"
-    with locked(directory):
-        pending = load_records(pending_path)
-        sent = {record_line(r) for r in pending}
-        merged = unique_records(load_records(exported_path) + pending)
-    if not pending:
-        return
-    ref = f"{STORE_REFS}/{runtime}/{session}"
-    check = run(["git", "check-ref-format", ref], timeout=10)
-    if check is None or check.returncode != 0:
-        raise LedgerError("the session id is not a valid ref name")
-    with locked(directory, "export.lock"):
-        cache = git_cache(directory, "store.git")
-    commit = build_commit(cache, runtime, session, merged)
-    out = run(["git", "-C", str(cache), "push", "--porcelain", store, f"+{commit}:{ref}"],
-              env=git_env(), timeout=GIT_TIMEOUT)
-    if out is None or out.returncode != 0:
-        raise LedgerError("push failed: " + (first_line(out.stderr) if out else "git did not answer")
-                          + " (" + redact(store.split("://")[-1].split("@")[-1])[:60] + ")")
-    with locked(directory):
-        now_pending = load_records(pending_path)
-        atomic_write(exported_path, "".join(record_line(r) + "\n" for r in merged))
-        keep = [r for r in now_pending if record_line(r) not in sent]
-        if keep:
-            atomic_write(pending_path, "".join(record_line(r) + "\n" for r in keep))
-        else:
-            with contextlib.suppress(OSError):
-                pending_path.unlink()
+    with locked(directory, f"export-{runtime}-{session}.lock"):
+        with locked(directory):
+            pending = load_records(pending_path)
+            merged = unique_records(load_records(exported_path) + pending)
+        if not pending:
+            return
+        sent = Counter(record_line(r) for r in pending)
+        ref = f"{STORE_REFS}/{runtime}/{session}"
+        check = run(["git", "check-ref-format", ref], timeout=10)
+        if check is None or check.returncode != 0:
+            raise LedgerError("the session id is not a valid ref name")
+        with locked(directory, "export.lock"):
+            cache = git_cache(directory, "store.git")
+        commit = build_commit(cache, runtime, session, merged)
+        out = run(["git", "-C", str(cache), "push", "--porcelain", store, f"+{commit}:{ref}"],
+                  env=git_env(), timeout=GIT_TIMEOUT)
+        if out is None or out.returncode != 0:
+            raise LedgerError("push failed: " + (first_line(out.stderr) if out else "git did not answer")
+                              + " (" + redact(store.split("://")[-1].split("@")[-1])[:60] + ")")
+        with locked(directory):
+            now_pending = load_records(pending_path)
+            atomic_write(exported_path, "".join(record_line(r) + "\n" for r in merged))
+            keep = []
+            for r in now_pending:
+                line = record_line(r)
+                if sent[line] > 0:
+                    sent[line] -= 1
+                else:
+                    keep.append(r)
+            if keep:
+                atomic_write(pending_path, "".join(record_line(r) + "\n" for r in keep))
+            else:
+                with contextlib.suppress(OSError):
+                    pending_path.unlink()
     print(f"export: {runtime}/{session} {len(merged)} records -> {commit[:12]}")
 
 

@@ -93,7 +93,10 @@ counted and shown, never zero. Sums keep full precision; only the display rounds
 Set `ledger.store = <git URL>` to the owner's private repository. `plumb-ledger export` pushes each
 captured session as one commit holding that session's records to
 `refs/plumb-ledger/<runtime>/<session>`: each session owns its ref, so parallel sessions never share
-a push target, and the commit is built from the content alone, so a re-export is a no-op. It runs
+a push target, and the commit is built from the content alone, so a re-export is a no-op. One
+session is exported by one process at a time (a per-session lock is held from reading its records
+through the push to moving them from pending to exported), and what a capture appends meanwhile
+stays pending for the next export. It runs
 non-interactively (`GIT_TERMINAL_PROMPT=0`) with git's own credential for that URL, after a
 `git ls-remote` preflight (`export --check`, which `plumb-doctor` also runs). A failed push keeps the
 records pending and exits non-zero. Without a store, records stay local and every report says that
