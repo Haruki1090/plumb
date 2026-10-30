@@ -64,7 +64,7 @@ its repository. Nothing is written under a product repository.
 **Identity.** Claude `claude:<message.id>`, because `requestId` is absent on many records and mixing
 the two keys double-counts; Codex `codex:<session>:<n>`, never merged across sessions. The copies of
 one request (one per content block, or in a forked transcript) count once. Copies whose usage differs are kept
-once and reported as conflicts. A request with no id is kept and counted as unidentified.
+once and reported as conflicts. A request with no id is kept and counted as unidentified; identical unidentified rows are separate requests and all of them are exported and counted.
 
 **Attribution**, in order of evidence: the record's own `cwd` and `gitBranch` when that branch
 exists in that checkout (`transcript`); for a subagent that ran in its own worktree, that

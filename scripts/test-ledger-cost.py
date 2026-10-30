@@ -629,6 +629,23 @@ def _():
     assert len(body.splitlines()) == 4
 
 
+@case("two identical unidentified rows both survive export, the store and the report")
+def _():
+    sb = Sandbox("null-multiplicity")
+    store = bare_store(sb)
+    twin = record(0, "2026-10-10T00:00:00.000Z", rid=None)
+    put_pending(sb, "sess-n", [twin, twin, record(1, "2026-10-10T00:00:01.000Z", rid="n")])
+    assert sb.ledger_cmd("export")[0] == 0
+    body = subprocess.run(["git", "-C", str(store), "show", "refs/plumb-ledger/claude/sess-n:records.jsonl"],
+                          capture_output=True, text=True).stdout
+    assert len(body.splitlines()) == 3 and body.count('"id":null') == 2, body
+    assert len(sb.exported()) == 3
+    shutil.rmtree(sb.ledger / "exported")  # only the store has them now
+    report = sb.report("--store-cache", str(sb.root / "cache.git"))
+    assert report["requests"] == 3 and report["unknown"]["unidentified"] == 2, report["unknown"]
+    assert Decimal(report["total_cost"]) == Decimal("0.0003"), report["total_cost"]
+
+
 @case("an export with an unreachable store exits non-zero, keeps the records pending, and the report shows incomplete coverage")
 def _():
     sb = Sandbox("unreachable")

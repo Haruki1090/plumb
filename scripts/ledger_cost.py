@@ -218,15 +218,19 @@ def tokens_of(record: dict[str, Any]) -> tuple[Any, ...]:
 
 
 def unique_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Drop exact repeats (a pending line that is also in the exported file). Same id with a
-    different payload is a conflict, handled by the caller; here only identical lines merge."""
+    """Drop exact repeats of rows that have an id (a pending line that is also in the exported file).
+    Same id with a different payload is a conflict, handled by the caller; here only identical lines
+    merge. A row without an id is never merged with another: two equal unidentified rows are two
+    requests, so every one of them is kept."""
     seen: set[str] = set()
     out = []
     for record in sorted(records, key=sort_key):
-        line = record_line(record)
-        if line not in seen:
+        if record["id"] is not None:
+            line = record_line(record)
+            if line in seen:
+                continue
             seen.add(line)
-            out.append(record)
+        out.append(record)
     return out
 
 
