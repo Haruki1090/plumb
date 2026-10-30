@@ -483,7 +483,10 @@ def _():
     assert roles == {"main": opus + fable, "subagent:implementer": haiku}, roles
     assert len(report["by_task_top10"]) == 3
     rework = sb.root / "rework.json"
-    rework.write_text(json.dumps({"repository": "acme/widgets", "reworked": [{"number": 20, "fixed_by": [21]}]}))
+    # The exact shape `plumb-ledger rework --json` prints (scripts/ledger_changes.py rework_rate):
+    # `reworked` is the count, the rows are under `reworked_changes`.
+    rework.write_text(json.dumps({"repository": "acme/widgets", "reworked": 1, "reworked_changes": [
+        {"repository": "acme/widgets", "number": 20, "fixed_by": [21]}]}))
     changes = sb.root / "changes.jsonl"
     changes.write_text(json.dumps({"kind": "pull_request", "number": 21, "merged_at": "2026-10-12T00:00:00Z", "repository": "acme/widgets"}) + "\n")
     report = sb.report("--prs", str(sb.root / "prs.json"), "--rework", str(rework), "--changes", str(changes))

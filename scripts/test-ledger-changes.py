@@ -30,7 +30,7 @@ CODEX = "Co-Authored-By: Codex <codex@openai.com>"
 CURSOR = "Co-Authored-By: Cursor Agent <cursoragent@cursor.com>"
 SESSION_A = "https://claude.ai/code/session_AAA"
 SESSION_B = "https://claude.ai/code/session_BBB"
-RECORD_KEYS = ["kind", "number", "author", "merged_at", "merge_commit", "landing", "head_ref", "created_at",
+RECORD_KEYS = ["kind", "repository", "number", "author", "merged_at", "merge_commit", "landing", "head_ref", "created_at",
                "closed_at", "classes", "agents", "co_authors", "sessions", "attribution", "sources",
                "fixes_pr", "fixes_pr_error"]
 
@@ -474,8 +474,8 @@ def rework_rate_matches_the_hand_computed_value():
 @case
 def a_fix_listing_two_originals_counts_for_each():
     result = rework_json()
-    same(result["reworked_changes"], [{"number": 10, "fixed_by": [20]}, {"number": 11, "fixed_by": [21]},
-                                      {"number": 12, "fixed_by": [21]}, {"number": 15, "fixed_by": [23]}], "reworked")
+    same(result["reworked_changes"], [{"repository": None, "number": 10, "fixed_by": [20]}, {"repository": None, "number": 11, "fixed_by": [21]},
+                                      {"repository": None, "number": 12, "fixed_by": [21]}, {"repository": None, "number": 15, "fixed_by": [23]}], "reworked")
 
 
 @case

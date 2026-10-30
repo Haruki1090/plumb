@@ -487,6 +487,7 @@ def pull_request_record(repo: str, item: dict, clone: str, rules: list) -> tuple
     fixes_pr, fixes_error = parse_fixes(item.get("body"), number)
     record = {
         "kind": "pull_request",
+        "repository": repo,
         "number": number,
         "author": (item.get("user") or {}).get("login"),
         "merged_at": item.get("merged_at"),
@@ -507,11 +508,12 @@ def pull_request_record(repo: str, item: dict, clone: str, rules: list) -> tuple
     return record, shas
 
 
-def direct_record(clone: str, commit: dict, rules: list) -> dict:
+def direct_record(repo: str, clone: str, commit: dict, rules: list) -> dict:
     messages = log_messages(clone, "--max-count=1", commit["sha"])
     co_authors, sessions, agents = scan_messages(messages)
     return {
         "kind": "direct",
+        "repository": repo,
         "number": None,
         "author": commit["author"],
         "merged_at": iso_utc(commit["time"]),
@@ -550,7 +552,7 @@ def collect(repo: str, base: str, clone: str, start: datetime, end: datetime, ru
             landed |= shas
     for commit in first_parent_commits(clone, ref):
         if start <= commit["time"] < end and commit["sha"] not in landed:
-            records.append(direct_record(clone, commit, rules))
+            records.append(direct_record(repo, clone, commit, rules))
     records.sort(key=lambda r: (r["merged_at"], r["number"] or 0, r["merge_commit"] or ""))
     return records
 
@@ -656,7 +658,7 @@ def rework_rate(records: list, required: list, start: datetime, end: datetime, d
         fixers = sorted(other["number"] for other, later in pulls
                         if when < later <= when + window and record["number"] in (other.get("fixes_pr") or []))
         if fixers:
-            reworked.append({"number": record["number"], "fixed_by": fixers})
+            reworked.append({"repository": record.get("repository"), "number": record["number"], "fixed_by": fixers})
         elif when + window > now:
             pending.append(record["number"])
         else:
@@ -666,7 +668,11 @@ def rework_rate(records: list, required: list, start: datetime, end: datetime, d
     readable = sum(1 for r, _ in cohort if r.get("fixes_pr") is not None)
     direct = sum(1 for r in records if r.get("kind") == "direct"
                  and merged_at(r) is not None and start <= merged_at(r) < end)
+    repositories = {r.get("repository") for r in records}
     return {
+        # One repository's ledger names it here; a mixed or unnamed input leaves it null and each
+        # reworked row carries its own.
+        "repository": next(iter(repositories)) if len(repositories) == 1 else None,
         "lookahead_days": days,
         "cohort": len(cohort),
         "reworked": len(reworked),
