@@ -359,29 +359,39 @@ def a_missing_fixture_is_an_error_naming_the_endpoint():
 
 
 @case
-def the_real_gh_call_is_rest_with_paginate_and_joins_the_pages():
+def the_real_gh_call_is_rest_paged_by_number_and_joins_the_pages():
+    # Pages are asked for by number, never with --paginate: --paginate follows Link headers naming
+    # repositories/{id}/... paths, which a cloud session's proxy refuses (HTTP 403).
     bin_dir = TMP / "bin"
     bin_dir.mkdir()
     log = TMP / "gh.log"
     stub = bin_dir / "gh"
     stub.write_text("#!/usr/bin/env python3\nimport json, os, sys\n"
                     "open(os.environ['FAKE_GH_LOG'], 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
-                    "if '--paginate' in sys.argv:\n    sys.stdout.write('[{\"n\": 1}, {\"n\": 2}]\\n[{\"n\": 3}]\\n')\n"
+                    "pages = {'1': [{'n': 1}, {'n': 2}], '2': [{'n': 3}, {'n': 4}], '3': [{'n': 5}]}\n"
+                    "url = sys.argv[-1]\n"
+                    "if 'page=' in url:\n    sys.stdout.write(json.dumps(pages[url.rsplit('page=', 1)[1]]))\n"
                     "else:\n    sys.stdout.write('{\"default_branch\": \"develop\"}')\n")
     stub.chmod(0o755)
     saved = dict(os.environ)
     try:
         os.environ.pop("PLUMB_LEDGER_GH_FIXTURES", None)
         os.environ.update(PATH=str(bin_dir) + os.pathsep + saved["PATH"], FAKE_GH_LOG=str(log))
-        joined = module.gh_get("repos/o/r/pulls?state=closed", paginate=True)
+        joined = module.gh_get("repos/o/r/pulls?state=closed&per_page=2", paginate=True)
+        stopped = module.gh_get("repos/o/r/pulls?state=closed&per_page=2", paginate=True,
+                                stop=lambda page: page[-1]["n"] >= 2)
         single = module.gh_get("repos/o/r")
     finally:
         os.environ.clear()
         os.environ.update(saved)
-    same(joined, [{"n": 1}, {"n": 2}, {"n": 3}], "pages joined")
+    same(joined, [{"n": i} for i in range(1, 6)], "pages joined until a short page")
+    same(stopped, [{"n": 1}, {"n": 2}], "stop ends the walk after the page that satisfies it")
     same(single, {"default_branch": "develop"}, "single object")
     calls = [json.loads(line) for line in log.read_text().splitlines()]
-    same(calls, [["api", "--paginate", "repos/o/r/pulls?state=closed"], ["api", "repos/o/r"]], "gh arguments")
+    same(calls[:3], [["api", "repos/o/r/pulls?state=closed&per_page=2&page=1"],
+                     ["api", "repos/o/r/pulls?state=closed&per_page=2&page=2"],
+                     ["api", "repos/o/r/pulls?state=closed&per_page=2&page=3"]], "gh arguments")
+    need(not any("--paginate" in part for call in calls for part in call), "--paginate must never be used")
     need(not any("graphql" in part for call in calls for part in call), "GraphQL must never be called")
 
 

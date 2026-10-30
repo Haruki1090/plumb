@@ -94,7 +94,7 @@ def fixture_name(endpoint: str, page: int | None = None) -> str:
     return f"{name}.json" if page is None else f"{name}.page{page}.json"
 
 
-def read_fixture(directory: str, endpoint: str, paginate: bool) -> Any:
+def read_fixture(directory: str, endpoint: str, paginate: bool, stop: Any = None) -> Any:
     def load(name: str) -> Any:
         try:
             return json.loads((Path(directory) / name).read_text(encoding="utf-8"))
@@ -105,10 +105,12 @@ def read_fixture(directory: str, endpoint: str, paginate: bool) -> Any:
 
     if not paginate:
         return load(fixture_name(endpoint))
-    items: list = list(load(fixture_name(endpoint, 1)))
+    first = load(fixture_name(endpoint, 1))
+    items: list = list(first)
     page = 2
-    while (Path(directory) / fixture_name(endpoint, page)).exists():
-        items.extend(load(fixture_name(endpoint, page)))
+    while not (stop and first and stop(first)) and (Path(directory) / fixture_name(endpoint, page)).exists():
+        first = load(fixture_name(endpoint, page))
+        items.extend(first)
         page += 1
     return items
 
@@ -127,27 +129,47 @@ def decode_stream(text: str) -> list:
         documents.append(document)
 
 
-def gh_get(endpoint: str, paginate: bool = False) -> Any:
-    directory = os.environ.get(FIXTURES_ENV)
-    if directory:
-        return read_fixture(directory, endpoint, paginate)
-    command = ["gh", "api"] + (["--paginate"] if paginate else []) + [endpoint]
+def gh_run(endpoint: str) -> Any:
     try:
-        done = subprocess.run(command, capture_output=True, text=True)
+        done = subprocess.run(["gh", "api", endpoint], capture_output=True, text=True)
     except OSError:
         raise LedgerError(1, "gh is not available (install the GitHub CLI, or set " + FIXTURES_ENV + ")")
     if done.returncode != 0:
-        raise LedgerError(1, f"gh api {endpoint.split('?', 1)[0]} failed (exit {done.returncode})")
+        # gh's own first line says why (403, 404, rate limit); it never carries a token.
+        reason = (done.stderr.strip().splitlines() or [""])[0][:200]
+        raise LedgerError(1, f"gh api {endpoint.split('?', 1)[0]} failed (exit {done.returncode}): {reason}")
     try:
         documents = decode_stream(done.stdout)
     except ValueError:
         raise LedgerError(1, f"gh api {endpoint.split('?', 1)[0]} did not return JSON")
+    return documents[0] if documents else None
+
+
+def gh_get(endpoint: str, paginate: bool = False, stop: Any = None) -> Any:
+    """GET one REST endpoint; with `paginate`, every page joined.
+
+    Pages are requested by number (`page=N`) rather than with `gh api --paginate`: --paginate
+    follows GitHub's `Link` headers, which name `repositories/{id}/...` paths, and a cloud session's
+    proxy refuses those (measured 2026-10-30, HTTP 403). A page shorter than `per_page` is the last.
+    `stop(page_items)` true ends the walk after that page (a list sorted by time can stop early).
+    """
+    directory = os.environ.get(FIXTURES_ENV)
+    if directory:
+        return read_fixture(directory, endpoint, paginate, stop)
     if not paginate:
-        return documents[0] if documents else None
+        return gh_run(endpoint)
+    match = re.search(r"[?&]per_page=(\d+)", endpoint)
+    per_page = int(match.group(1)) if match else 30
+    joiner = "&" if "?" in endpoint else "?"
     items: list = []
-    for document in documents:
-        items.extend(document if isinstance(document, list) else [document])
-    return items
+    page = 1
+    while True:
+        result = gh_run(f"{endpoint}{joiner}page={page}")
+        batch = result if isinstance(result, list) else ([result] if result is not None else [])
+        items.extend(batch)
+        if len(batch) < per_page or (stop and stop(batch)):
+            return items
+        page += 1
 
 
 # ---------------------------------------------------------------------------------------------
@@ -513,7 +535,11 @@ def collect(repo: str, base: str, clone: str, start: datetime, end: datetime, ru
     ref = resolve_base_ref(clone, base)
     check_depth(clone, ref, base, start)
     query = f"state=closed&base={quote(base, safe='')}&sort=updated&direction=desc&per_page=100"
-    closed = gh_get(f"repos/{repo}/pulls?{query}", paginate=True)
+    # Sorted by update time, newest first: once a whole page was last updated before the period,
+    # no later page can hold a pull request that landed in it (landing updates the pull request).
+    closed = gh_get(f"repos/{repo}/pulls?{query}", paginate=True,
+                    stop=lambda page: all(item.get("updated_at") and parse_time(item["updated_at"]) < start
+                                         for item in page))
     merged = [item for item in closed if item.get("merged_at")]
     landed = {item["merge_commit_sha"] for item in merged if item.get("merge_commit_sha")}
     records = []
