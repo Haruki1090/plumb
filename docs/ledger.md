@@ -46,6 +46,25 @@ open and has no fix yet is **pending**, not clean, and the rate (reworked ÷ (re
 it out. A fix listing several originals counts for each. Direct commits are counted separately and
 never enter the cohort. `--json` prints `reworked` (the count) and `reworked_changes` (the rows).
 
+## Failure records
+
+```bash
+plumb-ledger failures --repo <owner/name> --since <day> --until <day> [--label agent-failure] [--findings <jsonl>]... [--json]
+```
+
+Collects the agent failures of a period: issues and pull requests labelled `agent-failure`, read
+over REST page by page, plus `findings.jsonl` lines given with `--findings`. A record **created** in
+the period is kept even when it was updated after it; one created before is not. The record format,
+the codes and the layers are `docs/failure-taxonomy.md`.
+
+Each record's block (`<!-- plumb:failure v1 {...} -->`) is read from the body, or, when the body has
+none, from its comments; the first block wins. A missing or malformed block, a second block, or an
+invalid field keeps the record with those fields `null` and names the problem (`no_block`,
+`malformed_block`, `duplicate_block`, `invalid_<field>`); nothing is guessed from the title or the
+text, and neither is ever printed. Codes are C01–C15 plus the contract's `[failure] extra_codes`.
+The summary counts by source, code, kind and layer, the unknown fields, and the records updated
+after the period.
+
 ## Cost per task
 
 ### Capture (opt-in)
