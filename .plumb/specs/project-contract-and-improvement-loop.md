@@ -11,6 +11,8 @@ Owner decisions of 2026-10-30: the three-layer split below is accepted; plumb is
 for the generic half; the SAKUJI pull requests that carried generic tooling (#1644, #1645 and the
 unopened cost and loop branches) are not merged there.
 
+Revision 3 (2026-10-30) answers the second judge pass: the CI must fail on an invalid or unreadable contract (`--enforce`), the pull-request number is required for self-reference, capture is opt-in and budgeted, export failures are defined, request-to-task assignment is unique, attribution uses the transcript's per-request branch where it is valid, and the 250-commit limit is reconciled.
+
 Revision 2 (2026-10-30) answers an independent judge pass (Codex, read-only) that found 14 issues:
 undefined invalid-contract behavior, contract path policy, untrusted rework-policy input, a shared
 push target and repository-policy exposure for cost export, privacy and clone growth, request
@@ -49,6 +51,9 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
   **invalid** (parse error, wrong type, unsupported `schema` — message, exit 2), **unavailable**
   (no `tomllib`, Python < 3.11 — message, exit 3). Optional workflow steps may skip on absent or
   unavailable with a visible `skip:` line; nothing may treat invalid as absent.
+- `plumb-project --enforce <key>` is the only form a CI may use: no contract file → empty, exit 0
+  (the repository has opted out); file present but **invalid or unavailable → exit non-zero**, so the
+  required job fails instead of enforcing nothing. An enforcing CI runs Python 3.11+.
 - `plumb-doctor` prints a contract section: `--` for absent keys, `NG` for invalid content or a
   named command that does not resolve, `ok` otherwise.
 
@@ -57,10 +62,11 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
 - `playbooks/opening-a-pr.md` writes exactly one `Fixes-PR:` line when the author is required:
   `Fixes-PR: none`, or `Fixes-PR: #<n>` with further `, #<n>` items. Duplicates, a self-reference
   and a second line are errors.
-- `plumb-check-fixes --author <login> --required-authors <list> [--pr <n>] --body-file <f>`:
+- `plumb-check-fixes --author <login> --required-authors <list> --pr <n> --body-file <f>`:
   a non-required author passes without the body being read; a required author fails on a missing,
-  duplicate, malformed or self-referencing line; a missing `--author` with a non-empty requirement
-  fails. The checker never reads policy itself.
+  duplicate, malformed or self-referencing line; a missing `--author` or `--pr` with a non-empty
+  requirement fails (self-reference cannot be checked without the event's pull-request number).
+  The checker never reads policy itself.
 - **Trusted input:** a CI that enforces the line passes the policy and the author from sources the
   pull request cannot change — a repository variable or the base commit's contract, and the event's
   author. Reading the policy from the proposed branch is documented as wrong (the branch could
@@ -70,8 +76,10 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
 
 - `plumb-ledger changes` builds one record per landed change. Attribution (agent trailers,
   co-authors, session links) comes from the pull request's own commits over REST
-  (`/pulls/{n}/commits`, paginated), so squash and rebase merges keep it; landed history is the
-  fallback and the record says which source it used. A shallow clone that cannot reach the
+  (`/pulls/{n}/commits`, paginated), so squash and rebase merges keep it. That endpoint returns at
+  most 250 commits: the record compares the count it read with the pull request's `commits` field,
+  and when they differ it marks attribution `incomplete` and adds landed history as a second source.
+  The record always says which sources it used. A shallow clone that cannot reach the
   requested period fails with the depth it needs; nothing is silently truncated.
 - Classification uses the contract's `[ledger] classify` rules; with none set, every change is
   `unclassified` and the summary says so.
@@ -83,11 +91,16 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
 
 ### D. Cost per task
 
-- **Capture at the event.** A plumb `Stop` hook (`plumb-ledger capture`, plugin-scoped, so only plumb
-  users run it) appends, at the end of every turn, the requests that are new since the last capture,
-  each with the attribution true at that moment: repository, branch of the request's working
-  directory (a worktree subagent resolves from its `worktreePath`), role, agent id. A request never
-  captured has attribution `unknown`; later reads never infer a past branch from today's checkout.
+- **Capture at the event, opt-in and cheap.** Capture is off unless `ledger.capture = on` in the
+  personal config. When on, a plumb `Stop` hook (`plumb-ledger capture`) runs in the background,
+  reads each transcript incrementally from a saved byte offset, makes no network call, and appends
+  the requests new since the last capture. When off, the hook returns before starting Python (a shell
+  check of the config). Attribution per request, in order of evidence: the request's own `cwd` and
+  `gitBranch` from the transcript when its `cwd` is the checkout that field describes; for a worktree
+  subagent (whose `gitBranch` describes the parent), the `worktreePath`'s HEAD at capture time,
+  marked `attribution_source = worktree_at_capture`; otherwise `unknown`. Later reads never infer a
+  past branch from today's checkout. plumb ships no hook today; this is the first, and its cost is a
+  release gate (below).
 - **Identity.** Request ids are runtime-qualified: `claude:<requestId>`; Codex ids are synthetic per
   session and become `codex:<session>:<n>`, never deduplicated across sessions. A request without an
   id is kept, counted as unidentified, and never merged with another. Copies of one request in a
@@ -106,9 +119,19 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
   time, model, token kinds, cost version, repository, branch, role, agent id); the owner opts in by
   setting the key; retention is the store's. Unset store: records stay local under the run root and
   the report says cloud sessions are not covered.
-- **Task.** A task is (repository, head ref, pull-request number). A captured request belongs to the
-  pull request whose head ref matches and whose lifetime (created → closed, or now) covers or follows
-  the request; abandoned work with no pull request is reported as such.
+- **Export is separate from capture** (`plumb-ledger export`, run explicitly, at the end of a cloud
+  session's setup-defined teardown, or by the owner). It is non-interactive (`GIT_TERMINAL_PROMPT=0`),
+  authenticates with the git credential for the store's URL (in a cloud session, the token the setup
+  script provisions for that repository; the product repository's token is never assumed to reach
+  it), and runs a preflight (`git ls-remote`) that `plumb-doctor` and `plumb-bootstrap` also run. A
+  failed or denied push keeps the records pending locally, exits non-zero, and the weekly report shows
+  coverage as incomplete with the pending count.
+- **Task.** A task is (repository, head ref, pull-request number). Assignment is unique: among pull
+  requests of the same repository and head ref, sorted by creation time, a request belongs to the
+  first whose close time (or now, if open) is at or after the request's time — so work before a pull
+  request is opened belongs to it, and a reused branch name sends later work to the later pull
+  request. Two open pull requests with that head ref (different bases) make the request
+  `ambiguous`; no match makes it `no pull request`. Both are reported, never guessed.
 - The weekly report: cost by task, model, frontier share, role and token kind; cost of reworked
   changes; unknown-cost and unknown-attribution counts.
 
@@ -192,19 +215,28 @@ Nothing is deleted on suspicion.
   from a subdirectory and from a linked worktree, and ignores `PLUMB_ROOT`; doctor prints `--`, `NG`,
   `ok` as specified. Selftest covers every case.
 - **B:** a non-required author passes with an unreadable body file; a required author fails on each of
-  missing, second line, duplicate reference, self-reference, malformed item, and missing `--author`;
+  missing, second line, duplicate reference, self-reference, malformed item, missing `--author` and
+  missing `--pr`; an integration fixture runs the documented base-commit wiring and the required job
+  fails for an invalid contract and for an unavailable parser (`plumb-project --enforce`);
   a 5 MB adversarial body (`Fixes-PR: #1, #1, …` and long lines without a newline) completes in
   under 2 seconds on the CI image. The docs show the trusted wiring and name the wrong one.
 - **C:** fixtures with a merge, a squash and a rebase landing each yield the trailers of the pull
   request's commits; a shallow clone short of the period fails with the needed depth; pagination is
   exercised with more than one page; the rework rate on a fixture with a pending window, a fix
   outside the period and a fix listing two originals equals the hand-computed value.
-- **D:** capture across a branch switch, a removed worktree and a detached HEAD records the
-  attribution of the moment or `unknown`; a forked transcript counts shared requests once; Codex
+- **D:** capture records the transcript's own per-request branch where its `cwd` matches the
+  described checkout (a branch switch inside one turn attributes each request correctly), a worktree
+  subagent's branch from its worktree, and `unknown` after a removed worktree or a detached HEAD;
+  task assignment on fixtures for work before the pull request, a reused branch and two open pull
+  requests yields the stated pull request, the later one, and `ambiguous`; a forked transcript counts shared requests once; Codex
   synthetic ids from two sessions never merge; an id conflict is reported; unknown model and missing
   tokens produce unknown cost, counted; 10,000 requests of $0.0001 sum to $1.00 before rounding; two
   sessions pushing to the store concurrently both land; a repeated push of the same session is a
-  no-op; the existing session-audit output on the existing fixtures is byte-identical.
+  no-op; an export with absent, expired and denied credentials exits non-zero, keeps the records
+  pending and the report shows incomplete coverage; with capture off the hook returns in under 50 ms
+  without starting Python, and with capture on it adds under 200 ms at p95 to a turn on a 50 MB
+  transcript (incremental read); the existing session-audit output on the existing fixtures is
+  byte-identical.
 - **E:** a replayable fixture with failures created inside and updated after the period is counted;
   one populated example runs end to end — failure evidence → owning layer → proposed change →
   measurement — and both skills stop with a visible reason when a dependency is missing.
