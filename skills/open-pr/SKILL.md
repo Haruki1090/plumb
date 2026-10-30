@@ -1,6 +1,6 @@
 ---
 name: open-pr
-description: Rules the repository sets for a pull request it is about to receive. Use whenever opening, creating or submitting a pull request, or writing or rewriting its body ("open a PR", "make this a PR", "send this fix up", "write the PR description"). Reads the project contract and adds the lines it requires, such as Fixes-PR. Not for reviewing a pull request (plumb:pr-review) or answering review comments (playbooks/being-reviewed.md).
+description: Rules the repository sets for a pull request it is about to receive. Load this first, before running git or reading the diff, whenever asked to open, create, submit or draft a pull request, or to write or rewrite its body ("open a PR", "make this a PR", "send this fix up for review", "write the PR description"). Reads the project contract and adds the lines it requires, such as Fixes-PR. Not for reviewing a pull request (plumb:pr-review) or answering review comments (playbooks/being-reviewed.md).
 ---
 
 # Open a pull request the repository will accept
