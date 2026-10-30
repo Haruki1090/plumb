@@ -1160,6 +1160,89 @@ out=$(HOME="$fresh_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUN
 printf '%s\n' "$out" | grep -q '^  NG   role.judge = plumb-no-such-command exec is configured but plumb-no-such-command is not on PATH$' \
   && ok "doctor names the missing first word of a role command" || ng "doctor missing role line: [$out]"
 
+# doctor: the contract block. Absent, partial, full, invalid, a command that does not resolve, and a
+# Python without tomllib (blocked with a shadowing tomllib.py on PYTHONPATH, no product flag).
+if command -v python3 >/dev/null 2>&1; then
+  dr_repo="$sandbox_root/dr-repo"; mkdir -p "$dr_repo/.plumb" "$dr_repo/tools"
+  git -C "$dr_repo" init -q
+  printf '#!/bin/sh\nexit 0\n' > "$dr_repo/tools/ver.sh"; chmod +x "$dr_repo/tools/ver.sh"
+  printf '#!/bin/sh\nexit 0\n' > "$dr_repo/tools/not-exec.sh"
+  dr_block="$sandbox_root/dr-block"; mkdir -p "$dr_block"
+  printf 'raise ImportError("blocked for the selftest")\n' > "$dr_block/tomllib.py"
+  # dr <extra env assignments...>: doctor inside dr_repo; sets dr_out and dr_code.
+  dr() {
+    dr_out=$(cd "$dr_repo" && env "$@" HOME="$fresh_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUNTIME=claude \
+      PLUMB_IN_SELFTEST=1 PLUMB_CONFIG=/nonexistent bash "$root/scripts/doctor.sh" "$root" 2>&1); dr_code=$?
+  }
+  drw() { printf '%s\n' "$@" > "$dr_repo/.plumb/project.toml"; }
+  dr_ng() { printf '%s\n' "$dr_out" | grep -c '^  NG ' || true; }
+  dr_has() { printf '%s\n' "$dr_out" | grep -qxF -- "$1"; }
+
+  rm -f "$dr_repo/.plumb/project.toml"
+  dr X=1
+  dr_has '  --   contract: none' && ok "doctor says contract: none when there is no file" || ng "doctor contract none line: [$dr_out]"
+  eq "doctor with no contract has no NG" "$(dr_ng)" "0"
+
+  if python3 -c 'import tomllib' >/dev/null 2>&1; then
+    drw 'schema = 1' '[rework]' 'required_authors = ["alice"]' '[verify]' 'lookup = "git status"'
+    dr X=1
+    dr_has '  ok   rework.required_authors' && ok "doctor marks a set contract key ok" || ng "doctor set key line: [$dr_out]"
+    dr_has '  --   rework.lookahead_days' && ok "doctor marks an unset contract key --" || ng "doctor unset key line: [$dr_out]"
+    dr_has '  ok   verify.lookup' && ok "doctor marks a resolving verify command ok" || ng "doctor verify.lookup line: [$dr_out]"
+    dr_has '  --   verify.up' && ok "doctor marks an unset verify command --" || ng "doctor verify.up line: [$dr_out]"
+    eq "doctor with a partial contract has no NG" "$(dr_ng)|$dr_code" "0|0"
+
+    drw 'schema = 1' '[repo]' 'base_branch = "develop"' \
+        '[rework]' 'required_authors = ["alice"]' 'lookahead_days = 7' \
+        '[ledger]' 'classify = [ { glob = "a/**", class = "a" } ]' 'timezone = "Asia/Tokyo"' \
+        '[verify]' 'lookup = "git status"' 'up = "tools/ver.sh --up"' 'down = "git"' 'scenarios = "docs/x"' \
+        '[failure]' 'extra_codes = [ { code = "P01", mechanism = "m" } ]'
+    dr X=1
+    dr_full=0
+    for dr_key in repo.base_branch rework.required_authors rework.lookahead_days ledger.classify ledger.timezone \
+                  verify.lookup verify.up verify.down verify.scenarios failure.extra_codes; do
+      dr_has "  ok   $dr_key" || { dr_full=1; ng "doctor full contract: no ok line for $dr_key"; }
+    done
+    [ "$dr_full" = 0 ] && ok "doctor lists every schema key as ok for a full contract"
+    eq "doctor with a full contract has no NG" "$(dr_ng)|$dr_code" "0|0"
+
+    drw 'schema = 1' '[rework]' 'required_authors = ["alice"]' 'lookahead_days = 0'
+    dr X=1
+    printf '%s\n' "$dr_out" | grep -q '^  NG   rework.lookahead_days: expected an integer >= 1$' \
+      && ok "doctor names the invalid key and reason" || ng "doctor invalid line: [$dr_out]"
+    eq "doctor with an invalid contract reports one NG and exits 1" "$(dr_ng)|$dr_code" "1|1"
+    printf '%s\n' "$dr_out" | grep -q '^  ok   rework.required_authors' \
+      && ng "doctor kept listing keys of an invalid contract" || ok "doctor stops listing keys once the contract is invalid"
+    drw 'schema = 1' 'oops = "unterminated'
+    dr X=1
+    printf '%s\n' "$dr_out" | grep -q '^  NG   .plumb/project.toml: TOML syntax error at line 2$' \
+      && ok "doctor reports a TOML syntax error with its line" || ng "doctor syntax error line: [$dr_out]"
+
+    drw 'schema = 1' '[verify]' 'lookup = "plumb-no-such-command run"' 'up = "tools/not-exec.sh"' 'down = "tools/missing.sh"' 'scenarios = "docs/x"'
+    dr X=1
+    for dr_key in lookup up down; do
+      printf '%s\n' "$dr_out" | grep -q "^  NG   verify.$dr_key: .* does not resolve" \
+        && ok "doctor flags verify.$dr_key whose command does not resolve" || ng "doctor verify.$dr_key line: [$dr_out]"
+    done
+    dr_has '  ok   verify.scenarios' && ok "doctor does not command-check verify.scenarios" || ng "doctor verify.scenarios line: [$dr_out]"
+    eq "doctor counts each unresolved verify command" "$(dr_ng)|$dr_code" "3|1"
+
+    drw 'schema = 1' '[rework]' 'required_authors = ["alice"]'
+    dr PYTHONPATH="$dr_block"
+    dr_has '  --   contract: skipped, Python 3.11+ (tomllib) is unavailable' \
+      && ok "doctor skips the contract block without tomllib" || ng "doctor unavailable line: [$dr_out]"
+    eq "doctor without tomllib has no NG" "$(dr_ng)|$dr_code" "0|0"
+  else
+    printf '  %-4s %s\n' "--" "doctor contract cases that parse are skipped: this python3 has no tomllib"
+  fi
+
+  dr_outside="$sandbox_root/dr-outside"; mkdir -p "$dr_outside"
+  dr_out=$(cd "$dr_outside" && GIT_CEILING_DIRECTORIES="$sandbox_root" HOME="$fresh_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" \
+    PLUMB_RUNTIME=claude PLUMB_IN_SELFTEST=1 PLUMB_CONFIG=/nonexistent bash "$root/scripts/doctor.sh" "$root" 2>&1)
+  printf '%s\n' "$dr_out" | grep -q '^  --   contract: cannot check' \
+    && ok "doctor outside a git repository cannot check the contract (not NG)" || ng "doctor outside a repository: contract line missing"
+fi
+
 # prompt-weight: a synthetic home with one enabled and one disabled plugin. Never the real one.
 if command -v python3 >/dev/null 2>&1; then
   pw_home="$sandbox_root/pw-home"
