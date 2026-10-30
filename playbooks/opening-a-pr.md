@@ -47,7 +47,10 @@ Conventional Commits, `type(scope): subject`. The types are `feat` `fix` `docs` 
 author), write exactly one line `Fixes-PR: none` or `Fixes-PR: #<n>`, with further `, #<n>` items,
 naming the earlier landed pull requests this one fixes. Two lines, a repeated number, or this pull
 request's own number are errors; `plumb-check-fixes` and `docs/project-contract.md` have the grammar.
-If the command prints nothing or the repository has no contract, the line is not required.
+Read its exit status, not only its output. Exit 0 with nothing printed (no contract, or the key
+unset) means the line is not required. **Exit 2 (`invalid`) or 3 (`unavailable`) is not an opt-out:**
+stop before opening the pull request and report the stderr line; a broken contract is fixed or
+reported, never read as "no policy".
 
 If you have a screenshot or a video that proves the claim, attach it after the section.
 **Do not use the `## Summary` and `## Test plan` boilerplate.** A commit body does not restate its

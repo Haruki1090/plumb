@@ -1059,6 +1059,14 @@ if command -v python3 >/dev/null 2>&1; then
   printf 'Fixes-PR: none\n' > "$cf_dir/body"
   cfr --author ALICE --required-authors " bob , ,Alice" --pr 9 --body-file "$cf_dir/body"
   eq "plumb-check-fixes: the author match is case-insensitive and trims the list" "$cf_code" "0"
+  # A CI variable may end in a newline or span lines: the trimmed name must still be required.
+  printf 'no fixes line\n' > "$cf_dir/nofixes"
+  cfr --author alice --required-authors $'alice\n' --pr 9 --body-file "$cf_dir/nofixes"
+  eq "plumb-check-fixes: a trailing newline on the list does not exempt the author" "$cf_code" "1"
+  cfr --author alice --required-authors $'bob,\r\n alice\r\n' --pr 9 --body-file "$cf_dir/nofixes"
+  eq "plumb-check-fixes: CR/LF around a required name still requires that author" "$cf_code" "1"
+  cfr --author $'alice\n' --required-authors alice --pr 9 --body-file "$cf_dir/nofixes"
+  eq "plumb-check-fixes: a trailing newline on --author does not exempt the author" "$cf_code" "1"
   cfr --author alice --required-authors alice --pr 9 --body-file "$cf_dir/does-not-exist"
   eq "plumb-check-fixes: a required author with an unreadable body file fails" "$cf_code" "1"
   cfr --author "" --required-authors alice --pr 9 --body-file "$cf_dir/body"
@@ -1124,9 +1132,10 @@ FIXES
   # backtracking). Measured in milliseconds around the call.
   cf_stress() { # <label> <expected exit> <python expression building the body>
     python3 -c "import sys; sys.stdout.write($3)" > "$cf_dir/stress"
-    cf_t0=$(date +%s%N)
+    # BSD date (stock macOS) has no %N; Python's monotonic clock is portable and already required here.
+    cf_t0=$(python3 -c 'import time; print(time.monotonic_ns())')
     cfr --author alice --required-authors alice --pr 5 --body-file "$cf_dir/stress"
-    cf_ms=$(( ($(date +%s%N) - cf_t0) / 1000000 ))
+    cf_ms=$(( ($(python3 -c 'import time; print(time.monotonic_ns())') - cf_t0) / 1000000 ))
     eq "plumb-check-fixes 5 MB $1: exit status" "$cf_code" "$2"
     [ "$cf_ms" -lt 2000 ] && ok "plumb-check-fixes 5 MB $1 took ${cf_ms} ms (< 2000)" || ng "plumb-check-fixes 5 MB $1 took ${cf_ms} ms (limit 2000)"
   }

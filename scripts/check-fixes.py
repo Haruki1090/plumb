@@ -81,14 +81,16 @@ def parse_args(argv: list) -> dict:
 
 
 def is_required(author: str, required_authors: str) -> bool:
-    names = [name.strip(BLANKS).lower() for name in required_authors.split(",")]
+    # Policy values come from CI variables, which may carry a trailing newline or span lines: trim
+    # every kind of whitespace, or "alice\n" would silently exempt alice.
+    names = [name.strip().lower() for name in required_authors.split(",")]
     names = [name for name in names if name]
     if not names:
         return False
-    if not author.strip(BLANKS):
+    if not author.strip():
         # Somebody is required but we cannot tell who wrote this: that is a failure, not a pass.
         raise NotOk("--author is empty while the required-authors list is not")
-    return author.strip(BLANKS).lower() in names
+    return author.strip().lower() in names
 
 
 def strip_comments(text: str) -> str:

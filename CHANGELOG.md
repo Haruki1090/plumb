@@ -25,11 +25,15 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
   invalid file or a verify command that does not resolve, and a skip line without `tomllib`.
 - Selftest covers the path kind, every outcome, the `Fixes-PR:` rules, the stress bodies, the doctor
   block and an integration fixture that runs the base-commit wiring.
+- `evals/project-contract/`: four session trials on throwaway repositories (a fixture builder, the
+  prompts to say, pass conditions judged by `plumb-check-fixes`) and `plumb:doctor` trigger cases.
 
 ### Changed
 
-- `playbooks/opening-a-pr.md` writes the `Fixes-PR:` line when the contract lists the author. The
-  router and `docs/artifact-lifecycle.md` index the new commands and kind.
+- `playbooks/opening-a-pr.md` writes the `Fixes-PR:` line when the contract lists the author, and
+  reads the lookup's exit status: an invalid (2) or unavailable (3) contract stops the pull request
+  instead of reading as "no policy". The router and `docs/artifact-lifecycle.md` index the new
+  commands and kind.
 
 ## [0.13.1] - 2026-10-03
 
