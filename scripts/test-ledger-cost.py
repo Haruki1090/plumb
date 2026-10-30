@@ -242,7 +242,7 @@ def _():
 
 # ---------------------------------------------------------------- capture: identity
 
-@case("identity is the requestId, else the message id; copies count once; a request with no id is kept and never merged")
+@case("identity is the message id alone, whatever requestId a copy carries; copies count once; a request with no id is kept and never merged")
 def _():
     sb = Sandbox("identity")
     repo = make_repo(sb.root / "repo")
@@ -257,8 +257,40 @@ def _():
              line(None, None), line(None, None)]
     summary = capture(sb, write_transcript(sb.root / "proj", "sess-id", lines))
     ids = sorted(r["id"] or "" for r in sb.pending())
-    assert ids == ["", "", "claude:msg_2", "claude:req_1", "claude:req_3"], ids
+    assert ids == ["", "", "claude:msg_1", "claude:msg_2", "claude:msg_3"], ids
     assert summary["unidentified"] == 2 and summary["duplicates"] == 3, summary
+
+
+@case("a request whose copies split across two captures, the first with a requestId and the later without, is counted once")
+def _():
+    sb = Sandbox("identity-split")
+    repo = make_repo(sb.root / "repo")
+    path = write_transcript(sb.root / "proj", "sess-split", [
+        assistant("msg_s", "2026-10-10T00:00:00Z", repo, "feat/a", req="req_s"),
+        assistant("msg_t", "2026-10-10T00:00:01Z", repo, "feat/a")])
+    first = capture(sb, path)
+    with open(path, "a") as handle:
+        handle.write(assistant("msg_s", "2026-10-10T00:00:00Z", repo, "feat/a") + "\n")   # a later copy, no requestId
+        handle.write(assistant("msg_t", "2026-10-10T00:00:01Z", repo, "feat/a", req="req_t") + "\n")  # and the reverse
+    second = capture(sb, path)
+    assert first["new"] == 2 and second["new"] == 0 and second["duplicates"] == 2, (first, second)
+    assert sorted(r["id"] for r in sb.pending()) == ["claude:msg_s", "claude:msg_t"], sb.pending()
+    assert sb.report()["requests"] == 2
+
+
+@case("a forked transcript counts a request once even when its copies differ in requestId")
+def _():
+    sb = Sandbox("fork-request-id")
+    repo = make_repo(sb.root / "repo")
+    capture(sb, write_transcript(sb.root / "proj", "sess-parent", [
+        assistant("msg_f", "2026-10-10T00:00:00Z", repo, "feat/a", req="req_f"),
+        assistant("msg_g", "2026-10-10T00:00:01Z", repo, "feat/a")]))
+    capture(sb, write_transcript(sb.root / "proj", "sess-fork", [
+        assistant("msg_f", "2026-10-10T00:00:00Z", repo, "feat/a"),
+        assistant("msg_g", "2026-10-10T00:00:01Z", repo, "feat/a", req="req_g")]))
+    assert len(sb.pending()) == 4
+    report = sb.report()
+    assert report["requests"] == 2 and report["unknown"]["id_conflicts"] == 0, (report["requests"], report["unknown"])
 
 
 @case("an id conflict is kept once and reported")

@@ -61,9 +61,9 @@ for Codex, `--runtime codex --transcripts <dir>`.
 Records live in `~/.claude/plumb/ledger` (or `PLUMB_LEDGER_DIR`) for every repository; each carries
 its repository. Nothing is written under a product repository.
 
-**Identity.** `claude:<requestId>`, or `claude:<message.id>` when the transcript has no
-`requestId`; Codex `codex:<session>:<n>`, never merged across sessions. The copies of one request
-(one per content block, or in a forked transcript) count once. Copies whose usage differs are kept
+**Identity.** Claude `claude:<message.id>`, because `requestId` is absent on many records and mixing
+the two keys double-counts; Codex `codex:<session>:<n>`, never merged across sessions. The copies of
+one request (one per content block, or in a forked transcript) count once. Copies whose usage differs are kept
 once and reported as conflicts. A request with no id is kept and counted as unidentified.
 
 **Attribution**, in order of evidence: the record's own `cwd` and `gitBranch` when that branch

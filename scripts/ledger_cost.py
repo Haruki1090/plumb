@@ -394,10 +394,8 @@ def claude_request(rec: dict[str, Any]) -> dict[str, Any] | None:
         write_5m, write_1h = total, (0 if total is not None else None)
     elif write_5m is None or write_1h is None or (total is not None and write_5m + write_1h != total):
         write_5m = write_1h = None  # a breakdown that does not add up is unknown, not a guess
-    request_id = rec.get("requestId")
     message_id = message.get("id")
     return {
-        "request_id": request_id if isinstance(request_id, str) and request_id else None,
         "message_id": message_id if isinstance(message_id, str) and message_id else None,
         "time": rec.get("timestamp"),
         "model": message.get("model"),
@@ -430,7 +428,6 @@ class Capture:
         self.runtime = runtime
         self.session = session
         self.known = dict(known)               # id -> tokens_of(record)
-        self.by_message: dict[str, str] = {}   # message.id -> the id its first copy got
         self.new: list[dict[str, Any]] = []
         self.counts: Counter[str] = Counter()
         self.conflicts: list[str] = []
@@ -455,14 +452,13 @@ class Capture:
             self.known[identity] = tokens_of(record)
 
 
-def claude_identity(request: dict[str, Any], capture: Capture) -> str | None:
-    request_id, message_id = request["request_id"], request["message_id"]
-    if message_id and message_id in capture.by_message:
-        return capture.by_message[message_id]
-    identity = clean("claude:" + (request_id or message_id), 210) if (request_id or message_id) else None
-    if identity and message_id:
-        capture.by_message[message_id] = identity
-    return identity
+def claude_identity(request: dict[str, Any]) -> str | None:
+    """`claude:<message.id>`. Every assistant record carries message.id and all copies of one
+    request (one per content block, or in a forked transcript) share it. `requestId` is not part of
+    the identity: it is absent on many records, so mixing the two keys counted one request twice
+    when its copies were captured at different times. No message.id means unidentified (None)."""
+    message_id = request["message_id"]
+    return clean("claude:" + message_id, 210) if message_id else None
 
 
 def capture_claude_file(path: Path, is_main: bool, offset: int, capture: Capture,
@@ -485,7 +481,7 @@ def capture_claude_file(path: Path, is_main: bool, offset: int, capture: Capture
         request = claude_request(rec)
         if request is None:
             continue
-        identity = claude_identity(request, capture)
+        identity = claude_identity(request)
         if identity is not None and identity in capture.known:
             capture.counts["duplicates"] += 1
             if request_tokens(request) != capture.known[identity] and identity not in capture.conflicts:
