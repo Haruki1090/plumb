@@ -30,7 +30,7 @@ claude plugin marketplace add Haruki1090/plumb
 claude plugin install plumb@plumb
 PLUMB_ROOT_DIR=$(claude plugin list --json | python3 -c 'import json,sys; print(next(p["installPath"] for p in json.load(sys.stdin) if p["id"] == "plumb@plumb"))')
 "$PLUMB_ROOT_DIR/bin/plumb-bootstrap" \
-  --store https://github.com/<you>/plumb-ledger.git \
+  --store https://github.com/<you>/<private-store>.git \
   --capture on --export on-stop \
   --judge "codex exec --sandbox read-only"
 ```
