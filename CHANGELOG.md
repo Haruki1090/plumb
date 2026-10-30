@@ -2,6 +2,18 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.15.1] - 2026-10-30
+
+### Fixed
+
+- `plumb-doctor` took over a minute (81 s measured) because it ran the full selftest, which 0.14.0
+  and 0.15.0 made slow (5 MB stress bodies, the ledger's latency and concurrency suites). Inside a
+  session that sits near the two-minute command limit and shows nothing while it runs. Doctor now
+  runs selftest in quick mode (`PLUMB_SELFTEST_QUICK=1`), which skips those suites with a visible
+  `--` line; the full `scripts/selftest.sh` still runs them. Doctor also no longer repeats
+  check-harness when selftest starts it. Measured: doctor 18 s, quick selftest 15 s, full selftest
+  38 s (was 71 s).
+
 ## [0.15.0] - 2026-10-30
 
 ### Added

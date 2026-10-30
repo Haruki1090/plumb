@@ -1142,13 +1142,19 @@ print(r.returncode, int((time.monotonic() - t) * 1000))' \
     eq "plumb-check-fixes 5 MB $1: exit status" "$cf_code" "$2"
     [ "$cf_ms" -lt 2000 ] && ok "plumb-check-fixes 5 MB $1 took ${cf_ms} ms (< 2000)" || ng "plumb-check-fixes 5 MB $1 took ${cf_ms} ms (limit 2000)"
   }
-  cf_stress "Fixes-PR line of repeated numbers" 1 '"Fixes-PR: " + "#1, " * (5 * 1024 * 1024 // 4)'
-  cf_stress "line without a newline" 1 '"x" * (5 * 1024 * 1024)'
-  cf_stress "Fixes-PR line of distinct numbers" 0 '"Fixes-PR: " + ", ".join("#%d" % i for i in range(10, 700000))[:5 * 1024 * 1024].rsplit(",", 1)[0] + "\n"'
-  cf_stress "unclosed comments" 1 '"<!-- " * (5 * 1024 * 1024 // 5)'
-  cf_stress "closed comments" 1 '"<!-- x -->" * (5 * 1024 * 1024 // 10)'
-  cf_stress "many Fixes-PR lines" 1 '"Fixes-PR: none\n" * (5 * 1024 * 1024 // 15)'
-  cf_stress "carriage returns" 1 '"\r" * (5 * 1024 * 1024)'
+  # PLUMB_SELFTEST_QUICK (set by plumb-doctor) skips the slow suites, visibly; the full selftest
+  # (release gate, contributors) always runs them.
+  if [ -n "${PLUMB_SELFTEST_QUICK:-}" ]; then
+    printf '  %-4s %s\n' "--" "plumb-check-fixes 5 MB stress cases skipped: quick mode (run scripts/selftest.sh for them)"
+  else
+    cf_stress "Fixes-PR line of repeated numbers" 1 '"Fixes-PR: " + "#1, " * (5 * 1024 * 1024 // 4)'
+    cf_stress "line without a newline" 1 '"x" * (5 * 1024 * 1024)'
+    cf_stress "Fixes-PR line of distinct numbers" 0 '"Fixes-PR: " + ", ".join("#%d" % i for i in range(10, 700000))[:5 * 1024 * 1024].rsplit(",", 1)[0] + "\n"'
+    cf_stress "unclosed comments" 1 '"<!-- " * (5 * 1024 * 1024 // 5)'
+    cf_stress "closed comments" 1 '"<!-- x -->" * (5 * 1024 * 1024 // 10)'
+    cf_stress "many Fixes-PR lines" 1 '"Fixes-PR: none\n" * (5 * 1024 * 1024 // 15)'
+    cf_stress "carriage returns" 1 '"\r" * (5 * 1024 * 1024)'
+  fi
 else
   printf '  %-4s %s\n' "--" "python3 not on PATH, plumb-check-fixes assertions skipped"
 fi
@@ -1393,7 +1399,9 @@ else
   printf '  %-4s %s\n' "--" "efficiency regression suite skipped: python3 unavailable"
 fi
 
-if command -v python3 >/dev/null 2>&1; then
+if [ -n "${PLUMB_SELFTEST_QUICK:-}" ]; then
+  printf '  %-4s %s\n' "--" "work ledger and cost-per-task suites skipped: quick mode (run scripts/selftest.sh for them)"
+elif command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-ledger-changes.py" >/dev/null \
     && ok "work ledger: landed changes (merge, squash, rebase, pagination, shallow clone) and the rework rate" \
     || ng "work ledger: landed changes and the rework rate (run scripts/test-ledger-changes.py)"
