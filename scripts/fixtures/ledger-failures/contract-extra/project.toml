@@ -1,0 +1,4 @@
+schema = 1
+
+[failure]
+extra_codes = [ { code = "P01", mechanism = "a product-specific mechanism" } ]

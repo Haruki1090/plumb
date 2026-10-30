@@ -1,0 +1,10 @@
+[
+ {
+  "body": "SECRET-COMMENT looks wrong",
+  "created_at": "2026-10-06T09:30:00Z"
+ },
+ {
+  "body": "SECRET-COMMENT <!-- plumb:failure v1 {\"code\": \"C11\", \"kind\": \"harness\", \"layer\": \"harness\", \"evidence\": \"runs/2026-10-06/a\"} -->",
+  "created_at": "2026-10-06T09:40:00Z"
+ }
+]
