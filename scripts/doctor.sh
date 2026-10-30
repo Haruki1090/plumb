@@ -38,7 +38,11 @@ note "--" "runtime: $runtime (override with PLUMB_RUNTIME)"
 
 # 1. Inside consistency (delegated to check-harness. Do not write it twice)
 echo "— inside"
-if bash "$root/scripts/check-harness.sh" "$root" >/dev/null 2>&1; then
+# selftest runs doctor a dozen times to test its other blocks, and the release gate runs
+# check-harness on its own, so a doctor started by selftest does not repeat it (about 2 s each).
+if [ -n "${PLUMB_IN_SELFTEST:-}" ]; then
+  note "--" "cross-cutting rules: skipped, called from selftest"
+elif bash "$root/scripts/check-harness.sh" "$root" >/dev/null 2>&1; then
   note "ok" "cross-cutting rules (check-harness.sh)"
 else
   bad "the cross-cutting rules are failing. Run scripts/check-harness.sh directly to see what"
@@ -47,8 +51,11 @@ fi
 # When selftest called us, do not call back. That is mutual recursion.
 if [ -n "${PLUMB_IN_SELFTEST:-}" ]; then
   note "--" "script behaviour: skipped, called from selftest"
-elif bash "$root/scripts/selftest.sh" "$root" >/dev/null 2>&1; then
-  note "ok" "script behaviour (selftest.sh)"
+# Quick mode: doctor answers "is the install broken", so the slow suites (5 MB stress bodies, the
+# ledger's latency and concurrency cases) stay in the full selftest. Measured 2026-10-30: the full
+# selftest took 71 s, near a runtime's two-minute command limit when doctor runs inside a session.
+elif PLUMB_SELFTEST_QUICK=1 bash "$root/scripts/selftest.sh" "$root" >/dev/null 2>&1; then
+  note "ok" "script behaviour (selftest.sh, quick; the full run is scripts/selftest.sh)"
 else
   bad "selftest is failing. Run scripts/selftest.sh directly to see what"
 fi
