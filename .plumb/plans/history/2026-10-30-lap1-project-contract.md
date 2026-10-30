@@ -1,3 +1,7 @@
+> **This is history. Do not execute it.**
+> The current source of truth is `.plumb/specs/project-contract-and-improvement-loop.md`. **If this document disagrees with it, the source of
+> truth wins.** Do not sync this back up — syncing it revives the second source of truth.
+
 # Lap 1: project contract and rework link
 
 Spec: `.plumb/specs/project-contract-and-improvement-loop.md` (sections A and B, the "Every lap"
