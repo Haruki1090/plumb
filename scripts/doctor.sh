@@ -211,6 +211,20 @@ else
   fi
 fi
 
+# ledger.export: manual (the default) pushes only on `plumb-ledger export`; on-stop pushes each
+# turn's new records from the Stop hook, which needs a store and capture on.
+lexp=$(cfg ledger.export)
+case "$lexp" in
+  ""|manual) note "--" "ledger.export: manual (run plumb-ledger export to push; set ledger.export = on-stop to push at the end of every turn)" ;;
+  on-stop)
+    if [ -z "$lstore" ] || [ "$lcap" != on ]; then
+      bad "ledger.export = on-stop needs ledger.store set and ledger.capture = on (nothing is pushed otherwise)"
+    else
+      note "ok" "ledger.export = on-stop (the Stop hook pushes each turn's new records in the background)"
+    fi ;;
+  *) bad "ledger.export = $lexp (expected manual or on-stop; export stays manual)" ;;
+esac
+
 # 3. There is no dependency on an outside plugin.
 #    Until 2026-08-30, plumb's router forwarded "fix a bug" and "run a plan task by task" to
 #    superpowers, and doctor checked whether that existed.

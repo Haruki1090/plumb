@@ -25,6 +25,7 @@ import contextlib
 import fcntl
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import re
@@ -724,16 +725,52 @@ def cmd_capture(argv: list[str]) -> int:
         else:
             print("capture: {runtime} session={session} new={new} duplicates={duplicates} "
                   "unidentified={unidentified} conflicts={conflicts} bytes_read={bytes_read}".format(**summary))
+    if args.hook_input:
+        export_on_stop(summaries, cwd)
     return status
 
 
-def log_failure(error: BaseException, cwd: str | None) -> None:
-    """The hook path has nowhere to print: leave one line, type and message only, in the ledger directory."""
+def export_on_stop(summaries: list[dict[str, Any]], cwd: str | None) -> None:
+    """The end of a turn in a cloud session: a container can be reclaimed with no session-end event,
+    so when the owner opted in (ledger.capture = on, ledger.export = on-stop, ledger.store set) the
+    sessions this hook run captured something new for are exported now, by the same code path as
+    `plumb-ledger export --session <id>`. Only the hook path calls this, in its background job: it
+    never raises, and what goes wrong leaves one line (type and a short, masked message) in the
+    capture log while the records stay pending. A session with nothing new does not push."""
+    try:
+        if config("ledger.capture", "off") != "on" or config("ledger.export", "manual") != "on-stop":
+            return
+        due = [s for s in summaries if s.get("new")]
+        if not due:
+            return
+        if not config("ledger.store"):
+            log_line(cwd, "export skipped: ledger.store is unset")
+            return
+        for summary in due:
+            out, err = io.StringIO(), io.StringIO()
+            try:
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    code = cmd_export(["--session", summary["session"], "--runtime", summary["runtime"]])
+            except LedgerError as error:
+                log_line(cwd, f"export failed: LedgerError: {redact(str(error))[:200]}")
+                continue
+            if code != 0:
+                log_line(cwd, f"export failed: exit {code}: {first_line(err.getvalue()) or 'no message'}")
+    except Exception as error:  # noqa: BLE001 - the hook's background job must not raise
+        log_line(cwd, f"export failed: {type(error).__name__}: {redact(str(error))[:200]}")
+
+
+def log_line(cwd: str | None, text: str) -> None:
+    """The hook path has nowhere to print: leave one line in the ledger directory's capture log."""
     with contextlib.suppress(Exception):
         directory = ledger_dir(cwd, True)
         with open(directory / "capture.log", "a", encoding="utf-8") as handle:
-            handle.write(f"{format_time(datetime.now(timezone.utc))} capture failed: "
-                         f"{type(error).__name__}: {redact(str(error))[:200]}\n")
+            handle.write(f"{format_time(datetime.now(timezone.utc))} {text}\n")
+
+
+def log_failure(error: BaseException, cwd: str | None) -> None:
+    """Type and message only."""
+    log_line(cwd, f"capture failed: {type(error).__name__}: {redact(str(error))[:200]}")
 
 
 # ---------------------------------------------------------------- prices

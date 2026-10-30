@@ -25,6 +25,11 @@
 #                                        and attribution (off unless exactly `on`; docs/ledger.md)
 #   ledger.store            = <git URL> the owner's private repository the records are exported
 #                                        to, one ref per session; unset keeps them local
+#   ledger.export           = on-stop   with capture on and a store set, push this session's new
+#                                        records at the end of every turn, in the background
+#                                        (for a cloud session, whose container can vanish without a
+#                                        session-end event); `manual` (the default) pushes only when
+#                                        `plumb-ledger export` is run
 #
 # **"Not configured" is not an error.** Unset still exits 0 and returns the default.
 # Exit 1 here and every caller ends up writing || true, which hides the real failures.

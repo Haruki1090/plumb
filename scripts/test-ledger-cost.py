@@ -1023,6 +1023,137 @@ def _():
     time.sleep(1)
 
 
+# ---------------------------------------------------------------- export at the end of a turn
+
+def hook_shims(sb: Sandbox) -> tuple[Path, Path, Path]:
+    """The python3 shim plus a git shim that logs every call, so a test can count pushes."""
+    shim, mark = python_shim(sb)
+    log = sb.root / "git-calls"
+    real = shutil.which("git")
+    (shim / "git").write_text(f'#!/bin/sh\necho "$@" >> "{log}"\nexec "{real}" "$@"\n')
+    (shim / "git").chmod(0o755)
+    return shim, mark, log
+
+
+def pushes(log: Path) -> int:
+    return sum(1 for line in log.read_text().splitlines() if " push " in f" {line} ") if log.exists() else 0
+
+
+def finished(mark: Path, runs: int):
+    return lambda: mark.exists() and mark.read_text().count("finished") >= runs
+
+
+def on_stop_sandbox(name: str, config_extra: str = "ledger.export = on-stop\n", store: bool = True):
+    sb = Sandbox(name)
+    repo = make_repo(sb.root / "repo")
+    if store:
+        bare = bare_store(sb)
+    else:
+        bare = None
+    sb.set_config(sb.config.read_text() + config_extra)
+    return sb, repo, bare
+
+
+def turn(sb: Sandbox, repo: Path, session: str, count: int, first: int, shim: Path) -> float:
+    """Append `count` requests to the session's transcript and run the Stop hook once."""
+    lines = [assistant(f"msg_{session}_{first + i}", f"2026-10-10T00:00:{first + i:02d}Z", repo, "feat/a") for i in range(count)]
+    path = sb.root / "proj" / f"{session}.jsonl"
+    path.parent.mkdir(exist_ok=True)
+    with open(path, "a") as handle:
+        handle.write("\n".join(lines) + "\n")
+    return run_hook(sb, hook_input(sb, path, repo), shim)
+
+
+@case("ledger.export = on-stop: the hook pushes that session after its capture, only that session, only when something is new")
+def _():
+    sb, repo, store = on_stop_sandbox("stop-push")
+    shim, mark, log = hook_shims(sb)
+    put_pending(sb, "other", [record(0, session="other", rid="other")])
+    elapsed = turn(sb, repo, "sess-stop", 2, 0, shim)
+    assert elapsed < 0.2, f"the hook took {elapsed * 1000:.0f} ms"
+    print(f"       hook, ledger.export = on-stop: returned in {elapsed * 1000:.1f} ms")
+    ref = "refs/heads/plumb-ledger/claude/sess-stop"
+    assert wait_for(lambda: ref in refs(store), 60) and wait_for(finished(mark, 1), 60), refs(store)
+    assert len(stored_lines(store, "sess-stop")) == 2
+    assert wait_for(lambda: not any(r["session"] == "sess-stop" for r in sb.pending()), 30), "pushed rows stay pending"
+    assert len([r for r in sb.exported() if r["session"] == "sess-stop"]) == 2
+    assert [r["session"] for r in sb.pending()] == ["other"], "another session's pending rows were exported or lost"
+    assert list(refs(store)) == [ref], refs(store)
+    # A second turn with new requests pushes the session again, with all of its records.
+    first_commit = refs(store)[ref]
+    turn(sb, repo, "sess-stop", 1, 2, shim)
+    assert wait_for(lambda: refs(store).get(ref) not in (None, first_commit), 60) and wait_for(finished(mark, 2), 60)
+    assert len(stored_lines(store, "sess-stop")) == 3
+    # A turn that captures nothing new does not push (counted on git's own calls).
+    before = pushes(log)
+    path = sb.root / "proj" / "sess-stop.jsonl"
+    run_hook(sb, hook_input(sb, path, repo), shim)
+    assert wait_for(finished(mark, 3), 60)
+    time.sleep(0.3)
+    assert pushes(log) == before and refs(store)[ref] != first_commit, "a turn with nothing new pushed"
+    assert not (sb.ledger / "capture.log").exists(), (sb.ledger / "capture.log").read_text()
+
+
+@case("ledger.export manual (default or explicit) captures but never pushes")
+def _():
+    for name, extra in (("stop-manual-default", ""), ("stop-manual-explicit", "ledger.export = manual\n"),
+                        ("stop-manual-typo", "ledger.export = on_stop\n")):
+        sb, repo, store = on_stop_sandbox(name, extra)
+        shim, mark, log = hook_shims(sb)
+        turn(sb, repo, "sess-m", 2, 0, shim)
+        assert wait_for(finished(mark, 1), 60) and wait_for(lambda: len(sb.pending()) == 2, 30), name
+        time.sleep(0.3)
+        assert pushes(log) == 0 and refs(store) == {} and sb.exported() == [], f"{name}: pushed with export not on-stop"
+
+
+@case("on-stop with capture off does nothing, even with a store; with no store it pushes nothing and says so in the log")
+def _():
+    sb, repo, store = on_stop_sandbox("stop-capture-off")
+    sb.set_config(f"ledger.capture = off\nledger.store = {store}\nledger.export = on-stop\n")
+    shim, mark, log = hook_shims(sb)
+    turn(sb, repo, "sess-off", 1, 0, shim)
+    time.sleep(0.5)
+    assert not mark.exists() and not sb.ledger.exists() and refs(store) == {}, "capture off must not start Python"
+    sb, repo, _ = on_stop_sandbox("stop-no-store", store=False)
+    shim, mark, log = hook_shims(sb)
+    assert turn(sb, repo, "sess-ns", 2, 0, shim) < 0.2
+    assert wait_for(finished(mark, 1), 60) and wait_for(lambda: len(sb.pending()) == 2, 30)
+    assert wait_for(lambda: (sb.ledger / "capture.log").exists(), 30)
+    assert "export skipped: ledger.store is unset" in (sb.ledger / "capture.log").read_text()
+    assert pushes(log) == 0 and sb.exported() == []
+
+
+@case("a failing push keeps the records pending, logs the error masked, and the hook still returns within its budget")
+def _():
+    sb, repo, store = on_stop_sandbox("stop-push-fails")
+    reject = store / "hooks" / "pre-receive"
+    reject.write_text("#!/bin/sh\necho 'rejected by the store' >&2\nexit 1\n")
+    reject.chmod(0o755)
+    shim, mark, log = hook_shims(sb)
+    elapsed = turn(sb, repo, "sess-fail", 2, 0, shim)
+    assert elapsed < 0.2, f"the hook took {elapsed * 1000:.0f} ms"
+    assert wait_for(finished(mark, 1), 60)
+    assert wait_for(lambda: (sb.ledger / "capture.log").exists() and "export failed" in (sb.ledger / "capture.log").read_text(), 30)
+    assert len(sb.pending()) == 2 and sb.exported() == [] and refs(store) == {}, "a failed push must leave the records pending"
+    # The next turn, with the store healthy again, sends everything that was pending.
+    reject.unlink()
+    turn(sb, repo, "sess-fail", 1, 2, shim)
+    ref = "refs/heads/plumb-ledger/claude/sess-fail"
+    assert wait_for(lambda: ref in refs(store), 60) and wait_for(finished(mark, 2), 60)
+    assert len(stored_lines(store, "sess-fail")) == 3 and wait_for(lambda: sb.pending() == [], 30)
+    # An unreachable store with a credential in its URL: failure logged, secret never written.
+    sb, repo, _ = on_stop_sandbox("stop-secret", store=False)
+    sb.set_config(f"ledger.capture = on\nledger.export = on-stop\nledger.store = http://deploy:{SECRET}@127.0.0.1:9/private/ledger.git\n")
+    shim, mark, log = hook_shims(sb)
+    assert turn(sb, repo, "sess-sec", 1, 0, shim) < 0.2
+    assert wait_for(finished(mark, 1), 90)
+    assert wait_for(lambda: (sb.ledger / "capture.log").exists(), 30)
+    logged = (sb.ledger / "capture.log").read_text()
+    assert "export failed" in logged and SECRET not in logged, logged
+    assert len(sb.pending()) == 1
+    assert all(len(line) < 400 for line in logged.splitlines()), "log lines must stay short"
+
+
 # ---------------------------------------------------------------- the rest of the contract
 
 @case("session-audit's output on its existing fixture is byte-identical")
@@ -1056,7 +1187,7 @@ def _():
         "threshold_input_tokens": 100000, "input": Decimal("0.50"), "output": Decimal("2.50"), "cache_read": Decimal("0.05")}
 
 
-@case("every subcommand prints usage for --help and exits 0; the doctor ledger block reports capture and the store")
+@case("every subcommand prints usage for --help and exits 0; the doctor ledger block reports capture, the store and the export mode")
 def _():
     for name in ("capture", "export", "prs", "report"):
         out = subprocess.run([str(LEDGER), name, "--help"], capture_output=True, text=True)
@@ -1066,13 +1197,20 @@ def _():
     doctor = lambda: subprocess.run(["bash", str(PLUGIN / "scripts" / "doctor.sh"), str(PLUGIN)], capture_output=True,
                                     text=True, env={**sb.env, "PLUMB_IN_SELFTEST": "1"}, cwd=sb.cwd).stdout
     lines = [l for l in doctor().splitlines() if "ledger." in l]
-    assert [l[:6] for l in lines] == ["  ok  ", "  ok  "], lines
+    assert [l[:6] for l in lines] == ["  ok  ", "  ok  ", "  --  "], lines
     sb.set_config("")
     lines = [l for l in doctor().splitlines() if "ledger." in l]
-    assert [l[:6] for l in lines] == ["  --  ", "  --  "], lines
+    assert [l[:6] for l in lines] == ["  --  ", "  --  ", "  --  "], lines
     sb.set_config("ledger.capture = yes\n")
     assert any(l.startswith("  NG ") and "ledger.capture" in l for l in doctor().splitlines())
-    del store
+    for text, expected in ((f"ledger.capture = on\nledger.store = {store}\nledger.export = on-stop\n", "  ok  "),
+                           (f"ledger.capture = on\nledger.export = on-stop\n", "  NG  "),
+                           (f"ledger.store = {store}\nledger.export = on-stop\n", "  NG  "),
+                           (f"ledger.capture = on\nledger.store = {store}\nledger.export = manual\n", "  --  "),
+                           (f"ledger.capture = on\nledger.store = {store}\nledger.export = always\n", "  NG  ")):
+        sb.set_config(text)
+        export_lines = [l for l in doctor().splitlines() if "ledger.export" in l]
+        assert len(export_lines) == 1 and export_lines[0][:6] == expected, (text, export_lines)
 
 
 shutil.rmtree(ROOT, ignore_errors=True)
