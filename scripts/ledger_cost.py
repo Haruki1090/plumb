@@ -241,18 +241,14 @@ def git_top(cwd: str | None) -> str | None:
 
 
 def ledger_dir(cwd: str | None, create: bool) -> Path:
-    """<run root>/ledger of the cwd's checkout, else ~/.claude/plumb/ledger. PLUMB_LEDGER_DIR wins."""
+    """~/.claude/plumb/ledger, or PLUMB_LEDGER_DIR. The same place for every repository.
+
+    Records are the personal layer: they never go under a product repository (no run root, no
+    `.plumb/.gitignore` created by a background hook). Each record carries its repository, so one
+    directory serves every checkout. `cwd` is accepted for callers and ignored.
+    """
     override = os.environ.get("PLUMB_LEDGER_DIR")
-    path: Path | None = Path(override) if override else None
-    if path is None:
-        top = git_top(cwd)
-        if top:
-            cmd = ["bash", str(SCRIPTS / "plumb-path.sh"), "run"] + (["--mkdir"] if create else []) + [top]
-            out = run(cmd, timeout=10)
-            if out and out.returncode == 0 and out.stdout.strip():
-                path = Path(out.stdout.strip()) / "ledger"
-    if path is None:
-        path = Path.home() / ".claude" / "plumb" / "ledger"
+    path = Path(override) if override else Path.home() / ".claude" / "plumb" / "ledger"
     if create:
         path.mkdir(parents=True, exist_ok=True)
     return path
@@ -262,8 +258,6 @@ def ledger_dirs(cwd: str | None, extra: list[str]) -> list[Path]:
     found: list[Path] = [Path(item) for item in extra]
     if not found:
         found.append(ledger_dir(cwd, False))
-        if not os.environ.get("PLUMB_LEDGER_DIR"):
-            found.append(Path.home() / ".claude" / "plumb" / "ledger")
     out: list[Path] = []
     for path in found:
         if path.is_dir() and path.resolve() not in [item.resolve() for item in out]:
@@ -659,13 +653,13 @@ def capture_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="plumb-ledger capture",
         description="Record the requests new since the last capture, from a transcript and its "
-                    "subagents, as allowlisted per-request rows under the run root. Makes no network call.")
+                    "subagents, as allowlisted per-request rows under ~/.claude/plumb/ledger. Makes no network call.")
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--hook-input", metavar="FILE", help="the Stop hook's JSON (session_id, transcript_path, cwd)")
     source.add_argument("--transcript", metavar="PATH", help="a main transcript (.jsonl)")
     source.add_argument("--transcripts", metavar="DIR", help="a directory of transcripts (every direct .jsonl)")
     parser.add_argument("--runtime", choices=RUNTIMES, default="claude")
-    parser.add_argument("--cwd", metavar="DIR", help="where the run root is looked up (default: the hook's cwd, else the current directory)")
+    parser.add_argument("--cwd", metavar="DIR", help="the checkout the session ran in, for repository and branch (default: the hook's cwd, else the current directory)")
     parser.add_argument("--json", action="store_true", help="print the summary as JSON")
     return parser
 
@@ -716,7 +710,7 @@ def cmd_capture(argv: list[str]) -> int:
 
 
 def log_failure(error: BaseException, cwd: str | None) -> None:
-    """The hook path has nowhere to print: leave one line, type and message only, under the run root."""
+    """The hook path has nowhere to print: leave one line, type and message only, in the ledger directory."""
     with contextlib.suppress(Exception):
         directory = ledger_dir(cwd, True)
         with open(directory / "capture.log", "a", encoding="utf-8") as handle:
@@ -843,7 +837,7 @@ def export_parser() -> argparse.ArgumentParser:
     parser.add_argument("--session", metavar="ID", help="export only this session")
     parser.add_argument("--runtime", choices=RUNTIMES, help="export only this runtime")
     parser.add_argument("--check", action="store_true", help="only run the preflight (git ls-remote) and print ok or NG <reason>")
-    parser.add_argument("--ledger-dir", action="append", default=[], metavar="DIR", help="look here for pending records (repeatable; default: the current checkout's run root and ~/.claude/plumb/ledger)")
+    parser.add_argument("--ledger-dir", action="append", default=[], metavar="DIR", help="look here for pending records (repeatable; default: ~/.claude/plumb/ledger or PLUMB_LEDGER_DIR)")
     return parser
 
 
@@ -856,7 +850,7 @@ def cmd_export(argv: list[str]) -> int:
             print("--  ledger.store unset")
             return 0
         print("export: ledger.store is unset; records stay local under "
-              + (str(dirs[0]) if dirs else "the run root") + " and cloud sessions are not covered")
+              + (str(dirs[0]) if dirs else str(ledger_dir(None, False))) + " and cloud sessions are not covered")
         return 0
     if args.check:
         good, reason = preflight(store)
@@ -1188,7 +1182,8 @@ def rework_numbers(data: Any) -> tuple[set[tuple[str | None, int]], set[tuple[st
     originals: set[tuple[str | None, int]] = set()
     fixers: set[tuple[str | None, int]] = set()
     repo = data.get("repository") if isinstance(data, dict) and isinstance(data.get("repository"), str) else None
-    rows = data.get("reworked") if isinstance(data, dict) else data
+    # `plumb-ledger rework --json` lists them under reworked_changes (reworked is the count).
+    rows = (data.get("reworked_changes", data.get("reworked")) if isinstance(data, dict) else data)
     for row in rows if isinstance(rows, list) else []:
         if isinstance(row, int) and not isinstance(row, bool):
             originals.add((repo, row))

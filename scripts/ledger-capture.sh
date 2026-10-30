@@ -4,7 +4,7 @@
 # It reads ledger.capture through plumb-config.sh and returns before starting Python unless the
 # value is `on`. When on, it saves the hook JSON (session_id, transcript_path, cwd) to a temporary
 # file and starts `ledger.py capture --hook-input <file>` detached (output discarded; the capture
-# keeps its own log under the run root), then returns. It never fails a turn: no `set -e`, every
+# keeps its own log in ~/.claude/plumb/ledger), then returns. It never fails a turn: no `set -e`, every
 # step is allowed to fail, and the exit status is always 0.
 dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd) || exit 0
 
