@@ -88,7 +88,8 @@ timezone = "Asia/Tokyo"
 lookup = "node scripts/feature-map/lookup.mjs"
 up = "node scripts/dev/verify-up.mjs"
 down = "node scripts/dev/verify-down.mjs"
-scenarios = "docs/agents/feature-map"
+scenarios = "docs/agents/skills/feature-verify/SKILL.md"
+thresholds = "scripts/feature-map/verify/thresholds.json"
 
 [failure]
 extra_codes = [ { code = "P01", mechanism = "describe the failure mechanism" } ]
@@ -103,12 +104,14 @@ extra_codes = [ { code = "P01", mechanism = "describe the failure mechanism" } ]
 | `ledger.classify` | array of tables `{glob, class}` | Ordered path-glob to class rules for the work ledger |
 | `ledger.timezone` | string | An IANA name (`Asia/Tokyo`), checked with `zoneinfo` |
 | `verify.lookup`, `verify.up`, `verify.down` | string | Commands; `plumb-doctor` checks that the first word resolves |
-| `verify.scenarios` | string | A path |
+| `verify.scenarios` | string | A path to the project's procedure for writing and running one scenario, or a command |
+| `verify.thresholds` | string | A path to the thresholds file the comparator reads ([verify protocol](verify-protocol.md)) |
 | `failure.extra_codes` | array of tables `{code, mechanism}` | Product-specific failure codes |
 
 `plumb-doctor` prints a `contract` block: `none` when the file is absent, `ok` or `--` for each key,
-one `NG` line naming the key and reason when the file is invalid, and an `NG` for a verify command
-whose first word is neither on PATH nor an executable file under the repository top level. Without
+one `NG` line naming the key and reason when the file is invalid, an `NG` for a verify command
+whose first word is neither on PATH nor an executable file under the repository top level, and an `NG`
+for a `verify.thresholds` that is not a file. Without
 `tomllib` the block is skipped, never an `NG`.
 
 ## The `Fixes-PR:` line

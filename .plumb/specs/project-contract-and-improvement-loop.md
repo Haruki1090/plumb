@@ -47,6 +47,7 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
 - Minimum schema (`docs/project-contract.md`): `schema = 1`, `[repo] base_branch`, `[rework]
   required_authors` (array of logins), `[ledger] classify` (ordered path-glob → class rules),
   `[verify] lookup`, `[verify] up`, `[verify] down`, `[verify] scenarios` (commands or paths),
+  `[verify] thresholds` (a path; added in lap 4, the comparator's thresholds come from it),
   `[failure] extra_codes`. Unknown keys are reported, not rejected.
 - `plumb-project <key>` and `plumb-project --json` return one of four outcomes, distinguishable by
   exit status and in JSON: **absent** (no file, or key unset — empty, exit 0), **set** (value, exit 0),

@@ -125,9 +125,9 @@ fi
 #     for all keys. plumb-project does the validating; this block only reports what it says.
 #     A verify command is checked by its first word: with a / it is a file relative to the
 #     repository top level (absolute paths as-is) and must be executable; without one it must be on
-#     PATH, which is how it will be run.
+#     PATH, which is how it will be run. verify.thresholds is a path and must be a file.
 echo "— contract"
-contract_keys="repo.base_branch rework.required_authors rework.lookahead_days ledger.classify ledger.timezone verify.lookup verify.up verify.down verify.scenarios failure.extra_codes"
+contract_keys="repo.base_branch rework.required_authors rework.lookahead_days ledger.classify ledger.timezone verify.lookup verify.up verify.down verify.scenarios verify.thresholds failure.extra_codes"
 cmd_resolves() { # <command line> <repository top level>
   local first path
   read -r first _ <<<"$1"
@@ -186,6 +186,13 @@ if outcome == "set":
                 else
                   read -r cfirst _ <<<"$cval"
                   bad "$ckey: ${cfirst:-(empty)} does not resolve (not on PATH, or not an executable file under the repository top level)"
+                fi ;;
+              verify.thresholds)
+                case "$cval" in /*) cfile=$cval ;; *) cfile="$ctop/$cval" ;; esac
+                if [ -f "$cfile" ]; then
+                  note "ok" "$ckey"
+                else
+                  bad "$ckey: ${cval:-(empty)} is not a file (a path relative to the repository top level, or absolute)"
                 fi ;;
               *) note "ok" "$ckey" ;;
             esac
@@ -247,7 +254,7 @@ esac
 #    The other candidates (agent-routing, graph-engineering, pr-review) are already bundled or
 #    forwarded instead.
 
-# 3b. Do the 6 bundled agents exist (body text -> file)
+# 3b. Do the 6 bundled pr-review agents exist (body text -> file)
 #     If an agent the pr-review skill names disappears, the refutation stage loses what it calls
 #     and nobody notices. Extraction only picks up candidates in the body form (`pr-xxx` in
 #     backticks), so the short name of bin/plumb-pr-drift — `pr-drift`, which is not an agent —
@@ -265,10 +272,12 @@ done < <(grep -oE '`(plumb:)?pr-[a-z-]+`' "$root/skills/pr-review/SKILL.md" | tr
 #     check-harness's rule 8 (the playbook and principle index) looks both ways, but agents were
 #     only ever checked in 3b's one direction (does what the body names exist). One direction
 #     means you can add an agent and quietly leave an orphan file nobody ever calls.
+#     Any skill may name an agent (pr-review names its bundled reviewers, verify its verifier),
+#     so every skills/*/SKILL.md is searched.
 for f in "$root"/agents/*.md; do
   [ -f "$f" ] || continue
   n=$(basename "$f" .md)
-  grep -qE "\`(plumb:)?$n\`" "$root/skills/pr-review/SKILL.md" \
+  grep -qE "\`(plumb:)?$n\`" "$root"/skills/*/SKILL.md \
     || bad "no body text names agents/$n.md (orphan agent)"
 done
 

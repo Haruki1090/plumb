@@ -47,7 +47,7 @@ maintainers. If a named custom agent is unavailable, spawn a generic subagent wi
 reasoning setting from that file, and include the bounded role instructions in the task. Do not silently
 collapse independent implementation and verification into one thread.
 
-## PR-review agent mapping
+## Agent mapping
 
 | Canonical definition | Codex custom agent |
 |---|---|
@@ -57,12 +57,17 @@ collapse independent implementation and verification into one thread.
 | `agents/pr-repro.md` | `plumb_pr_repro` |
 | `agents/pr-refuter.md` | `plumb_pr_refuter` |
 | `agents/pr-blindspot.md` | `plumb_pr_blindspot` |
+| `agents/verifier.md` | `plumb_verifier` |
 
 The Markdown definitions remain canonical for the role's questions and output shape. The TOML agents
 translate those roles into native Codex model, reasoning, sandbox, and return-value semantics.
 
 Before starting `plumb_pr_repro`, the parent creates an isolated git worktree and gives the agent its
 absolute path. The agent must restrict edits to that path. A shared working directory is not isolation.
+
+`plumb_verifier` starts the application under test, so it runs with `workspace-write`. The parent gives it
+a run directory outside the repository checkout, and the agent creates its own worktree of the base
+revision inside it; it writes nowhere else.
 
 ## Model-family rule
 

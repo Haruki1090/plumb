@@ -8,6 +8,12 @@ are the observation. Nothing is persisted as a resumable session.
 Cases are a CSV with a header: id,prompt,expect
   expect = the skill that must fire (e.g. plumb:lead), or "-" meaning the skill under test must
   not fire. A case that expects another skill scores against that skill as well.
+
+Two recalls are reported. `recall` counts a case when the expected skill was invoked at any point
+before the first non-Skill tool. `first_skill_recall` counts it only when the expected skill was the
+FIRST skill invoked: a route through another skill first (for example ['plumb', 'plumb:verify'])
+reaches the target after a hop that the request should not have needed, so it counts for recall and
+not for first-skill recall.
 """
 import argparse, csv, json, os, shutil, signal, subprocess, sys, time
 from pathlib import Path
@@ -97,10 +103,13 @@ def score(rows, skill):
     tn = sum(1 for r in rows if r["expect"] != skill and skill not in r["skills"])
     other = [r for r in rows if r["expect"] not in (skill, "-")]
     routed = sum(1 for r in other if r["expect"] in r["skills"])
+    first_tp = sum(1 for r in rows if r["expect"] == skill and r["skills"][:1] == [skill])
     prec = tp / (tp + fp) if tp + fp else None
     rec = tp / (tp + fn) if tp + fn else None
+    first_rec = first_tp / (tp + fn) if tp + fn else None
     return {"skill": skill, "tp": tp, "fn": fn, "fp": fp, "tn": tn, "precision": prec,
-            "recall": rec, "near_miss_routed": f"{routed}/{len(other)}"}
+            "recall": rec, "first_skill_tp": first_tp, "first_skill_recall": first_rec,
+            "near_miss_routed": f"{routed}/{len(other)}"}
 
 
 def main():
@@ -140,7 +149,8 @@ def main():
             obs = run_case(c["prompt"], model, a.cwd, a.timeout, out / f"{tag}.jsonl", a.plugin_dir)
             if a.plugin_dir and obs["plugin_path"] != str(Path(a.plugin_dir).resolve()):
                 sys.exit(f"{tag}: the session loaded {PLUGIN} from {obs['plugin_path']}, not {a.plugin_dir}")
-            row = {"model": model or "default", "id": c["id"], "expect": c["expect"], **obs}
+            row = {"model": model or "default", "id": c["id"], "expect": c["expect"], **obs,
+                   "first_skill": obs["skills"][0] if obs["skills"] else None}
             row["pass"] = (c["expect"] in obs["skills"]) if c["expect"] != "-" else (a.skill not in obs["skills"])
             if c["expect"] not in (a.skill, "-"):
                 row["pass"] = row["pass"] and a.skill not in obs["skills"]
@@ -148,7 +158,8 @@ def main():
             with open(out / "results.jsonl", "a") as f:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
             print(f"  {'ok' if row['pass'] else 'NG':4} {tag:28} expect={c['expect']:18} "
-                  f"got={','.join(obs['skills']) or '-'} first={obs['first_tool']}", flush=True)
+                  f"got={','.join(obs['skills']) or '-'} first_skill={row['first_skill'] or '-'} "
+                  f"first={obs['first_tool']}", flush=True)
         s = score(rows, a.skill)
         s["model"] = model or "default"
         tok = [r["first_request_tokens"] for r in rows if r["first_request_tokens"]]
@@ -158,7 +169,8 @@ def main():
     for s in summary:
         p = "-" if s["precision"] is None else f"{s['precision']:.2f}"
         r = "-" if s["recall"] is None else f"{s['recall']:.2f}"
-        print(f"{s['model']}: precision {p} recall {r} (tp {s['tp']} fn {s['fn']} fp {s['fp']} "
+        fr = "-" if s["first_skill_recall"] is None else f"{s['first_skill_recall']:.2f}"
+        print(f"{s['model']}: precision {p} recall {r} first-skill recall {fr} (tp {s['tp']} fn {s['fn']} fp {s['fp']} "
               f"tn {s['tn']}) near-miss routed {s['near_miss_routed']} "
               f"first-request tokens p50 {s['first_request_tokens_median']}")
     sys.exit(0 if all(s["fp"] == 0 and s["fn"] == 0 for s in summary) else 1)

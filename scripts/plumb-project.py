@@ -62,7 +62,7 @@ keys warn on stderr and do not fail. A usage error exits 2.
 """
 
 TOP_LEVEL = ("schema", "repo", "rework", "ledger", "verify", "failure")
-VERIFY_KEYS = ("lookup", "up", "down", "scenarios")
+VERIFY_KEYS = ("lookup", "up", "down", "scenarios", "thresholds")
 KEY_RE = re.compile(r"[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*")
 
 
@@ -221,6 +221,29 @@ def syntax_reason(error: Exception) -> str:
     return f"TOML syntax error at line {found.group(1)}" if found else "TOML syntax error"
 
 
+def evaluate(raw: bytes) -> tuple:
+    """Parse and validate the bytes of a contract. Returns (outcome, doc, message, warnings).
+
+    outcome is `set`, `invalid` or `unavailable`. This is the one place a contract's text becomes an
+    outcome: `plumb-project` reads the worktree's file through it, and `plumb-verify plan` reads the
+    base commit's file through it, so the two cannot disagree about what is valid.
+    """
+    try:
+        import tomllib
+    except ImportError:
+        return "unavailable", None, UNAVAILABLE_MESSAGE, []
+    try:
+        doc = tomllib.loads(raw.decode("utf-8"))
+        warnings = validate(doc)
+    except tomllib.TOMLDecodeError as error:
+        return "invalid", None, f"{FILE_LABEL}: {syntax_reason(error)}", []
+    except UnicodeDecodeError:
+        return "invalid", None, f"{FILE_LABEL}: not valid UTF-8", []
+    except Invalid as error:
+        return "invalid", None, f"{error.key}: {error.reason}", []
+    return "set", doc, "", warnings
+
+
 def emit(args: dict, outcome: str, value: object, message: str, code: int) -> int:
     key = args["key"]
     if args["json"]:
@@ -276,22 +299,15 @@ def main(argv: list) -> int:
         return emit(args, "absent", None, "no contract file", 0)
 
     try:
-        import tomllib
-    except ImportError:
-        return emit(args, "unavailable", None, UNAVAILABLE_MESSAGE, 3)
-
-    try:
         with open(path, "rb") as handle:
-            doc = tomllib.load(handle)
-        warnings = validate(doc)
-    except tomllib.TOMLDecodeError as error:
-        return emit(args, "invalid", None, f"{FILE_LABEL}: {syntax_reason(error)}", 2)
-    except UnicodeDecodeError:
-        return emit(args, "invalid", None, f"{FILE_LABEL}: not valid UTF-8", 2)
+            raw = handle.read()
     except OSError:
         return emit(args, "invalid", None, f"{FILE_LABEL}: cannot read the file", 2)
-    except Invalid as error:
-        return emit(args, "invalid", None, f"{error.key}: {error.reason}", 2)
+    outcome, doc, message, warnings = evaluate(raw)
+    if outcome == "unavailable":
+        return emit(args, "unavailable", None, message, 3)
+    if outcome == "invalid":
+        return emit(args, "invalid", None, message, 2)
 
     for name in warnings:
         print(f"plumb-project: warning: unknown key {name}", file=sys.stderr)
