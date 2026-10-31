@@ -13,6 +13,8 @@ unopened cost and loop branches) are not merged there.
 
 Revision 3 (2026-10-30) answers the second judge pass: the CI must fail on an invalid or unreadable contract (`--enforce`), the pull-request number is required for self-reference, capture is opt-in and budgeted, export failures are defined, request-to-task assignment is unique, attribution uses the transcript's per-request branch where it is valid, and the 250-commit limit is reconciled.
 
+Revision 4 (2026-10-31): attribution reads the branch from the HEAD reflog, because Claude Code's gitBranch is the launch directory's branch and does not follow cd (measured).
+
 Revision 2 (2026-10-30) answers an independent judge pass (Codex, read-only) that found 14 issues:
 undefined invalid-contract behavior, contract path policy, untrusted rework-policy input, a shared
 push target and repository-policy exposure for cost export, privacy and clone growth, request
@@ -95,11 +97,12 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
   personal config. When on, a plumb `Stop` hook (`plumb-ledger capture`) runs in the background,
   reads each transcript incrementally from a saved byte offset, makes no network call, and appends
   the requests new since the last capture. When off, the hook returns before starting Python (a shell
-  check of the config). Attribution per request, in order of evidence: the request's own `cwd` and
-  `gitBranch` from the transcript when its `cwd` is the checkout that field describes; for a worktree
-  subagent (whose `gitBranch` describes the parent), the `worktreePath`'s HEAD at capture time,
-  marked `attribution_source = worktree_at_capture`; otherwise `unknown`. Later reads never infer a
-  past branch from today's checkout. plumb ships no hook today; this is the first, and its cost is a
+  check of the config). Attribution per request, in order of evidence: the branch the HEAD reflog of the
+  request's own directory (the subagent's `worktreePath`, else the transcript's `cwd`) names at the
+  request's time, with later renames followed, marked `attribution_source = reflog`; when the reflog
+  cannot be read, the older rules (a worktree subagent's `worktreePath` HEAD at capture time,
+  `worktree_at_capture`; else the transcript's `gitBranch` when it exists in that checkout,
+  `transcript`); otherwise `unknown`. Later reads never infer a past branch from today's checkout. plumb ships no hook today; this is the first, and its cost is a
   release gate (below).
 - **Identity.** Request ids are runtime-qualified. Claude ids are `claude:<message.id>`, because
   `requestId` is absent on many records and mixing the two keys double-counts; Codex ids are

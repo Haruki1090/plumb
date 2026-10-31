@@ -85,13 +85,23 @@ the two keys double-counts; Codex `codex:<session>:<n>`, never merged across ses
 one request (one per content block, or in a forked transcript) count once. Copies whose usage differs are kept
 once and reported as conflicts. A request with no id is kept and counted as unidentified; identical unidentified rows are separate requests and all of them are exported and counted.
 
-**Attribution**, in order of evidence: the record's own `cwd` and `gitBranch` when that branch
-exists in that checkout (`transcript`); for a subagent that ran in its own worktree, that
-worktree's HEAD branch at capture time (`worktree_at_capture`); otherwise `unknown` (a removed
-worktree, a detached HEAD, `HEAD`, a deleted branch). A past branch is never inferred from today's
-checkout. A main session that writes in another worktree with `git -C` is attributed to its own
-directory, which is where the request really ran: give that work to a worktree subagent, or `cd`
-first.
+**Attribution**, in order of evidence: the branch the HEAD reflog of the request's own directory
+(the subagent's worktree, else the record's `cwd`) names at the request's time (`reflog`), with
+later renames followed so the record carries the name the pull request uses; a branch deleted since
+keeps its name. Claude Code's `gitBranch` is the branch of the directory the session was launched
+in and does not follow `cd`, so it is not trusted while the reflog can be read. When the reflog
+cannot be read: for a subagent that ran in its own worktree, that worktree's HEAD branch at capture
+time (`worktree_at_capture`); otherwise the record's `gitBranch` when that branch exists in that
+checkout (`transcript`). `unknown` for a removed worktree or a detached HEAD at the request's time.
+A request older than the reflog, a rebase in progress with no recorded branch before it, or a reflog
+that disagrees with the current HEAD falls back to the same older rules. Known limit: renaming a
+branch while another branch is checked out is not in that worktree's reflog, so such a request keeps
+the old name (it then matches no pull request; it is never given another branch).
+Codex rows are attributed the same way from their `cwd` and time. A main session that writes in another
+worktree with `git -C` is attributed to its own directory, which is where the request really ran:
+give that work to a worktree subagent, or `cd` first. A request is treated as having
+happened after a branch switch made in the same second. Records captured before this rule keep
+their `transcript` and `worktree_at_capture` values.
 
 **The allowlist** — the only fields a record holds, and the only ones that can leave the machine:
 `id`, `time`, `model`, `input`, `output`, `cache_read`, `cache_write_5m`, `cache_write_1h`,
