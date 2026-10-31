@@ -102,9 +102,11 @@ def read_records(ledger: Path, kind: str) -> list[dict]:
     return rows
 
 
-def git(path: Path, *args: str) -> str:
+def git(path: Path, *args: str, at: str | None = None) -> str:
+    """Run git; `at` (an ISO time) is the committer date, which is the time the reflog records."""
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", **({"GIT_COMMITTER_DATE": at} if at else {})}
     out = subprocess.run(["git", "-C", str(path), "-c", "user.name=t", "-c", "user.email=t@t", *args],
-                         capture_output=True, text=True, env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null"})
+                         capture_output=True, text=True, env=env)
     assert out.returncode == 0, f"git {args}: {out.stderr}"
     return out.stdout.strip()
 
@@ -112,7 +114,7 @@ def git(path: Path, *args: str) -> str:
 def make_repo(path: Path, origin: str = "https://github.com/acme/widgets.git", branches=("feat/a", "feat/b")) -> Path:
     path.mkdir(parents=True)
     git(path, "init", "-q", "-b", "main")
-    git(path, "commit", "-q", "--allow-empty", "-m", "init")
+    git(path, "commit", "-q", "--allow-empty", "-m", "init", at="2026-10-01T00:00:00Z")   # the reflog starts here
     git(path, "remote", "add", "origin", origin)
     for branch in branches:
         git(path, "branch", branch)
@@ -181,25 +183,286 @@ def by_task(report: dict) -> dict[str, str]:
 
 # ---------------------------------------------------------------- capture: attribution
 
-@case("a branch switch inside one turn attributes each request to its own branch")
+def attributed(sb: Sandbox) -> dict[str, tuple]:
+    """(branch, source) per request id."""
+    return {r["id"].removeprefix("claude:"): (r["branch"], r["attribution_source"]) for r in sb.pending()}
+
+
+@case("a branch switch inside one turn attributes each request to its own branch, read from the reflog")
 def _():
     sb = Sandbox("switch")
     repo = make_repo(sb.root / "repo")
-    lines = [assistant(f"msg_{i}", f"2026-10-10T00:00:0{i}Z", repo, branch)
-             for i, branch in enumerate(["feat/a", "feat/b", "feat/a"], 1)]
+    git(repo, "checkout", "-q", "feat/a", at="2026-10-10T00:00:00Z")
+    git(repo, "checkout", "-q", "feat/b", at="2026-10-10T00:00:02Z")
+    git(repo, "checkout", "-q", "feat/a", at="2026-10-10T00:00:04Z")
+    lines = [assistant(f"msg_{i}", f"2026-10-10T00:00:0{i}Z", repo, "feat/a") for i in (1, 3, 5)]  # gitBranch is the launch branch
     capture(sb, write_transcript(sb.root / "proj", "sess-switch", lines))
-    got = {r["id"]: (r["branch"], r["attribution_source"], r["repository"]) for r in sb.pending()}
-    assert got == {"claude:msg_1": ("feat/a", "transcript", "acme/widgets"),
-                   "claude:msg_2": ("feat/b", "transcript", "acme/widgets"),
-                   "claude:msg_3": ("feat/a", "transcript", "acme/widgets")}, got
+    assert attributed(sb) == {"msg_1": ("feat/a", "reflog"), "msg_3": ("feat/b", "reflog"),
+                              "msg_5": ("feat/a", "reflog")}, attributed(sb)
+    assert {r["repository"] for r in sb.pending()} == {"acme/widgets"}
 
 
-@case("a worktree subagent gets its worktree's branch; a subagent without a worktree keeps the transcript branch")
+@case("launched outside a repository (gitBranch HEAD), then cd into a repo: the reflog names the branch")
+def _():
+    sb = Sandbox("launched-outside")
+    repo = make_repo(sb.root / "repo")
+    git(repo, "checkout", "-q", "feat/a", at="2026-10-10T00:00:00Z")
+    capture(sb, write_transcript(sb.root / "proj", "sess-out", [
+        assistant("msg_1", "2026-10-10T00:00:01Z", repo, "HEAD"), assistant("msg_2", "2026-10-10T00:00:02Z", repo, "HEAD")]))
+    assert attributed(sb) == {"msg_1": ("feat/a", "reflog"), "msg_2": ("feat/a", "reflog")}, attributed(sb)
+
+
+@case("a branch switched away from and deleted in the same turn is still the branch of the earlier requests")
+def _():
+    sb = Sandbox("switch-delete")
+    repo = make_repo(sb.root / "repo")
+    git(repo, "checkout", "-q", "feat/a", at="2026-10-10T00:00:00Z")
+    git(repo, "checkout", "-q", "-b", "feat/new", at="2026-10-10T00:00:02Z")
+    git(repo, "branch", "-D", "feat/a")
+    capture(sb, write_transcript(sb.root / "proj", "sess-del", [
+        assistant("msg_1", "2026-10-10T00:00:01Z", repo, "feat/a"), assistant("msg_2", "2026-10-10T00:00:03Z", repo, "feat/a")]))
+    assert attributed(sb) == {"msg_1": ("feat/a", "reflog"), "msg_2": ("feat/new", "reflog")}, attributed(sb)
+
+
+@case("cd into a worktree: the worktree's branch, not the launch checkout's gitBranch")
+def _():
+    sb = Sandbox("cd-worktree")
+    repo = make_repo(sb.root / "repo", branches=("feat/main",))
+    git(repo, "checkout", "-q", "feat/main", at="2026-10-10T00:00:00Z")
+    wt = sb.root / "wt"
+    git(repo, "worktree", "add", "-q", "-b", "feat/wt", str(wt), at="2026-10-10T00:00:00Z")
+    capture(sb, write_transcript(sb.root / "proj", "sess-cd", [
+        assistant("msg_wt", "2026-10-10T00:00:01Z", wt, "feat/main"),
+        assistant("msg_main", "2026-10-10T00:00:01Z", repo, "feat/main")]))
+    assert attributed(sb) == {"msg_wt": ("feat/wt", "reflog"), "msg_main": ("feat/main", "reflog")}, attributed(sb)
+
+
+@case("a branch renamed after the request is attributed under its new name")
+def _():
+    sb = Sandbox("rename")
+    repo = make_repo(sb.root / "repo")
+    git(repo, "checkout", "-q", "feat/b", at="2026-10-10T00:00:00Z")
+    git(repo, "branch", "-m", "feat/b", "fix/b", at="2026-10-10T00:00:05Z")
+    git(repo, "checkout", "-q", "feat/a", at="2026-10-10T00:00:07Z")     # moved away after the rename
+    capture(sb, write_transcript(sb.root / "proj", "sess-ren", [
+        assistant("msg_1", "2026-10-10T00:00:01Z", repo, "feat/b"), assistant("msg_2", "2026-10-10T00:00:06Z", repo, "feat/b")]))
+    assert attributed(sb) == {"msg_1": ("fix/b", "reflog"), "msg_2": ("fix/b", "reflog")}, attributed(sb)
+
+
+@case("a detached HEAD at the request's time, by commit, `--detach` or tag, is unknown")
+def _():
+    sb = Sandbox("detached-at")
+    repo = make_repo(sb.root / "repo")
+    git(repo, "tag", "v1")
+    git(repo, "checkout", "-q", "feat/a", at="2026-10-10T00:00:00Z")
+    git(repo, "checkout", "-q", "--detach", at="2026-10-10T00:00:02Z")       # "moving from feat/a to HEAD"
+    git(repo, "checkout", "-q", "feat/b", at="2026-10-10T00:00:04Z")
+    git(repo, "checkout", "-q", "v1", at="2026-10-10T00:00:06Z")             # a tag detaches too
+    git(repo, "checkout", "-q", "feat/a", at="2026-10-10T00:00:08Z")
+    capture(sb, write_transcript(sb.root / "proj", "sess-det", [
+        assistant("msg_1", "2026-10-10T00:00:01Z", repo, "feat/a"),    # on feat/a
+        assistant("msg_3", "2026-10-10T00:00:03Z", repo, "feat/a"),    # detached by --detach
+        assistant("msg_5", "2026-10-10T00:00:05Z", repo, "feat/b"),    # on feat/b
+        assistant("msg_7", "2026-10-10T00:00:07Z", repo, "feat/b"),    # on the tag
+        assistant("msg_9", "2026-10-10T00:00:09Z", repo, "feat/b")]))  # back on feat/a
+    assert attributed(sb) == {"msg_1": ("feat/a", "reflog"), "msg_3": (None, "unknown"), "msg_5": ("feat/b", "reflog"),
+                              "msg_7": (None, "unknown"), "msg_9": ("feat/a", "reflog")}, attributed(sb)
+
+
+@case("a request during a rebase belongs to the branch being rebased")
+def _():
+    sb = Sandbox("rebase")
+    repo = make_repo(sb.root / "repo")
+    git(repo, "checkout", "-q", "feat/b", at="2026-10-10T00:00:00Z")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "work", at="2026-10-10T00:00:01Z")
+    git(repo, "checkout", "-q", "main", at="2026-10-10T00:00:02Z")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "base", at="2026-10-10T00:00:03Z")
+    git(repo, "checkout", "-q", "feat/b", at="2026-10-10T00:00:04Z")
+    git(repo, "branch", "-m", "fix/b", at="2026-10-10T00:00:04Z")
+    git(repo, "rebase", "-q", "main", at="2026-10-10T00:00:06Z")            # start .. finish, returning to fix/b
+    capture(sb, write_transcript(sb.root / "proj", "sess-rb", [
+        assistant("msg_1", "2026-10-10T00:00:05Z", repo, "feat/b"),     # between the rename and the rebase
+        assistant("msg_2", "2026-10-10T00:00:07Z", repo, "feat/b")]))   # after the rebase
+    assert attributed(sb) == {"msg_1": ("fix/b", "reflog"), "msg_2": ("fix/b", "reflog")}, attributed(sb)
+
+
+@case("an event in the same second as the request counts as already happened")
+def _():
+    sb = Sandbox("same-second")
+    repo = make_repo(sb.root / "repo")
+    git(repo, "checkout", "-q", "feat/a", at="2026-10-10T00:00:00Z")
+    git(repo, "checkout", "-q", "feat/b", at="2026-10-10T00:00:02Z")
+    capture(sb, write_transcript(sb.root / "proj", "sess-sec", [
+        assistant("msg_1", "2026-10-10T00:00:02.900Z", repo, "feat/a")]))
+    assert attributed(sb) == {"msg_1": ("feat/b", "reflog")}, attributed(sb)
+
+
+@case("a request older than the repository's first reflog entry falls back to the transcript's gitBranch")
+def _():
+    sb = Sandbox("before-reflog")
+    repo = make_repo(sb.root / "repo")                                   # first reflog line: 2026-10-01
+    git(repo, "checkout", "-q", "feat/b", at="2026-10-10T00:00:00Z")
+    capture(sb, write_transcript(sb.root / "proj", "sess-old", [
+        assistant("msg_old", "2026-09-20T00:00:00Z", repo, "feat/a"),    # before any reflog line
+        assistant("msg_new", "2026-10-10T00:00:01Z", repo, "feat/a")]))
+    assert attributed(sb) == {"msg_old": ("feat/a", "transcript"), "msg_new": ("feat/b", "reflog")}, attributed(sb)
+
+
+@case("a rebase stopped on a conflict, unfinished at capture: a request before it keeps its branch")
+def _():
+    sb = Sandbox("rebase-stopped")
+    repo = make_repo(sb.root / "repo", branches=())
+    (repo / "f").write_text("base\n")
+    git(repo, "add", "f")
+    git(repo, "commit", "-q", "-m", "base", at="2026-10-10T00:00:00Z")
+    git(repo, "checkout", "-q", "-b", "feat/a", at="2026-10-10T00:00:01Z")
+    (repo / "f").write_text("a\n")
+    git(repo, "commit", "-q", "-am", "a", at="2026-10-10T00:00:02Z")
+    git(repo, "checkout", "-q", "main", at="2026-10-10T00:00:03Z")
+    (repo / "f").write_text("main\n")
+    git(repo, "commit", "-q", "-am", "main", at="2026-10-10T00:00:04Z")
+    git(repo, "checkout", "-q", "feat/a", at="2026-10-10T00:00:05Z")
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_COMMITTER_DATE": "2026-10-10T00:00:07Z"}
+    stopped = subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", "rebase", "main"],
+                             capture_output=True, text=True, env=env)
+    assert stopped.returncode != 0 and (repo / ".git" / "rebase-merge").is_dir(), stopped.stdout + stopped.stderr
+    capture(sb, write_transcript(sb.root / "proj", "sess-rbstop", [
+        assistant("msg_1", "2026-10-10T00:00:06Z", repo, "feat/a"),      # on feat/a, before the rebase started
+        assistant("msg_2", "2026-10-10T00:00:08Z", repo, "feat/a")]))    # inside the stopped rebase: detached
+    assert attributed(sb) == {"msg_1": ("feat/a", "reflog"), "msg_2": (None, "unknown")}, attributed(sb)
+
+
+@case("a rebase start with no earlier branch-changing event cannot be decided and falls back")
+def _():
+    log = ledger_cost.parse_reflog("HEAD@{1760054410}\trebase (start): checkout main\n"
+                                   "HEAD@{1760054400}\tcommit (initial): init")
+    assert [(e[1], e[2]) for e in log.events] == [(None, "HEAD")] and log.oldest == 1760054400, vars(log)
+    checkouts = ledger_cost.Checkouts()
+    checkouts.cache.update({("top", "/r"): "/r", ("head", "/r"): None, ("moves", "/r"): log})
+    assert checkouts.branch_at("/r", 1760054405) is ledger_cost.UNDECIDED
+
+
+@case("a branch that shares its name with a tag is the branch")
+def _():
+    sb = Sandbox("branch-tag")
+    repo = make_repo(sb.root / "repo", branches=("release",))
+    git(repo, "tag", "release")
+    git(repo, "checkout", "-q", "release", at="2026-10-10T00:00:00Z")     # git prefers the branch
+    git(repo, "checkout", "-q", "main", at="2026-10-10T00:00:02Z")
+    capture(sb, write_transcript(sb.root / "proj", "sess-tag", [
+        assistant("msg_1", "2026-10-10T00:00:01Z", repo, "main")]))
+    assert attributed(sb) == {"msg_1": ("release", "reflog")}, attributed(sb)
+
+
+@case("on a branch that shares its name with a tag, the current branch is still read (symbolic-ref --short says heads/x)")
+def _():
+    sb = Sandbox("branch-tag-now")
+    repo = make_repo(sb.root / "repo", branches=("release",))
+    git(repo, "tag", "release")
+    git(repo, "checkout", "-q", "release", at="2026-10-10T00:00:00Z")
+    capture(sb, write_transcript(sb.root / "proj", "sess-tag-now", [
+        assistant("msg_1", "2026-10-10T00:00:01Z", repo, "main")]))
+    assert attributed(sb) == {"msg_1": ("release", "reflog")}, attributed(sb)
+
+
+@case("checking out a revision (HEAD~1, an abbreviated hash) is a detached HEAD: unknown, not the transcript branch")
+def _():
+    sb = Sandbox("revision")
+    repo = make_repo(sb.root / "repo")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "second", at="2026-10-09T00:00:00Z")
+    git(repo, "checkout", "-q", "HEAD~1", at="2026-10-10T00:00:00Z")
+    lines = [assistant("msg_1", "2026-10-10T00:00:01Z", repo, "main")]
+    capture(sb, write_transcript(sb.root / "proj", "sess-rev", lines))
+    assert attributed(sb) == {"msg_1": (None, "unknown")}, attributed(sb)
+    sb2 = Sandbox("short-hash")
+    repo2 = make_repo(sb2.root / "repo")
+    git(repo2, "commit", "-q", "--allow-empty", "-m", "second", at="2026-10-09T00:00:00Z")
+    abbrev = git(repo2, "rev-parse", "--short", "HEAD~1")
+    git(repo2, "checkout", "-q", abbrev, at="2026-10-10T00:00:00Z")
+    capture(sb2, write_transcript(sb2.root / "proj", "sess-short", [
+        assistant("msg_1", "2026-10-10T00:00:01Z", repo2, "main")]))
+    assert attributed(sb2) == {"msg_1": (None, "unknown")}, attributed(sb2)
+    sb3 = Sandbox("hex-branch")
+    repo3 = make_repo(sb3.root / "repo", branches=("cafe",))
+    git(repo3, "checkout", "-q", "cafe", at="2026-10-10T00:00:00Z")
+    git(repo3, "checkout", "-q", "main", at="2026-10-10T00:00:02Z")
+    git(repo3, "branch", "-D", "cafe")
+    capture(sb3, write_transcript(sb3.root / "proj", "sess-hex", [
+        assistant("msg_1", "2026-10-10T00:00:01Z", repo3, "main")]))
+    assert attributed(sb3) == {"msg_1": ("cafe", "reflog")}, attributed(sb3)   # a deleted branch named like a hash
+
+
+@case("a HEAD change the reflog missed (symbolic-ref without -m) makes the reflog undecided, not wrong")
+def _():
+    sb = Sandbox("missed-head")
+    repo = make_repo(sb.root / "repo")
+    git(repo, "checkout", "-q", "feat/b", at="2026-10-10T00:00:00Z")
+    git(repo, "symbolic-ref", "HEAD", "refs/heads/main")                    # nothing written to the reflog
+    capture(sb, write_transcript(sb.root / "proj", "sess-missed", [
+        assistant("msg_1", "2026-10-10T00:00:01Z", repo, "feat/b")]))
+    assert attributed(sb) == {"msg_1": ("feat/b", "transcript")}, attributed(sb)
+
+
+@case("read_complete_lines stops at the size seen on opening: lines appended later wait for the next capture")
+def _():
+    path = ROOT / "grow.jsonl"
+    path.write_bytes(b"a\nb\nc")                                           # `c` has no newline yet
+    lines = ledger_cost.read_complete_lines(path, 0)
+    assert next(lines) == (2, b"a")
+    with open(path, "ab") as handle:
+        handle.write(b"d\ne\n")
+    assert list(lines) == [(4, b"b")]                                       # `c`, `d`, `e` are not read
+    assert list(ledger_cost.read_complete_lines(path, 4)) == [(7, b"cd"), (9, b"e")]
+    assert list(ledger_cost.read_complete_lines(path, 9)) == []
+
+
+@case("branch_at bisects the events: many requests on a long reflog stay fast and correct")
+def _():
+    count = 50000
+    text = "\n".join(f"HEAD@{{{1760000000 + 2 * n}}}\tcheckout: moving from b{n} to b{n + 1}"
+                     for n in reversed(range(count)))
+    log = ledger_cost.parse_reflog(text)
+    assert len(log.events) == count and log.oldest == 1760000000
+    checkouts = ledger_cost.Checkouts()
+    checkouts.cache[("top", "/r")] = "/r"
+    checkouts.cache[("moves", "/r")] = log
+    for n in range(count + 1):
+        checkouts.cache[("ref", "/r", f"refs/heads/b{n}")] = "sha"
+    started = time.monotonic()
+    for n in range(0, count, 3):
+        # event n is at 1760000000 + 2n; one second later the first later event is n + 1: HEAD was on b{n+1}
+        assert checkouts.branch_at("/r", 1760000000 + 2 * n + 1) == f"b{n + 1}"
+    assert time.monotonic() - started < 3, "branch_at scans the events"
+
+
+@case("when the reflog cannot be read the transcript's gitBranch applies as before")
+def _():
+    sb = Sandbox("no-reflog")
+    repo = make_repo(sb.root / "repo")
+    git(repo, "config", "core.logAllRefUpdates", "false")
+    shutil.rmtree(repo / ".git" / "logs")      # no reflog at all: `git reflog show HEAD` prints nothing
+    wt = sb.root / "wt"
+    git(repo, "worktree", "add", "-q", "-b", "feat/wt", str(wt))
+    shutil.rmtree(repo / ".git" / "worktrees" / "wt" / "logs", ignore_errors=True)   # the worktree has no reflog either
+    sub = sb.root / "proj" / "sess-nolog" / "subagents"
+    sub.mkdir(parents=True)
+    (sub / "agent-w1.jsonl").write_text(assistant("msg_w1", "2026-10-10T00:00:01Z", wt, "feat/a", side=True, agent="w1") + "\n")
+    (sub / "agent-w1.meta.json").write_text(json.dumps({"agentType": "implementer", "worktreePath": str(wt)}))
+    capture(sb, write_transcript(sb.root / "proj", "sess-nolog", [
+        assistant("msg_1", "2026-10-10T00:00:01Z", repo, "feat/a"),
+        assistant("msg_2", "2026-10-10T00:00:01Z", repo, "no/such-branch"),
+        assistant("msg_3", "2026-10-10T00:00:01Z", repo, "HEAD")]))
+    assert attributed(sb) == {"msg_1": ("feat/a", "transcript"), "msg_2": (None, "unknown"), "msg_3": (None, "unknown"),
+                              "msg_w1": ("feat/wt", "worktree_at_capture")}, attributed(sb)
+
+
+@case("a worktree subagent gets its worktree's branch; a subagent without a worktree gets its cwd's branch")
 def _():
     sb = Sandbox("worktree")
     repo = make_repo(sb.root / "repo")
+    git(repo, "checkout", "-q", "feat/b", at="2026-10-10T00:00:00Z")
     wt = sb.root / "wt"
-    git(repo, "worktree", "add", "-q", "-b", "feat/wt", str(wt))
+    git(repo, "worktree", "add", "-q", "-b", "feat/wt", str(wt), at="2026-10-10T00:00:00Z")
     main = write_transcript(sb.root / "proj", "sess-wt", [assistant("msg_main", "2026-10-10T00:00:00Z", repo, "feat/a")])
     sub = sb.root / "proj" / "sess-wt" / "subagents"
     sub.mkdir(parents=True)
@@ -214,9 +477,9 @@ def _():
     got = {r["id"]: r for r in sb.pending()}
     w = got["claude:msg_w1"]
     assert (w["branch"], w["attribution_source"], w["role"], w["agent_type"], w["agent_id"]) == \
-        ("feat/wt", "worktree_at_capture", "subagent", "implementer", "w1"), w
+        ("feat/wt", "reflog", "subagent", "implementer", "w1"), w
     e = got["claude:msg_e1"]
-    assert (e["branch"], e["attribution_source"], e["agent_type"]) == ("feat/b", "transcript", "Explore"), e
+    assert (e["branch"], e["attribution_source"], e["agent_type"]) == ("feat/b", "reflog", "Explore"), e
     assert got["claude:msg_main"]["role"] == "main" and got["claude:msg_main"]["agent_type"] is None
 
 
@@ -224,6 +487,7 @@ def _():
 def _():
     sb = Sandbox("unknown")
     repo = make_repo(sb.root / "repo")
+    git(repo, "checkout", "-q", "--detach", at="2026-10-09T00:00:00Z")   # the main checkout is detached: any gitBranch is moot
     gone, detached = sb.root / "gone", sb.root / "detached"
     git(repo, "worktree", "add", "-q", "-b", "feat/gone", str(gone))
     git(repo, "worktree", "add", "-q", "--detach", str(detached))
@@ -340,6 +604,26 @@ def codex_transcript(path: Path, session: str, model: str = "gpt-test") -> None:
         tc(first, first), tc(second_total, second_last)]) + "\n")
 
 
+@case("a Codex request gets the branch its cwd's reflog names at the request's time")
+def _():
+    sb = Sandbox("codex-branch")
+    repo = make_repo(sb.root / "repo")
+    git(repo, "branch", "feat/c")
+    git(repo, "checkout", "-q", "feat/c", at="2026-10-10T00:00:00Z")
+    git(repo, "checkout", "-q", "feat/a", at="2026-10-10T00:00:06Z")
+    directory = sb.root / "codex"
+    directory.mkdir()
+    codex_transcript(directory / "rollout-c.jsonl", "sess-codex-c")
+    lines = (directory / "rollout-c.jsonl").read_text().splitlines()
+    lines.insert(1, json.dumps({"type": "turn_context", "payload": {"model": "gpt-test", "cwd": str(repo)}}))
+    (directory / "rollout-c.jsonl").write_text("\n".join(lines) + "\n")       # both token_count rows are at 00:00:05
+    code, out, err = sb.ledger_cmd("capture", "--runtime", "codex", "--transcripts", str(directory), "--json")
+    assert code == 0, err
+    assert {(r["repository"], r["branch"], r["attribution_source"]) for r in sb.pending()} == \
+        {("acme/widgets", "feat/c", "reflog")}, sb.pending()
+    assert len(sb.pending()) == 2
+
+
 @case("Codex ids from two sessions never merge, and a resumed capture reads only the new snapshots")
 def _():
     sb = Sandbox("codex")
@@ -365,6 +649,7 @@ def _():
     sb = Sandbox("allowlist")
     store = bare_store(sb)
     repo = make_repo(sb.root / "repo", origin=f"https://user:{SECRET}-token@github.com/acme/widgets.git")
+    git(repo, "checkout", "-q", "feat/a", at="2026-10-09T00:00:00Z")
     rec = json.loads(assistant("msg_p", "2026-10-10T00:00:00Z", repo, "feat/a", text=SECRET))
     rec["message"]["content"].append({"type": "tool_use", "name": "Bash", "input": {"command": f"cat /etc/{SECRET}"}})
     rec["toolUseResult"] = {"stdout": SECRET}

@@ -21,6 +21,7 @@ from that directory instead (offline tests): for `repos/o/n/pulls?state=all` the
 from __future__ import annotations
 
 import argparse
+import bisect
 import contextlib
 import fcntl
 import hashlib
@@ -47,7 +48,8 @@ FIELDS = ("id", "time", "model", "input", "output", "cache_read", "cache_write_5
           "cache_write_1h", "repository", "branch", "attribution_source", "role", "agent_type",
           "agent_id", "session", "runtime")
 TOKEN_FIELDS = ("input", "output", "cache_read", "cache_write_5m", "cache_write_1h")
-SOURCES = ("transcript", "worktree_at_capture", "unknown")
+# `transcript` and `worktree_at_capture` are no longer written but old records in stores hold them.
+SOURCES = ("reflog", "transcript", "worktree_at_capture", "unknown")
 RUNTIMES = ("claude", "codex")
 FRONTIER = ("fable", "mythos", "opus")
 SAFE = re.compile(r"[\w./@+:#=,%~\-\[\]]{1,200}")
@@ -124,6 +126,12 @@ def parse_time(value: Any) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def timestamp_seconds(value: Any) -> int | None:
+    """Whole unix seconds of a transcript timestamp, or None when it is not a time."""
+    moment = parse_time(value)
+    return int(moment.timestamp()) if moment else None
 
 
 def format_time(moment: datetime) -> str:
@@ -300,6 +308,56 @@ def normalize_remote(url: str) -> str | None:
     return name if SAFE.fullmatch(name) else None
 
 
+UNDECIDED = object()   # branch_at(): the reflog cannot say, so the older evidence applies
+FULL_HASH = re.compile(r"[0-9a-f]{4,64}")   # a full or abbreviated hash checked out by itself
+NOT_A_BRANCH = re.compile(r"[~^:?*\[\\\s]|\.\.|@\{")   # revision syntax (HEAD~1, x^, @{-1}): detaches HEAD
+REFLOG_LINE = re.compile(r"HEAD@\{(\d+)\}\t(.*)")
+REFLOG_MOVE = re.compile(r"checkout: moving from (\S+) to (\S+)")      # also what `git switch` writes
+REFLOG_RENAME = re.compile(r"Branch: renamed refs/heads/(\S+) to refs/heads/(\S+)")
+REFLOG_RETURN = re.compile(r".*\((?:finish|abort)\): returning to refs/heads/(\S+)")  # rebase, pull --rebase
+REFLOG_REBASE = re.compile(r".*\(start\): checkout \S+")    # rebase, rebase -i, pull --rebase: HEAD detaches
+
+
+class Reflog:
+    """One worktree's HEAD reflog, reduced to what attribution needs.
+
+    `oldest` is the oldest timestamp of any line: the log says nothing about earlier times.
+    `events` are the branch-changing lines, oldest first: (unix seconds, branch before, branch
+    after, is a rename). A rebase start does not write the branch it leaves, so its "before" is
+    None and its "after" is `HEAD`. `times` and `rename_times` let branch_at() bisect."""
+
+    def __init__(self, oldest: int, events: list[tuple[int, str | None, str, bool]]) -> None:
+        self.oldest = oldest
+        self.events = events
+        self.times = [event[0] for event in events]
+        self.renames = [event for event in events if event[3]]
+        self.rename_times = [event[0] for event in self.renames]
+
+
+def parse_reflog(text: str) -> Reflog | None:
+    """The Reflog of `git reflog show --date=unix` output, or None when no line parses. A name may
+    be a hash, `HEAD`, a tag or `origin/x` (a detached HEAD); the caller decides. Every other
+    subject leaves the branch name alone."""
+    events: list[tuple[int, str | None, str, bool]] = []
+    oldest = None
+    for line in text.splitlines():
+        parsed = REFLOG_LINE.fullmatch(line)
+        if not parsed:
+            continue
+        when, subject = int(parsed.group(1)), parsed.group(2)
+        oldest = when if oldest is None else min(oldest, when)
+        if move := REFLOG_MOVE.fullmatch(subject):
+            events.append((when, move.group(1), move.group(2), False))
+        elif rename := REFLOG_RENAME.fullmatch(subject):
+            events.append((when, rename.group(1), rename.group(2), True))
+        elif back := REFLOG_RETURN.fullmatch(subject):
+            events.append((when, back.group(1), back.group(1), False))
+        elif REFLOG_REBASE.fullmatch(subject):
+            events.append((when, None, "HEAD", False))
+    events.reverse()   # git prints the newest first; the order inside one second is kept
+    return None if oldest is None else Reflog(oldest, events)
+
+
 class Checkouts:
     """Cached, read-only questions about checkouts, asked at capture time."""
 
@@ -326,27 +384,109 @@ class Checkouts:
         return False
 
     def head_branch(self, path: str) -> str | None:
-        return self.ask(("head", path), ["git", "-C", path, "symbolic-ref", "--short", "-q", "HEAD"]) or None
+        # The full ref, not --short: --short says `heads/x` when a tag `x` also exists.
+        ref = self.ask(("head", path), ["git", "-C", path, "symbolic-ref", "-q", "HEAD"])
+        return ref[len("refs/heads/"):] if ref and ref.startswith("refs/heads/") else None
+
+    def moves(self, top: str) -> Reflog | None:
+        """This worktree's HEAD reflog, read once per worktree (the HEAD reflog is per worktree).
+        None when it cannot be read or is empty."""
+        key = ("moves", top)
+        if key not in self.cache:
+            text = self.ask(("reflog", top), ["git", "-C", top, "reflog", "show", "--date=unix",
+                                              "--format=%gd%x09%gs", "HEAD"])
+            self.cache[key] = parse_reflog(text) if text else None
+        return self.cache[key]
+
+    def names_branch(self, top: str, name: str) -> bool:
+        """False for a hash, `HEAD`, a tag or a remote-tracking ref: checking those out detaches HEAD.
+        A branch that exists now is a branch even when a tag or remote has the same name (git
+        checks the branch out)."""
+        if name == "HEAD" or NOT_A_BRANCH.search(name):
+            return False
+
+        def exists(ref: str) -> bool:
+            return bool(self.ask(("ref", top, ref), ["git", "-C", top, "rev-parse", "--verify", "--quiet", ref]))
+        if exists(f"refs/heads/{name}"):
+            return True
+        if FULL_HASH.fullmatch(name) and exists(f"{name}^{{commit}}"):
+            return False                               # a hash; a deleted branch named like one is still a branch
+        return not (exists(f"refs/tags/{name}") or exists(f"refs/remotes/{name}"))
+
+    def branch_at(self, path: str, when: int | None) -> Any:
+        """The branch the worktree's HEAD named at `when` (unix seconds): a name, None for a
+        detached HEAD, or UNDECIDED when the reflog cannot say.
+
+        The first branch-changing event after `when` says which branch HEAD was on before it; with
+        none, HEAD has not moved since and still names the current branch. Later renames are
+        followed so the name is the one a pull request will use. A deleted branch keeps its name.
+
+        UNDECIDED: no reflog; `when` before the reflog's oldest line (it only covers time since
+        then); the first later event is a rebase start (which does not write the branch it leaves)
+        and no earlier event names one; or, with no later event, the last event's branch is not the
+        current HEAD (something moved HEAD without writing the reflog)."""
+        top = self.top(path)
+        log = self.moves(top) if top and when is not None else None
+        if log is None or when < log.oldest:
+            return UNDECIDED
+        index = bisect.bisect_right(log.times, when)   # same second as `when`: already happened
+        if index < len(log.events):
+            before = log.events[index][1]
+            if before is None:                         # a rebase started: the branch is the one last moved to
+                if index == 0:
+                    return UNDECIDED
+                before = log.events[index - 1][2]
+            name = before
+            if not self.names_branch(top, name):
+                return None
+        else:
+            name = self.head_branch(top)
+            if log.events:
+                last = log.events[-1][2]
+                last = last if self.names_branch(top, last) else None
+                if last != name:
+                    return UNDECIDED
+            if name is None:
+                return None
+        for _, before, after, _ in log.renames[bisect.bisect_right(log.rename_times, when):]:
+            if before == name:
+                name = after
+        return name
+
+    def from_reflog(self, path: str, when: int | None) -> tuple[str | None, str] | None:
+        """(branch, source) when the reflog decides, else None. A detached HEAD is (None, unknown)."""
+        branch = self.branch_at(path, when)
+        if branch is UNDECIDED:
+            return None
+        return (branch, "reflog") if branch else (None, "unknown")
 
     def attribute(self, record: dict[str, Any], meta: dict[str, Any] | None) -> tuple[str | None, str | None, str]:
-        """(repository, branch, source) in the order of evidence the contract gives.
+        """(repository, branch, source) in the order of evidence the contract gives. The record's
+        directory is the subagent's worktree when it has one, else its cwd.
 
-        1. The record's own cwd resolves to a checkout and its gitBranch is a real branch there
-           (HEAD and empty mean no branch).
-        2. A subagent started in a worktree: that worktree's current branch, read now.
+        1. That directory's HEAD reflog at the request's time (`reflog`). Claude Code's gitBranch is
+           the branch of the directory the session was launched in and does not follow `cd`.
+        2. The reflog cannot be read: a subagent started in a worktree gets that worktree's current
+           branch, read now; otherwise the record's gitBranch when it is a real branch there.
         3. Otherwise unknown. A past branch is never inferred from today's main checkout."""
+        when = timestamp_seconds(record.get("timestamp"))
         worktree = meta.get("worktreePath") if meta else None
         if isinstance(worktree, str) and worktree:
-            if self.top(worktree):
-                branch = self.head_branch(worktree)
-                if branch:
-                    return self.repository(worktree), branch, "worktree_at_capture"
-                return self.repository(worktree), None, "unknown"
-            return None, None, "unknown"
+            if not self.top(worktree):
+                return None, None, "unknown"
+            repository = self.repository(worktree)
+            if decided := self.from_reflog(worktree, when):
+                return repository, *decided
+            branch = self.head_branch(worktree)
+            if branch:
+                return repository, branch, "worktree_at_capture"
+            return repository, None, "unknown"
         cwd = record.get("cwd")
         if not isinstance(cwd, str) or not cwd or not self.top(cwd):
             return None, None, "unknown"
         repository = self.repository(cwd)
+        if decided := self.from_reflog(cwd, when):
+            return repository, *decided
         branch = record.get("gitBranch")
         if isinstance(branch, str) and branch not in ("", "HEAD") and self.has_branch(cwd, branch):
             return repository, branch, "transcript"
@@ -356,16 +496,20 @@ class Checkouts:
 # ---------------------------------------------------------------- reading transcripts
 
 def read_complete_lines(path: Path, offset: int) -> Iterator[tuple[int, bytes]]:
-    """(offset after the line, line) for each newline-terminated line from `offset`. A last line
-    without its newline is not complete yet and is left for the next capture."""
+    """(offset after the line, line) for each newline-terminated line from `offset` up to the
+    file's size when it was opened. A last line without its newline is not complete yet, and lines
+    written while this runs come later: both are left for the next capture, so every line is
+    attributed with the checkout state read for this run."""
     position = offset
     carry = b""
     with open(path, "rb") as handle:
+        remaining = os.fstat(handle.fileno()).st_size - offset
         handle.seek(offset)
-        while True:
-            chunk = handle.read(1 << 22)
+        while remaining > 0:
+            chunk = handle.read(min(1 << 22, remaining))
             if not chunk:
                 return
+            remaining -= len(chunk)
             *lines, carry = (carry + chunk).split(b"\n")
             for line in lines:
                 position += len(line) + 1
@@ -545,12 +689,15 @@ def capture_codex_file(path: Path, entry: dict[str, Any], offset: int, capture: 
             "cache_read": integer(usage.get("cache_read_input_tokens")),
             "cache_write_5m": total, "cache_write_1h": 0 if total is not None else None,
         }
-        # Codex rows carry no per-request branch: attribution is unknown, the repository is not.
-        repository = checkouts.repository(cwd) if cwd and checkouts.top(cwd) else None
+        # Codex rows carry no branch, but they have a cwd and a time: the reflog gives the branch.
+        repository, branch, source = None, None, "unknown"
+        if cwd and checkouts.top(cwd):
+            repository = checkouts.repository(cwd)
+            branch, source = checkouts.from_reflog(cwd, timestamp_seconds(request["time"])) or (None, "unknown")
         if identity is not None and identity in capture.known:
             capture.counts["duplicates"] += 1
             continue
-        capture.add(request, "main", None, None, (repository, None, "unknown"), identity)
+        capture.add(request, "main", None, None, (repository, branch, source), identity)
     entry["codex"] = {"previous": normalizer.previous, "sequence": normalizer.sequence,
                       "model": normalizer.model, "session_id": normalizer.session_id, "cwd": cwd}
     if normalizer.session_id:

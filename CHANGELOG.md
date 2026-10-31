@@ -2,6 +2,20 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.18.0] - 2026-10-31
+
+### Changed
+
+- The work ledger attributes each request to the branch its directory's HEAD reflog names at the
+  request's time (`attribution_source = reflog`), following later renames. Claude Code's
+  `gitBranch` is the branch of the directory the session was launched in and does not follow `cd`
+  (measured with `claude -p`), so a session launched outside the repository recorded `HEAD`, a
+  branch switched away from and deleted in the same turn was gone at capture, and a `cd` into a
+  worktree was attributed to the main checkout's branch. On the owner's store, 236 of 780 requests
+  of one day (30% of cost) were `unknown` for these reasons. When the reflog cannot be read, the old
+  rules apply; records already captured keep their `transcript` and `worktree_at_capture` values.
+- Codex requests get a branch the same way from their `cwd` and time (they had none).
+
 ## [0.17.2] - 2026-10-31
 
 ### Fixed
