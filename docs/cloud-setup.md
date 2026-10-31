@@ -75,7 +75,8 @@ the container and are lost with it, and every report says that cloud sessions ar
 
 ## Check a new session
 
-Start a new session and run `plumb-doctor`. Expect `ok` for plumb's install, the routed judge and
+Start a new session and run `plumb-doctor`. Expect `ok` for plumb's install, the routed judge (for
+Codex, `ok` means it is also logged in) and
 `ledger.store`, and `ok on-stop` for the export. After the first turn, the store has a branch for
 the session (`git ls-remote <store> 'refs/heads/plumb-ledger/*'`).
 

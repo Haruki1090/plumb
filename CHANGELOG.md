@@ -2,6 +2,15 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.17.2] - 2026-10-31
+
+### Fixed
+
+- `plumb-doctor` reported a role routed to Codex as `ok` when the `codex` command resolved, even
+  while it was logged out, so a cloud session read the judge as usable and its first call failed.
+  A role whose command is `codex` now also has to pass `codex login status` (only its exit status
+  is read), as `plumb-bootstrap` already checked.
+
 ## [0.17.1] - 2026-10-30
 
 ### Fixed

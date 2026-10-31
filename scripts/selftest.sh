@@ -1246,6 +1246,27 @@ out=$(HOME="$fresh_home" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUN
       PLUMB_IN_SELFTEST=1 PLUMB_CONFIG="$role_cfg" bash "$root/scripts/doctor.sh" "$root" 2>&1)
 printf '%s\n' "$out" | grep -q '^  NG   role.judge = plumb-no-such-command exec is configured but plumb-no-such-command is not on PATH$' \
   && ok "doctor names the missing first word of a role command" || ng "doctor missing role line: [$out]"
+# doctor: a codex role also has to be logged in; only the exit status of `codex login status` counts.
+for login in in out; do
+  mkdir -p "$sandbox_root/codex-$login"
+  { printf '#!/bin/sh\n'
+    printf '[ "$1 $2" = "login status" ] || exit 2\n'
+    printf 'echo "Logged in as someone@example.com"\n'
+    [ "$login" = in ] && printf 'exit 0\n' || printf 'exit 1\n'; } > "$sandbox_root/codex-$login/codex"
+  chmod +x "$sandbox_root/codex-$login/codex"
+done
+printf 'role.judge = codex exec --sandbox read-only\n' > "$role_cfg"
+out=$(HOME="$fresh_home" PATH="$sandbox_root/codex-in:$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUNTIME=claude \
+      PLUMB_IN_SELFTEST=1 PLUMB_CONFIG="$role_cfg" bash "$root/scripts/doctor.sh" "$root" 2>&1)
+printf '%s\n' "$out" | grep -q '^  ok   role.judge = codex exec --sandbox read-only (logged in)$' \
+  && ok "doctor marks a logged-in codex judge ok" || ng "doctor codex logged-in line: [$out]"
+printf '%s\n' "$out" | grep -q 'someone@example.com' \
+  && ng "doctor printed what codex login status says" || ok "doctor keeps codex login status output out"
+out=$(HOME="$fresh_home" PATH="$sandbox_root/codex-out:$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUNTIME=claude \
+      PLUMB_IN_SELFTEST=1 PLUMB_CONFIG="$role_cfg" bash "$root/scripts/doctor.sh" "$root" 2>&1); code=$?
+printf '%s\n' "$out" | grep -q '^  NG   role.judge = codex exec --sandbox read-only: codex is not logged in (run: codex login --device-auth)$' \
+  && ok "doctor marks a logged-out codex judge NG" || ng "doctor codex logged-out line: [$out]"
+eq "doctor exits 1 for a logged-out codex judge" "$code" "1"
 
 # doctor: the contract block. Absent, partial, full, invalid, a command that does not resolve, and a
 # Python without tomllib (blocked with a shadowing tomllib.py on PYTHONPATH, no product flag).
