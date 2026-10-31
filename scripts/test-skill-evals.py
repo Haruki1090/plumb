@@ -37,6 +37,25 @@ rows = [{"expect": "plumb:lead", "skills": ["plumb:lead"]},
         {"expect": "plumb:pr-review", "skills": ["plumb:pr-review"]}]
 s = trig["score"](rows, "plumb:lead")
 assert (s["tp"], s["fn"], s["fp"], s["tn"]) == (1, 1, 1, 1) and s["near_miss_routed"] == "1/1", s
+assert s["recall"] == 0.5 and s["first_skill_recall"] == 0.5 and s["first_skill_tp"] == 1, s
+
+# first-skill recall: a two-hop route reaches the target (recall) but not as the first skill.
+rows = [{"expect": "plumb:verify", "skills": ["plumb:verify"]},
+        {"expect": "plumb:verify", "skills": ["plumb", "plumb:verify"]},
+        {"expect": "plumb:verify", "skills": []},
+        {"expect": "-", "skills": ["plumb"]}]
+s = trig["score"](rows, "plumb:verify")
+assert (s["tp"], s["fn"], s["fp"], s["tn"]) == (2, 1, 0, 1), s
+assert s["first_skill_tp"] == 1, s
+assert abs(s["recall"] - 2 / 3) < 1e-9 and abs(s["first_skill_recall"] - 1 / 3) < 1e-9, s
+two_hop = ["plumb", "plumb:verify"]
+only_two_hop = trig["score"]([{"expect": "plumb:verify", "skills": two_hop}], "plumb:verify")
+assert only_two_hop["recall"] == 1.0 and only_two_hop["first_skill_recall"] == 0.0, only_two_hop
+direct = trig["score"]([{"expect": "plumb:verify", "skills": ["plumb:verify", "plumb"]}], "plumb:verify")
+assert direct["recall"] == 1.0 and direct["first_skill_recall"] == 1.0, direct
+# no cases that expect the skill: both recalls are undefined, not zero
+none = trig["score"]([{"expect": "-", "skills": []}], "plumb:verify")
+assert none["recall"] is None and none["first_skill_recall"] is None, none
 
 with tempfile.TemporaryDirectory() as d:
     d = Path(d)
@@ -161,5 +180,7 @@ with tempfile.TemporaryDirectory() as d:
         assert r.returncode == 0, (r.stdout, r.stderr)
     rows = (d / "trig" / "results.jsonl").read_text().splitlines()
     assert len(rows) == 1 and json.loads(rows[0])["pass"], rows
+    assert json.loads(rows[0])["first_skill"] == "plumb:lead", rows
+    assert "first-skill recall 1.00" in r.stdout, r.stdout
 
 print("ok")

@@ -362,10 +362,10 @@ else
   fi
 
   codex_agent_count=$(find "$CODEX_AGENTS" -name '*.toml' -type f | wc -l | tr -d ' ')
-  if [ "$codex_agent_count" -eq 10 ]; then
+  if [ "$codex_agent_count" -eq 11 ]; then
     note "ok" "Codex custom agent count (${codex_agent_count})"
   else
-    note "NG" "Codex custom agent count (expected 10 / measured ${codex_agent_count})"; fail=1
+    note "NG" "Codex custom agent count (expected 11 / measured ${codex_agent_count})"; fail=1
   fi
 
   if command -v python3 >/dev/null 2>&1 && python3 -c 'import tomllib' >/dev/null 2>&1; then

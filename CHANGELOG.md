@@ -2,6 +2,33 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.19.0] - 2026-10-31
+
+### Added
+
+- `plumb:verify`: the skill a request to check that a change works, or did not regress against its
+  base, reaches first (a dosa-kakunin request in Japanese is the same request). It drives the
+  repository's own verification through its contract and never says pass: the best result is
+  `no_diff`, "no regression found within the compared scope". `--dry-run` checks the contract and
+  runs no project command.
+- `agents/verifier.md` (no pinned model) and its Codex agent `plumb_verifier`: runs the base and the
+  head with the project's own commands and procedure and records observation rows; it does not
+  judge them.
+- `plumb-verify compare`: the deterministic comparator (`regressed`, `incomplete`, `no_diff`; exit
+  1, 3, 0; 2 for unusable input). It needs the run's manifest, so anything selected but not
+  measured, an unmapped path or a scenario not run makes the result `incomplete`; a scenario that
+  fails on either side is `incomplete`, never a pass and never a guessed regression. Ported from
+  SAKUJI's `compare.mjs`, whose recorded runs it reproduces.
+- `plumb-verify plan`: the preflight (`runnable`, `invalid`, `unavailable`, `absent`, `partial`,
+  `unresolved`, `untrusted_head`, `untrusted_base`). The base commit's contract is the trusted one,
+  and its paths are resolved in the base commit's tree; the base is chosen without reading the head,
+  and must be on an `origin` branch; a head that no `origin` branch contains is refused unless the
+  owner allows it.
+- `docs/verify-protocol.md`: the observation row, thresholds and rule formulas, the manifest, the
+  comparator's output and the project command interfaces.
+- `[verify] thresholds` in the project contract.
+- `plumb-trigger-eval` reports first-skill recall: the target must be the first skill invoked.
+
 ## [0.18.0] - 2026-10-31
 
 ### Changed

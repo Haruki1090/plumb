@@ -607,7 +607,8 @@ cmp -s "$root/.codex/config.toml" "$codex_home/plumb.config.toml" \
   && ok "Codex profile matches the project source" \
   || ng "Codex profile differs from the project source"
 installed_agents=$(find "$codex_home/agents" -name '*.toml' -type f | wc -l | tr -d ' ')
-eq "Codex custom agents are installed" "$installed_agents" "10"
+shipped_codex_agents=$(find "$root/.codex/agents" -name '*.toml' -type f | wc -l | tr -d ' ')
+eq "Codex custom agents are installed" "$installed_agents" "$shipped_codex_agents"
 CODEX_HOME="$codex_home" "$root/bin/plumb-codex-install" --user --check >/dev/null 2>&1
 eq "Codex install check accepts an exact installation" "$?" "0"
 CODEX_HOME="$codex_home" "$root/bin/plumb-codex-install" --user >/dev/null 2>&1
@@ -638,7 +639,7 @@ if [ -f "$root/skills/setup/SKILL.md" ]; then
   if [ -x "$setup_adapter" ] \
       && [ "$setup_code" = 0 ] \
       && cmp -s "$plugin_copy/.codex/config.toml" "$setup_home/plumb.config.toml" \
-      && [ "$(find "$setup_home/agents" -name '*.toml' -type f | wc -l | tr -d ' ')" = 10 ]; then
+      && [ "$(find "$setup_home/agents" -name '*.toml' -type f | wc -l | tr -d ' ')" = "$shipped_codex_agents" ]; then
     ok "installed-plugin setup resolves and installs the optional Codex sidecar"
   else
     ng "installed-plugin setup failed: code=$setup_code"
@@ -1435,6 +1436,13 @@ elif command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-bootstrap.py" >/dev/null \
     && ok "cloud bootstrap: managed config block (create, replace, idempotent, block wins), install/judge/store checks, exit codes" \
     || ng "cloud bootstrap (run scripts/test-bootstrap.py)"
+  if [ -f "$root/scripts/test-verify.py" ]; then
+    python3 -B "$root/scripts/test-verify.py" >/dev/null \
+      && ok "verification: comparator outcomes and incomplete causes, every rule, legacy rows, malformed input, plan outcomes" \
+      || ng "verification comparator and plan (run scripts/test-verify.py)"
+  else
+    printf '  %-4s %s\n' "--" "verification comparator suite skipped: scripts/test-verify.py does not exist yet"
+  fi
 fi
 
 if command -v python3 >/dev/null 2>&1; then
@@ -1488,7 +1496,7 @@ eq "Codex --force leaves a foreign project config untouched" \
 case "$foreign_msg" in *"merge these settings"*default_subagent_model*) ok "Codex installer lists the settings to merge";;
   *) ng "Codex installer gave no merge guidance for a foreign project config";; esac
 eq "Codex agents still install beside a foreign project config" \
-  "$(find "$foreign_project/.codex/agents" -name '*.toml' -type f | wc -l | tr -d ' ')" "10"
+  "$(find "$foreign_project/.codex/agents" -name '*.toml' -type f | wc -l | tr -d ' ')" "$shipped_codex_agents"
 printf '# local edit\n' >> "$project_install/.codex/config.toml"
 "$root/bin/plumb-codex-install" --project "$project_install" --force >/dev/null 2>&1
 cmp -s "$root/.codex/config.toml" "$project_install/.codex/config.toml" \

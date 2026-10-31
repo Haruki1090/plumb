@@ -76,6 +76,7 @@ Playbooks name principles; read a named principle in full when you apply it.
 | **Ask for review and answer what comes back** (as the author) | `playbooks/being-reviewed.md` |
 | Add a different model family's axis to that review | `plumb:interrogate` |
 | Check whether the environment plumb claims still exists | `plumb:doctor` |
+| **Check that a change works in the running app, or has not regressed against its base** ("verify this", "does it still work", "compare against base"; a dosa-kakunin request in Japanese is the same request) | `plumb:verify` (the repository's own verification through its contract; formats in `docs/verify-protocol.md`) |
 | See what a session spent its context on | `plumb-session-audit` |
 | Read the repository's project contract (rework authors, verify commands, ledger classes) | `plumb-project`; the schema and the CI wiring are in `docs/project-contract.md` |
 | Check the `Fixes-PR:` line of a pull request body | `plumb-check-fixes` |

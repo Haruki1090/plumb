@@ -1,0 +1,13 @@
+id,prompt,expect
+V1,動作確認して,plumb:verify
+V2,この PR を動作確認して,plumb:verify
+V3,base と比べて悪くなっていないか確かめて,plumb:verify
+V4,Verify this change against base.,plumb:verify
+V5,Check that this still works in the app.,plumb:verify
+V6,Did this PR regress anything? Check it.,plumb:verify
+N1,テストを回して,-
+N2,Run the unit tests.,-
+N3,Review this PR.,-
+N4,CI が落ちた。直して,-
+N5,この画面を作って,-
+N6,Fix this bug.,-
