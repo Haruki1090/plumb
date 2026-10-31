@@ -32,6 +32,7 @@ esac
 fail=0
 note() { printf '  %-4s %s\n' "$1" "$2"; }
 bad()  { note "NG" "$1"; fail=1; }
+bounded() { local secs=$1; shift; if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@"; else "$@"; fi; }
 
 echo "plumb doctor: $root"
 note "--" "runtime: $runtime (override with PLUMB_RUNTIME)"
@@ -89,10 +90,20 @@ for k in $keys; do
   else
     # The value is a command line (`codex exec`, `herdr run`); only its first word has to be on PATH.
     set -f; set -- $v; set +f
-    if command -v "$1" >/dev/null 2>&1; then
-      note "ok" "$k = $v"
-    else
+    if ! command -v "$1" >/dev/null 2>&1; then
       bad "$k = $v is configured but $1 is not on PATH"
+    else
+      case "$1" in
+        codex|*/codex)
+          # A resolving codex that is logged out fails on its first call. Only the exit status is
+          # used: what login status prints may name an account.
+          if bounded 30 "$1" login status >/dev/null 2>&1; then
+            note "ok" "$k = $v (logged in)"
+          else
+            bad "$k = $v: $1 is not logged in (run: codex login --device-auth)"
+          fi ;;
+        *) note "ok" "$k = $v" ;;
+      esac
     fi
   fi
 done
