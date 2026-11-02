@@ -1701,6 +1701,41 @@ def _():
     assert "sweep: codex files=2 unchanged=2 failed=1 missing=archived_sessions" in text, text
 
 
+@case("sweep: a rollout that cannot be read is failed for itself only; the later files are still captured")
+def _():
+    sb = Sandbox("sweep-codex-unreadable")
+    rollout(sb, "rollout-a-locked", "sess-codex-locked")
+    rollout(sb, "rollout-b-good", "sess-codex-later")
+    real = ledger_cost.capture_one
+
+    def locked_one(directory, runtime, main, checkouts):
+        if main.name == "rollout-a-locked.jsonl":
+            raise PermissionError(13, "Permission denied")
+        return real(directory, runtime, main, checkouts)
+    ledger_cost.capture_one = locked_one
+    try:
+        code, out, err = run_main(sb, "capture", "--sweep", "--json")
+    finally:
+        ledger_cost.capture_one = real
+    rows = [json.loads(l) for l in out.splitlines()]
+    line = [r for r in rows if r.get("kind") == "sweep" and r["runtime"] == "codex"][0]
+    assert code == 0 and (line["files"], line["failed"]) == (2, 1), (code, line, err)
+    assert [r["session"] for r in rows if "session" in r] == ["sess-codex-later"], rows
+    assert any("file refused: PermissionError" in l for l in log_text(sb).splitlines()), log_text(sb)
+    index = json.loads((sb.ledger / "state" / "codex" / "sweep.json").read_text())
+    assert sorted(e["status"] for e in index.values()) == ["failed", "ok"], index
+
+
+@case("capture --runtime opencode with a transcript source is refused: only the sweep reads OpenCode")
+def _():
+    sb = Sandbox("opencode-no-transcript")
+    path = rollout(sb, "rollout-o", "sess-codex-o")
+    for args in (("--transcript", str(path)), ("--transcripts", str(path.parent))):
+        code, out, err = run_main(sb, "capture", "--runtime", "opencode", *args)
+        assert code != 0 and "use capture --sweep" in err, (args, code, out, err)
+    assert sb.pending() == [], sb.pending()
+
+
 @case("sweep: a rollout moved to archived_sessions/ adds nothing, and the index forgets the old path")
 def _():
     sb = Sandbox("sweep-codex-moved")

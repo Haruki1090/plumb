@@ -78,7 +78,8 @@ saved offset. The hook never fails a turn. By hand: `plumb-ledger capture --tran
 for Codex, `--runtime codex --transcripts <dir>` (every `.jsonl` below `<dir>`, recursively, sorted by
 path; for Claude it stays the direct files of `<dir>`, because subagent transcripts are read through
 their main transcript). `plumb-ledger capture --sweep` captures the other runtimes on the machine
-(next section).
+(next section). OpenCode has no transcript files: `--runtime opencode` with `--transcript` or
+`--transcripts` is refused, and only the sweep reads it.
 
 Records live in `~/.claude/plumb/ledger` (or `PLUMB_LEDGER_DIR`) for every repository; each carries
 its repository. Nothing is written under a product repository.
@@ -162,7 +163,7 @@ The exit status is 1 when a runtime failed (below), 0 otherwise.
 rollouts. `state/codex/sweep.json` keeps, per rollout path, its size, its mtime and a status (`ok` or
 `failed`). A file whose size and mtime are unchanged since the last sweep is not opened; a changed
 one is read from its saved offset. `failed` is a rollout the normalizer refused (for example one that
-starts with a usage total it never observed): it is counted in `failed=`, not retried until its size
+starts with a usage total it never observed) or one that could not be read (permissions): it is counted in `failed=`, not retried until its size
 or mtime changes, and leaves one line (the error type and a short masked message, never the file's
 content) in `capture.log` per change. Rows already captured from it stay, and the sweep goes on
 with the other files; a refused file does not change the exit status. A rollout that Codex moves to
