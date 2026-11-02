@@ -27,7 +27,7 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
   not opened, and one the normalizer refuses is marked `failed`, counted, logged once per change and
   not retried until it changes.
 - `docs/ledger.md`: the sweep, the OpenCode adapter and what it does not capture, and a scheduled
-  job for a laptop (a macOS LaunchAgent and a `crontab` line running `plumb-ledger capture --sweep &&
+  job for a laptop (a macOS LaunchAgent and a `crontab` line running `plumb-ledger capture --sweep;
   plumb-ledger export` every 15 minutes).
 - `assets/prices.json`: `opencode/deepseek-v4.1-flash-free` at 0 (OpenCode's free tier), with its own
   `checked` and `source`. A model may carry these keys; they override the version's for that model.

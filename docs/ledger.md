@@ -213,8 +213,10 @@ for every runtime and does not read OpenCode's own `cost` column.
 **The Stop hook.** With `ledger.capture = on`, the hook's background capture runs the Claude capture
 as before and then the sweep, in the same process under the same lock. A failure in the sweep never
 fails the Claude capture or the hook; it leaves a line in `capture.log`. With `ledger.export =
-on-stop`, the sessions the sweep captured something new for are exported at the end of the turn, like
-the Claude session. The first sweep on a machine with many old rollouts exports one branch per
+on-stop`, every runtime the hook swept is exported at the end of the turn as `plumb-ledger export
+--runtime <runtime>`: every session of it that is still pending, not only the ones this turn added
+to, so a session whose push failed is sent on a later turn even when its rollout or database rows did
+not change. With nothing pending, that export does not reach the store. The first sweep on a machine with many old rollouts exports one branch per
 session; it runs in the background and is resumable (pending rows stay until pushed).
 
 **A machine with no Claude session running.** plumb does not install a scheduled job. On a laptop,
@@ -231,7 +233,7 @@ run the sweep and the export every 15 minutes, for example with a macOS LaunchAg
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>plumb-ledger capture --sweep &amp;&amp; plumb-ledger export</string>
+    <string>plumb-ledger capture --sweep; plumb-ledger export</string>
   </array>
   <key>StartInterval</key><integer>900</integer>
   <key>EnvironmentVariables</key>
@@ -247,10 +249,12 @@ Put the directory that holds `plumb-ledger` on that `PATH` (or write its full pa
 or a `crontab -e` line (`plumb-ledger` on cron's `PATH`, or give its full path):
 
 ```cron
-*/15 * * * * plumb-ledger capture --sweep && plumb-ledger export
+*/15 * * * * plumb-ledger capture --sweep; plumb-ledger export
 ```
 
-`export` does nothing without `ledger.store`. `capture --sweep` does not need `ledger.capture = on`
+The two commands are joined with `;`, not `&&`: a runtime that fails (an unreadable OpenCode
+database) makes `capture --sweep` exit 1, and the rows the other runtimes captured must still be
+exported. `export` does nothing without `ledger.store`. `capture --sweep` does not need `ledger.capture = on`
 (it runs when called); only the Stop hook is gated by that setting.
 
 ### Price

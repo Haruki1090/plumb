@@ -2017,6 +2017,40 @@ def _():
     assert len(stored_lines(store, "sess-claude-s")) == 1
 
 
+@case("on-stop: a swept session whose push failed is sent on a later turn that sweeps nothing new")
+def _():
+    sb, repo, store = on_stop_sandbox("sweep-stop-retry")
+    reject = store / "hooks" / "pre-receive"
+    reject.write_text("#!/bin/sh\necho 'rejected by the store' >&2\nexit 1\n")
+    reject.chmod(0o755)
+    rollout(sb, "rollout-r", "sess-codex-r")
+    make_opencode(sb.opencode, [("ses_r", None, str(repo), None)], [omsg("m_r", "ses_r", 0)])
+    shim, mark, log = hook_shims(sb)
+    turn(sb, repo, "sess-claude-r", 1, 0, shim)
+    assert wait_for(finished(mark, 1), 60)
+    assert wait_for(lambda: (sb.ledger / "capture.log").exists() and "export failed" in (sb.ledger / "capture.log").read_text(), 30)
+    assert refs(store) == {} and {r["runtime"] for r in sb.pending()} == {"claude", "codex", "opencode"}, sb.pending()
+    # The store is healthy again. The rollout and the database are unchanged, so the sweep adds no
+    # row; the swept sessions must still leave pending.
+    reject.unlink()
+    turn(sb, repo, "sess-claude-r", 1, 1, shim)
+    wanted = {"refs/heads/plumb-ledger/claude/sess-claude-r", "refs/heads/plumb-ledger/codex/sess-codex-r",
+              "refs/heads/plumb-ledger/opencode/ses_r"}
+    assert wait_for(lambda: set(refs(store)) == wanted, 90) and wait_for(finished(mark, 2), 60), refs(store)
+    assert wait_for(lambda: sb.pending() == [], 30), sb.pending()
+
+
+@case("on-stop: with nothing pending for a swept runtime, its export does not reach the store")
+def _():
+    sb, repo, _ = on_stop_sandbox("sweep-stop-quiet", store=False)
+    sb.set_config(sb.config.read_text() + "ledger.store = http://127.0.0.1:9/unreachable.git\n")
+    shim, mark, log = hook_shims(sb)
+    turn(sb, repo, "sess-claude-q", 1, 0, shim)   # no rollout, no database: nothing swept
+    assert wait_for(finished(mark, 1), 60)
+    text = (sb.ledger / "capture.log").read_text() if (sb.ledger / "capture.log").exists() else ""
+    assert text.count("export failed") == 1, text   # the Claude session only; the swept runtimes had nothing
+
+
 @case("OpenCode rows are priced: the free model costs 0, a per-model checked/source is read and a provider/model name is looked up as written")
 def _():
     versions = ledger_cost.load_prices()

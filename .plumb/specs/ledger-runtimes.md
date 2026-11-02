@@ -120,9 +120,11 @@ get `null`. Claude records keep the existing rule (record session == `CLAUDE_COD
 ### The Stop hook and export
 
 When `ledger.capture = on`, the hook's background capture runs the Claude capture as today and then
-the sweep (in the same process, after the Claude capture, under the same lock). `export_on_stop`
-already exports every summary with something new, so swept sessions are exported on stop when
-`ledger.export = on-stop`. A failure in the sweep never fails the Claude capture or the hook.
+the sweep (in the same process, after the Claude capture, under the same lock). With
+`ledger.export = on-stop`, `export_on_stop` exports each swept runtime as `export --runtime <runtime>`
+(every pending session of it, not only those this turn added to: a session whose push failed gets no
+new row on the next turn, because its rollout or database rows are unchanged, and would otherwise stay
+pending until the container is gone). With nothing pending that export does not reach the store. A failure in the sweep never fails the Claude capture or the hook.
 
 The first sweep on a machine with many old rollouts exports one branch per session; it runs in the
 background and is resumable (pending rows stay until pushed).
@@ -132,9 +134,10 @@ background and is resumable (pending rows stay until pushed).
 `docs/ledger.md` documents a scheduled job for laptops, for example a macOS LaunchAgent every 15
 minutes running
 
-    plumb-ledger capture --sweep && plumb-ledger export
+    plumb-ledger capture --sweep; plumb-ledger export
 
-and the equivalent `crontab` line. plumb does not install it.
+and the equivalent `crontab` line, joined with `;` so a failed runtime does not stop the export of
+the others. plumb does not install it.
 
 ### Prices
 

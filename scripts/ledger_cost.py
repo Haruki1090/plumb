@@ -1241,7 +1241,7 @@ def cmd_capture(argv: list[str]) -> int:
             # failure here never fails the Claude capture or the hook; it leaves one line in the log.
             try:
                 if config("ledger.capture", "off") == "on":
-                    swept, _, _ = sweep(directory, checkouts, cwd)
+                    swept, runtimes, _ = sweep(directory, checkouts, cwd)
                     summaries += swept
             except Exception as error:  # noqa: BLE001 - the hook's background job must not raise
                 log_line(cwd, f"sweep failed: {type(error).__name__}: {redact(str(error))[:200]}")
@@ -1259,33 +1259,41 @@ def cmd_capture(argv: list[str]) -> int:
             print(f"sweep: {line['runtime']} {counts + ' ' if counts else ''}failed={line['failed']} "
                   f"missing={','.join(line['missing']) or 'none'}")
     if args.hook_input:
-        export_on_stop(summaries, cwd)
+        export_on_stop(summaries, cwd, [line["runtime"] for line in runtimes])
     return status
 
 
-def export_on_stop(summaries: list[dict[str, Any]], cwd: str | None) -> None:
+def export_on_stop(summaries: list[dict[str, Any]], cwd: str | None, swept: list[str] = ()) -> None:
     """The end of a turn in a cloud session: a container can be reclaimed with no session-end event,
     so when the owner opted in (ledger.capture = on, ledger.export = on-stop, ledger.store set) the
-    sessions this hook run captured something new for (a row, or a conflicting copy) are exported now, by the same code path as
+    Claude sessions this hook run captured something new for (a row, or a conflicting copy) are exported now, by the same code path as
     `plumb-ledger export --session <id>`. Only the hook path calls this, in its background job: it
     never raises, and what goes wrong leaves one line (type and a short, masked message) in the
-    capture log while the records stay pending. A session with nothing new does not push."""
+    capture log while the records stay pending. A session with nothing new does not push.
+
+    Each runtime the hook swept (`swept`) is exported as `plumb-ledger export --runtime <runtime>`,
+    which sends every session of it that is still pending, not only the ones this run added to: a
+    swept session whose push failed gets no new row on the next turn (its rollout or database rows
+    are unchanged), so it would otherwise stay pending until the container is gone. With nothing
+    pending that export returns without touching the network."""
     try:
         if config("ledger.capture", "off") != "on" or config("ledger.export", "manual") != "on-stop":
             return
         # A conflicting copy found by this capture is news too, even with no new row: cmd_export
         # sends a session whose conflicts changed, and the container may not wait for another turn.
-        due = [s for s in summaries if s.get("new") or s.get("conflicts")]
-        if not due:
-            return
+        jobs = [["--session", s["session"], "--runtime", s["runtime"]] for s in summaries
+                if s.get("runtime") not in swept and (s.get("new") or s.get("conflicts"))]
+        due_swept = any(s.get("new") or s.get("conflicts") for s in summaries if s.get("runtime") in swept)
         if not config("ledger.store"):
-            log_line(cwd, "export skipped: ledger.store is unset")
+            if jobs or due_swept:
+                log_line(cwd, "export skipped: ledger.store is unset")
             return
-        for summary in due:
+        jobs += [["--runtime", runtime] for runtime in dict.fromkeys(swept)]
+        for job in jobs:
             out, err = io.StringIO(), io.StringIO()
             try:
                 with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                    code = cmd_export(["--session", summary["session"], "--runtime", summary["runtime"]])
+                    code = cmd_export(job)
             except LedgerError as error:
                 log_line(cwd, f"export failed: LedgerError: {redact(str(error))[:200]}")
                 continue
