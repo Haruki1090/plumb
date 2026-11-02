@@ -2,6 +2,51 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.21.0] - 2026-11-02
+
+### Added
+
+- `plumb-ledger capture --sweep`: captures the other runtimes on the machine from their default
+  locations, as a capture source next to `--hook-input`, `--transcript` and `--transcripts`.
+  Codex rollouts are read from `$CODEX_HOME/sessions` and `archived_sessions` (every `*.jsonl`
+  below them), OpenCode from its SQLite database (`$OPENCODE_DATA_DIR/opencode.db`, else
+  `${XDG_DATA_HOME:-~/.local/share}/opencode/opencode.db`). A location that is not there is reported
+  as `missing`, not as an error. Claude is not swept.
+- The `opencode` runtime. The adapter opens the database read-only (`mode=ro`, `query_only`), queries
+  only `session_v2` and `session_message` and only the columns it needs (the credential and account
+  tables are never named), and records one row per completed assistant message: `output` is the
+  visible output plus reasoning, the cache write goes to `cache_write_5m` (`cache_write_1h` is 0),
+  the model is `<providerID>/<id>`, a subagent session is a `subagent` row of its root session, and
+  repository and branch come from the HEAD reflog of the session's directory at the message's time.
+  A watermark per database with a ten-minute lookback reads only what is new; repeats are dropped by
+  id and different tokens for an id are a conflict. Usage OpenCode keeps only in session totals
+  (title generation, compaction) is not captured.
+- `ledger.runtimes` (default `claude,codex,opencode`): the runtimes a sweep reads. Unknown names are
+  ignored with one stderr line.
+- A sweep index for Codex, `state/codex/sweep.json`: a rollout whose size and mtime are unchanged is
+  not opened, and one the normalizer refuses is marked `failed`, counted, logged once per change and
+  not retried until it changes.
+- `docs/ledger.md`: the sweep, the OpenCode adapter and what it does not capture, and a scheduled
+  job for a laptop (a macOS LaunchAgent and a `crontab` line running `plumb-ledger capture --sweep &&
+  plumb-ledger export` every 15 minutes).
+- `assets/prices.json`: `opencode/deepseek-v4.1-flash-free` at 0 (OpenCode's free tier), with its own
+  `checked` and `source`. A model may carry these keys; they override the version's for that model.
+
+### Changed
+
+- With `ledger.capture = on`, the Stop hook's background capture runs the sweep after the Claude
+  capture, in the same process under the same lock. A failure in the sweep never fails the Claude
+  capture or the hook (it leaves a line in `capture.log`), and with `ledger.export = on-stop` the
+  swept sessions are exported at the end of the turn too.
+- `capture --runtime codex --transcripts <dir>` reads every `*.jsonl` below `<dir>`, recursively and
+  sorted by path; for Claude it stays the direct files of `<dir>`.
+- `remote_session` of Codex and OpenCode records is the cloud session id only when
+  `CLAUDE_CODE_REMOTE=true` (the process runs in that session's own container), else `null`. Claude
+  records keep the rule of 0.20.0.
+- A Codex rollout seen again under another path (Codex moves old ones to `archived_sessions/`) is
+  matched to its session through the state kept for its file name, so the rows already captured are
+  not counted twice.
+
 ## [0.20.0] - 2026-11-02
 
 ### Added

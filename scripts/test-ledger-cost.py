@@ -15,6 +15,7 @@ import json
 import math
 import os
 import shutil
+import sqlite3
 import statistics
 import subprocess
 import sys
@@ -22,6 +23,7 @@ import tempfile
 import threading
 import time
 import traceback
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -35,6 +37,7 @@ FIXTURES = HERE / "fixtures" / "ledger-cost"
 ROOT = Path(tempfile.mkdtemp(prefix="plumb-ledger-test-"))
 FAILED: list[str] = []
 SECRET = "SECRET-BODY-9f3a"
+REMOTE_VAR = "CLAUDE_CODE_REMOTE_SESSION_ID"
 
 HAIKU = "claude-haiku-5-5"
 OPUS = "claude-opus-5-5"
@@ -70,10 +73,16 @@ class Sandbox:
         self.ledger = self.root / "ledger"
         self.cwd = self.root / "work"
         self.cwd.mkdir()
+        # Where a sweep looks: all inside the sandbox, never the real ~/.codex or ~/.local/share/opencode.
+        self.codex = self.root / "codex-home"
+        self.data = self.root / "data-home"
+        self.opencode = self.data / "opencode" / "opencode.db"
         self.env = {**os.environ, "HOME": str(self.root / "home"), "PLUMB_CONFIG": str(self.config),
                     "PLUMB_LEDGER_DIR": str(self.ledger), "GIT_TERMINAL_PROMPT": "0",
-                    "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
-        self.env.pop("PLUMB_LEDGER_GH_FIXTURES", None)
+                    "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1",
+                    "CODEX_HOME": str(self.codex), "XDG_DATA_HOME": str(self.data)}
+        for name in ("PLUMB_LEDGER_GH_FIXTURES", "OPENCODE_DATA_DIR", "CLAUDE_CODE_REMOTE", REMOTE_VAR):
+            self.env.pop(name, None)
 
     def set_config(self, text: str) -> None:
         self.config.write_text(text)
@@ -1460,6 +1469,578 @@ def _():
     assert all(len(line) < 400 for line in logged.splitlines()), "log lines must stay short"
 
 
+# ---------------------------------------------------------------- sweep: Codex rollouts and OpenCode
+
+BASE_MS = int(datetime(2026, 10, 10, tzinfo=timezone.utc).timestamp() * 1000)
+CRED = "CRED-SENTINEL-7c1e"      # held only by a decoy table of the OpenCode fixture
+TITLE = "TITLE-SENTINEL-52bd"    # a column the adapter never selects
+
+
+@contextlib.contextmanager
+def sandbox_environ(sb: Sandbox, extra_env: dict | None = None):
+    """Run ledger_cost in this process with the sandbox's environment."""
+    saved = dict(os.environ)
+    os.environ.clear()
+    os.environ.update({**sb.env, **(extra_env or {})})
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
+def run_main(sb: Sandbox, *argv: str, extra_env: dict | None = None) -> tuple[int, str, str]:
+    out, err = io.StringIO(), io.StringIO()
+    with sandbox_environ(sb, extra_env), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = ledger_cost.main(list(argv))
+    return code, out.getvalue(), err.getvalue()
+
+
+def sweep_json(sb: Sandbox, extra_env: dict | None = None, expect: int = 0) -> tuple[list[dict], list[dict], str]:
+    """(session summaries, runtime summaries, stderr) of `capture --sweep --json` run as the CLI."""
+    code, out, err = sb.ledger_cmd("capture", "--sweep", "--json", extra_env=extra_env)
+    assert code == expect, f"sweep exited {code}: {err}"
+    rows = [json.loads(line) for line in out.splitlines()]
+    return [r for r in rows if r.get("kind") != "sweep"], [r for r in rows if r.get("kind") == "sweep"], err
+
+
+def rollout(sb: Sandbox, name: str, session: str, where: str = "sessions/2026/10/10") -> Path:
+    path = sb.codex / where / f"{name}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    codex_transcript(path, session)
+    return path
+
+
+def codex_extend(path: Path) -> None:
+    """A third snapshot after the two codex_transcript() writes."""
+    total, last = {"input_tokens": 200, "cached_input_tokens": 60, "output_tokens": 20}, \
+        {"input_tokens": 50, "cached_input_tokens": 10, "output_tokens": 5}
+    with open(path, "a") as handle:
+        handle.write(json.dumps({"type": "event_msg", "timestamp": "2026-10-10T00:00:09Z", "payload": {
+            "type": "token_count", "info": {"total_token_usage": total, "last_token_usage": last}}}) + "\n")
+
+
+def bad_rollout(sb: Sandbox, name: str) -> Path:
+    """The first snapshot's total is not its last: the normalizer refuses the file."""
+    path = sb.codex / "sessions" / "2026" / "10" / "10" / f"{name}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    total, last = {"input_tokens": 200, "cached_input_tokens": 60, "output_tokens": 20}, \
+        {"input_tokens": 50, "cached_input_tokens": 10, "output_tokens": 5}
+    path.write_text("\n".join([
+        json.dumps({"type": "session_meta", "payload": {"id": "sess-codex-bad"}}),
+        json.dumps({"type": "event_msg", "timestamp": "2026-10-10T00:00:05Z", "payload": {
+            "type": "token_count", "info": {"total_token_usage": total, "last_token_usage": last}}})]) + "\n")
+    return path
+
+
+def log_text(sb: Sandbox) -> str:
+    path = sb.ledger / "capture.log"
+    return path.read_text() if path.exists() else ""
+
+
+def omsg(mid: str, sid: str, created: int, *, done: bool | int | None = True, updated: int | None = None,
+         inp=100, out=20, reasoning=5, read=30, write=7, model: object = "default", agent: str | None = None,
+         extra: dict | None = None) -> tuple:
+    """A session_message row of type assistant. `created` is milliseconds after BASE_MS."""
+    tokens = {"input": inp, "output": out, "reasoning": reasoning, "cache": {"read": read, "write": write}}
+    if reasoning == "absent":
+        del tokens["reasoning"]
+    data = {"role": "assistant", "time": {"created": BASE_MS + created}, "tokens": tokens,
+            "content": [{"type": "text", "text": SECRET}], **(extra or {})}
+    if done:
+        data["time"]["completed"] = BASE_MS + created + 900
+    if model == "default":
+        model = {"providerID": "opencode", "id": "deepseek-v4.1-flash-free"}
+    if model is not None:
+        data["model"] = model
+    if agent:
+        data["agent"] = agent
+    return (mid, sid, "assistant", 1, BASE_MS + created + 1000 if updated is None else updated, json.dumps(data))
+
+
+def make_opencode(path: Path, sessions: list[tuple], messages: list[tuple], tables: str = "both") -> None:
+    """A synthetic OpenCode database: the two tables the adapter reads, columns it must not select,
+    and a decoy credential table. sessions: (id, parent_id, directory, model JSON or None)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        path.unlink()
+    conn = sqlite3.connect(path)
+    conn.executescript("CREATE TABLE credential (id TEXT, token TEXT);"
+                       "CREATE TABLE session_v2 (id TEXT PRIMARY KEY, parent_id TEXT, directory TEXT, model TEXT, title TEXT);")
+    if tables == "both":
+        conn.executescript("CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, seq INTEGER, "
+                           "time_created INTEGER, time_updated INTEGER, data TEXT);")
+    conn.execute("INSERT INTO credential VALUES ('c1', ?)", (CRED,))
+    conn.executemany("INSERT INTO session_v2 VALUES (?, ?, ?, ?, ?)", [(*row, TITLE) for row in sessions])
+    if tables == "both":
+        conn.executemany("INSERT INTO session_message VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         [(m[0], m[1], m[2], m[3], m[4], m[4], m[5]) for m in messages])
+    conn.commit()
+    conn.close()
+
+
+def edit_opencode(sb: Sandbox, sql: str, args: tuple = ()) -> None:
+    conn = sqlite3.connect(sb.opencode)
+    conn.execute(sql, args)
+    conn.commit()
+    conn.close()
+
+
+def insert_message(sb: Sandbox, message: tuple) -> None:
+    conn = sqlite3.connect(sb.opencode)
+    conn.execute("INSERT INTO session_message VALUES (?, ?, ?, ?, ?, ?, ?)",
+                 (message[0], message[1], message[2], message[3], message[4], message[4], message[5]))
+    conn.commit()
+    conn.close()
+
+
+def no_sentinels(sb: Sandbox, *outputs: str) -> None:
+    for path in sb.ledger.rglob("*"):
+        if path.is_file():
+            text = path.read_text(errors="replace")
+            assert CRED not in text and TITLE not in text and SECRET not in text, f"a sentinel in {path.relative_to(sb.ledger)}"
+    for text in outputs:
+        assert CRED not in text and TITLE not in text and SECRET not in text, text
+
+
+def opencode_rows(sb: Sandbox) -> dict[str, dict]:
+    return {r["id"]: r for r in sb.pending() if r["runtime"] == "opencode"}
+
+
+@case("codex --transcripts reads every depth of a YYYY/MM/DD tree; claude --transcripts stays non-recursive")
+def _():
+    sb = Sandbox("transcripts-recursive")
+    tree = sb.root / "tree"
+    for name, session, where in (("rollout-1", "sess-codex-d0", "."), ("rollout-2", "sess-codex-d1", "2026"),
+                                 ("rollout-3", "sess-codex-d3", "2026/10/10")):
+        (tree / where).mkdir(parents=True, exist_ok=True)
+        codex_transcript(tree / where / f"{name}.jsonl", session)
+    code, out, err = sb.ledger_cmd("capture", "--runtime", "codex", "--transcripts", str(tree), "--json")
+    assert code == 0, err
+    assert sorted(json.loads(l)["session"] for l in out.splitlines()) == ["sess-codex-d0", "sess-codex-d1", "sess-codex-d3"], out
+    assert len(sb.pending()) == 6
+    repo = make_repo(sb.root / "repo")
+    claude = sb.root / "claude-tree"
+    write_transcript(claude, "top", [assistant("msg_top", "2026-10-10T00:00:00Z", repo, "feat/a")])
+    write_transcript(claude / "deeper", "below", [assistant("msg_below", "2026-10-10T00:00:00Z", repo, "feat/a")])
+    code, out, err = sb.ledger_cmd("capture", "--transcripts", str(claude), "--json")
+    assert code == 0 and [json.loads(l)["session"] for l in out.splitlines()] == ["top"], (out, err)
+
+
+@case("sweep: Codex rollouts under sessions/ and archived_sessions/ are captured, and a second sweep opens none of them")
+def _():
+    sb = Sandbox("sweep-codex")
+    rollout(sb, "rollout-a", "sess-codex-a")
+    rollout(sb, "rollout-b", "sess-codex-b", "archived_sessions/2026/09/30")
+    sessions, runtimes, err = sweep_json(sb)
+    assert sorted(s["session"] for s in sessions) == ["sess-codex-a", "sess-codex-b"] and len(sb.pending()) == 4, sessions
+    codex = [r for r in runtimes if r["runtime"] == "codex"][0]
+    assert (codex["files"], codex["unchanged"], codex["failed"], codex["missing"]) == (2, 0, 0, []), codex
+    assert [r["runtime"] for r in runtimes] == ["codex", "opencode"] and runtimes[1]["missing"] == ["opencode.db"], runtimes
+    assert err == "", err
+    # In this process, with the parser counting the files it is given.
+    opened: list[str] = []
+    real = ledger_cost.capture_codex_file
+
+    def counting(path, *args, **kwargs):
+        opened.append(path.name)
+        return real(path, *args, **kwargs)
+    ledger_cost.capture_codex_file = counting
+    try:
+        code, out, err = run_main(sb, "capture", "--sweep", "--json")
+        assert code == 0 and opened == [], (code, opened, err)
+        assert json.loads(out.splitlines()[0])["files"] == 2 and "unchanged" in out, out
+        # A file that grew is read from its offset, and only that file.
+        grown = sb.codex / "sessions/2026/10/10/rollout-a.jsonl"
+        before = grown.stat().st_size
+        codex_extend(grown)
+        code, out, err = run_main(sb, "capture", "--sweep", "--json")
+        rows = [json.loads(l) for l in out.splitlines()]
+        assert code == 0 and opened == ["rollout-a.jsonl"], (code, opened, err)
+        assert rows[0]["new"] == 1 and rows[0]["files"][0]["offset_before"] > 0 and rows[0]["bytes_read"] == grown.stat().st_size - rows[0]["files"][0]["offset_before"], rows[0]
+        assert rows[0]["files"][0]["offset_before"] <= before
+        assert len(sb.pending()) == 5
+    finally:
+        ledger_cost.capture_codex_file = real
+    index = json.loads((sb.ledger / "state" / "codex" / "sweep.json").read_text())
+    assert sorted(e["status"] for e in index.values()) == ["ok", "ok"] and all(set(e) == {"size", "mtime_ns", "status"} for e in index.values()), index
+
+
+@case("sweep: a rollout the normalizer refuses is failed, counted, logged once and not retried until it changes; the others still run")
+def _():
+    sb = Sandbox("sweep-codex-failed")
+    bad = bad_rollout(sb, "rollout-bad")
+    rollout(sb, "rollout-good", "sess-codex-good")
+    sessions, runtimes, err = sweep_json(sb)
+    codex = runtimes[0]
+    assert (codex["files"], codex["failed"]) == (2, 1) and [s["session"] for s in sessions] == ["sess-codex-good"], (codex, sessions)
+    assert len(sb.pending()) == 2 and err == ""
+    refused = [l for l in log_text(sb).splitlines() if "file refused" in l]
+    assert len(refused) == 1 and "LedgerError" in refused[0] and "unobserved usage prefix" in refused[0], log_text(sb)
+    assert all(len(l) < 400 for l in log_text(sb).splitlines())
+    opened: list[str] = []
+    real = ledger_cost.capture_codex_file
+
+    def counting(path, *args, **kwargs):
+        opened.append(path.name)
+        return real(path, *args, **kwargs)
+    ledger_cost.capture_codex_file = counting
+    try:
+        code, out, err = run_main(sb, "capture", "--sweep", "--json")
+        line = [json.loads(l) for l in out.splitlines() if '"sweep"' in l][0]
+        assert code == 0 and opened == [] and (line["files"], line["unchanged"], line["failed"]) == (2, 2, 1), (opened, line)
+        assert len([l for l in log_text(sb).splitlines() if "file refused" in l]) == 1, "logged again without a change"
+        with open(bad, "a") as handle:
+            handle.write("\n")                      # the file changed: it is tried again (and refused again)
+        code, out, err = run_main(sb, "capture", "--sweep", "--json")
+        assert opened == ["rollout-bad.jsonl"], opened
+        assert len([l for l in log_text(sb).splitlines() if "file refused" in l]) == 2
+    finally:
+        ledger_cost.capture_codex_file = real
+    text = sb.ledger_cmd("capture", "--sweep")[1]
+    assert "sweep: codex files=2 unchanged=2 failed=1 missing=archived_sessions" in text, text
+
+
+@case("sweep: a rollout moved to archived_sessions/ adds nothing, and the index forgets the old path")
+def _():
+    sb = Sandbox("sweep-codex-moved")
+    path = rollout(sb, "rollout-m", "sess-codex-m")
+    sweep_json(sb)
+    assert len(sb.pending()) == 2
+    target = sb.codex / "archived_sessions" / path.name
+    target.parent.mkdir(parents=True)
+    shutil.move(str(path), str(target))
+    sessions, runtimes, err = sweep_json(sb)
+    assert len(sb.pending()) == 2 and all(s["new"] == 0 for s in sessions) and sessions[0]["duplicates"] == 2, sessions
+    assert list(json.loads((sb.ledger / "state" / "codex" / "sweep.json").read_text())) == [str(target)]
+
+
+@case("sweep: OpenCode messages map to records field by field, and nothing but the allowlist is written")
+def _():
+    sb = Sandbox("sweep-opencode-map")
+    repo = make_repo(sb.root / "repo")
+    git(repo, "checkout", "-q", "feat/a", at="2026-10-09T00:00:00Z")
+    session_model = json.dumps({"providerID": "anthropic", "id": "claude-haiku-5-5"})
+    make_opencode(sb.opencode, [("ses_a", None, str(repo), session_model), ("ses_nodir", None, None, None)], [
+        omsg("msg_1", "ses_a", 123),
+        omsg("msg_2", "ses_a", 5000, model=None, inp=1000, out=10, reasoning=0, read=0, write=0),   # the session's model
+        omsg("msg_3", "ses_a", 6000, reasoning="absent", out=40),                                   # no reasoning figure
+        omsg("msg_4", "ses_a", 7000, reasoning="x"),                                                # reasoning is not a number
+        omsg("msg_5", "ses_nodir", 8000, write=None, extra={"tokens": None}),                       # no tokens object
+        omsg("msg_6", "ses_nodir", 9000, extra={"tokens": {"input": "many", "output": None, "cache": {}}}),   # nothing usable
+    ])
+    sessions, runtimes, err = sweep_json(sb)
+    rows = opencode_rows(sb)
+    assert sorted(rows) == ["opencode:msg_1", "opencode:msg_2", "opencode:msg_3", "opencode:msg_4"], sorted(rows)
+    first = rows["opencode:msg_1"]
+    assert first == {"id": "opencode:msg_1", "time": "2026-10-10T00:00:00.123Z", "model": "opencode/deepseek-v4.1-flash-free",
+                     "input": 100, "output": 25, "cache_read": 30, "cache_write_5m": 7, "cache_write_1h": 0,
+                     "repository": "acme/widgets", "branch": "feat/a", "attribution_source": "reflog", "role": "main",
+                     "agent_type": None, "agent_id": None, "session": "ses_a", "runtime": "opencode", "remote_session": None}, first
+    assert list(first) == list(ledger_cost.FIELDS)
+    assert rows["opencode:msg_2"]["model"] == "anthropic/claude-haiku-5-5" and rows["opencode:msg_2"]["output"] == 10
+    assert rows["opencode:msg_3"]["output"] == 40, "no reasoning figure: output is the visible output"
+    assert rows["opencode:msg_4"]["output"] is None and rows["opencode:msg_4"]["input"] == 100, rows["opencode:msg_4"]
+    assert {s["session"]: s for s in sessions}["ses_nodir"]["skipped_lines"] == 1 and "ses_nodir" in {s["session"] for s in sessions}
+    assert [r for r in runtimes if r["runtime"] == "opencode"][0]["rows"] == 6
+    no_sentinels(sb, json.dumps(sessions), err)
+    report = sb.report()
+    # msg_1 and msg_3 are the free model (cost 0); msg_2's model has no price and msg_4's output is unknown.
+    assert (report["requests"], report["priced"], report["unknown"]["cost"]) == (4, 2, 2), report
+    assert Decimal(report["total_cost"]) == 0
+
+
+@case("sweep: an OpenCode message still streaming is skipped, then captured once it completes; a second sweep adds nothing")
+def _():
+    sb = Sandbox("sweep-opencode-streaming")
+    make_opencode(sb.opencode, [("ses_a", None, None, None)], [omsg("msg_1", "ses_a", 0), omsg("msg_2", "ses_a", 2000, done=None)])
+    sessions, _, err = sweep_json(sb)
+    assert sorted(opencode_rows(sb)) == ["opencode:msg_1"] and sessions[0]["new"] == 1, (opencode_rows(sb), sessions)
+    done = omsg("msg_2", "ses_a", 2000, inp=555)
+    edit_opencode(sb, "UPDATE session_message SET data = ?, time_updated = ? WHERE id = 'msg_2'", (done[5], BASE_MS + 4000))
+    sessions, _, err = sweep_json(sb)
+    assert sorted(opencode_rows(sb)) == ["opencode:msg_1", "opencode:msg_2"] and opencode_rows(sb)["opencode:msg_2"]["input"] == 555
+    before = sb.pending()
+    sessions, _, err = sweep_json(sb)
+    assert sb.pending() == before and all(s["new"] == 0 and s["conflicts"] == 0 for s in sessions), sessions
+    assert sessions[0]["duplicates"] == 2, sessions   # the ten minutes behind the watermark are read again
+    no_sentinels(sb, err)
+
+
+@case("sweep: a subagent session is a subagent record of its root session; a parent cycle has one root")
+def _():
+    sb = Sandbox("sweep-opencode-tree")
+    make_opencode(sb.opencode, [("ses_root", None, None, None), ("ses_child", "ses_root", None, None),
+                                ("ses_grand", "ses_child", None, None), ("ses_orphan", "ses_gone", None, None),
+                                ("ses_c2", "ses_c1", None, None), ("ses_c1", "ses_c2", None, None)], [
+        omsg("m_root", "ses_root", 0), omsg("m_child", "ses_child", 1000, agent="general"),
+        omsg("m_grand", "ses_grand", 2000, agent="explore"), omsg("m_orphan", "ses_orphan", 3000),
+        omsg("m_c1", "ses_c1", 4000), omsg("m_c2", "ses_c2", 5000, agent="general")])
+    sweep_json(sb)
+    rows = opencode_rows(sb)
+    pick = lambda mid: (rows[f"opencode:{mid}"]["session"], rows[f"opencode:{mid}"]["role"], rows[f"opencode:{mid}"]["agent_id"],
+                        rows[f"opencode:{mid}"]["agent_type"])
+    assert pick("m_root") == ("ses_root", "main", None, None)
+    assert pick("m_child") == ("ses_root", "subagent", "ses_child", "general")
+    assert pick("m_grand") == ("ses_root", "subagent", "ses_grand", "explore")
+    assert pick("m_orphan") == ("ses_orphan", "main", None, None), "a missing parent stops the walk at the last session found"
+    assert pick("m_c1")[0] == pick("m_c2")[0] == "ses_c1", "both members of a cycle share one root"
+    assert pick("m_c1")[1] == "main" and pick("m_c2")[1] == "subagent"
+    assert sorted(p.name for p in (sb.ledger / "pending" / "opencode").iterdir()) == ["ses_c1.jsonl", "ses_orphan.jsonl", "ses_root.jsonl"]
+
+
+@case("sweep: OpenCode rows whose tokens changed are a conflict, kept once; the watermark window catches a late row")
+def _():
+    sb = Sandbox("sweep-opencode-window")
+    hour = 3_600_000
+    make_opencode(sb.opencode, [("ses_a", None, None, None)], [omsg("m_old", "ses_a", 0), omsg("m_new", "ses_a", hour)])
+    sweep_json(sb)
+    state = json.loads(next((sb.ledger / "state" / "opencode").glob("*.json")).read_text())
+    assert state == {"watermark": BASE_MS + hour + 1000}, state
+    changed = omsg("m_new", "ses_a", hour, inp=999)
+    edit_opencode(sb, "UPDATE session_message SET data = ? WHERE id = 'm_new'", (changed[5],))
+    sessions, _, err = sweep_json(sb)
+    assert sessions[0]["conflicts"] == 1 and sessions[0]["new"] == 0, sessions
+    assert [json.loads(l) for l in (sb.ledger / "conflicts" / "opencode" / "ses_a.jsonl").read_text().splitlines()] == [{"id": "opencode:m_new"}]
+    assert opencode_rows(sb)["opencode:m_new"]["input"] == 100 and len(sb.pending()) == 2
+    sweep_json(sb)
+    assert len((sb.ledger / "conflicts" / "opencode" / "ses_a.jsonl").read_text().splitlines()) == 1
+    # Committed after the watermark moved: inside the ten minutes it is read; further back it is not.
+    insert_message(sb, omsg("m_late", "ses_a", hour - 300_000, updated=BASE_MS + hour + 1000 - 300_000))
+    insert_message(sb, omsg("m_later", "ses_a", hour - 700_000, updated=BASE_MS + hour + 1000 - 700_000))
+    sessions, _, err = sweep_json(sb)
+    assert sorted(opencode_rows(sb)) == ["opencode:m_late", "opencode:m_new", "opencode:m_old"], sorted(opencode_rows(sb))
+    # A restored database (time_updated behind the watermark) is read again from the start; ids absorb the repeats.
+    edit_opencode(sb, "UPDATE session_message SET time_updated = time_updated - ?", (50 * hour,))
+    before = len(sb.pending())
+    sessions, _, err = sweep_json(sb)
+    assert len(sb.pending()) == before + 1 and "opencode:m_later" in opencode_rows(sb), "the restore was not re-read"
+    assert json.loads(next((sb.ledger / "state" / "opencode").glob("*.json")).read_text())["watermark"] < BASE_MS
+    no_sentinels(sb, err)
+
+
+@case("sweep: the OpenCode database is opened read-only, only the two tables are queried, and the file is untouched")
+def _():
+    sb = Sandbox("sweep-opencode-readonly")
+    make_opencode(sb.opencode, [("ses_a", None, None, None), ("ses_b", "ses_a", None, None)],
+                  [omsg("m_1", "ses_a", 0), omsg("m_2", "ses_b", 1000, agent="general")])
+    stat = sb.opencode.stat()
+    content = sb.opencode.read_bytes()
+    statements: list[str] = []
+    uris: list[str] = []
+    real = ledger_cost.sqlite3.connect
+
+    def traced(target, *args, **kwargs):
+        uris.append(target)
+        conn = real(target, *args, **kwargs)
+        conn.set_trace_callback(statements.append)
+        return conn
+    ledger_cost.sqlite3.connect = traced
+    try:
+        code, out, err = run_main(sb, "capture", "--sweep", "--json")
+    finally:
+        ledger_cost.sqlite3.connect = real
+    assert code == 0 and len(opencode_rows(sb)) == 2, (code, err)
+    assert len(uris) == 1 and "mode=ro" in uris[0], uris
+    assert statements[0].startswith("PRAGMA query_only") and all(
+        s.startswith(("SELECT", "PRAGMA query_only")) for s in statements), statements
+    assert all("credential" not in s.lower() and "title" not in s.lower() and "time_created" not in s for s in statements), statements
+    tables = {t for s in statements for t in ("session_v2", "session_message") if t in s}
+    assert tables == {"session_v2", "session_message"}
+    assert sb.opencode.read_bytes() == content and sb.opencode.stat().st_mtime_ns == stat.st_mtime_ns, "the database was written"
+    no_sentinels(sb, out, err)
+    assert not [p for p in sb.opencode.parent.iterdir() if p != sb.opencode], list(sb.opencode.parent.iterdir())   # no journal left behind
+
+
+@case("sweep: OPENCODE_DATA_DIR names the database before XDG_DATA_HOME")
+def _():
+    sb = Sandbox("sweep-opencode-datadir")
+    other = sb.root / "elsewhere"
+    make_opencode(other / "opencode.db", [("ses_x", None, None, None)], [omsg("m_x", "ses_x", 0)])
+    sessions, runtimes, err = sweep_json(sb, {"OPENCODE_DATA_DIR": str(other)})
+    assert list(opencode_rows(sb)) == ["opencode:m_x"] and runtimes[1]["missing"] == [], (sessions, runtimes)
+
+
+@case("sweep: a database missing a table is a defined failure for OpenCode only; Codex still runs and nothing leaks")
+def _():
+    sb = Sandbox("sweep-opencode-broken")
+    rollout(sb, "rollout-a", "sess-codex-a")
+    make_opencode(sb.opencode, [("ses_a", None, None, None)], [], tables="one")
+    code, out, err = sb.ledger_cmd("capture", "--sweep", "--json")
+    assert code == 1, (code, out, err)
+    assert len(sb.pending()) == 2 and all(r["runtime"] == "codex" for r in sb.pending()), sb.pending()
+    assert len(err.strip().splitlines()) == 1 and "opencode" in err and "session_message" in err, err
+    lines = [l for l in log_text(sb).splitlines() if "sweep opencode failed" in l]
+    assert len(lines) == 1 and "LedgerError" not in lines[0] and len(lines[0]) < 400, log_text(sb)
+    runtimes = [json.loads(l) for l in out.splitlines() if '"sweep"' in l]
+    assert [(r["runtime"], r["failed"]) for r in runtimes] == [("codex", 0), ("opencode", 1)], runtimes
+    no_sentinels(sb, out, err)
+    sb.opencode.write_bytes(b"this is not a database" * 100)      # not a database at all
+    code, out, err = sb.ledger_cmd("capture", "--sweep")
+    assert code == 1 and len(err.strip().splitlines()) == 1 and "opencode" in err, (code, err)
+    assert "sweep: codex files=1 unchanged=1 failed=0" in out, out
+
+
+@case("remote_session of swept rows: set only with CLAUDE_CODE_REMOTE=true, null elsewhere")
+def _():
+    results = {}
+    for name, extra in (("cloud", {"CLAUDE_CODE_REMOTE": "true", REMOTE_VAR: "session_01SyntheticAbc"}),
+                        ("laptop", {REMOTE_VAR: "session_01SyntheticAbc"}),
+                        ("not-true", {"CLAUDE_CODE_REMOTE": "1", REMOTE_VAR: "session_01SyntheticAbc"}),
+                        ("no-id", {"CLAUDE_CODE_REMOTE": "true"}),
+                        ("malformed", {"CLAUDE_CODE_REMOTE": "true", REMOTE_VAR: "nounderscore"})):
+        sb = Sandbox(f"sweep-remote-{name}")
+        rollout(sb, "rollout-r", "sess-codex-r")
+        make_opencode(sb.opencode, [("ses_r", None, None, None)], [omsg("m_r", "ses_r", 0)])
+        sweep_json(sb, extra)
+        assert {r["runtime"] for r in sb.pending()} == {"codex", "opencode"}
+        results[name] = {r["remote_session"] for r in sb.pending()}
+    assert results == {"cloud": {"01SyntheticAbc"}, "laptop": {None}, "not-true": {None}, "no-id": {None}, "malformed": {None}}, results
+    # Claude keeps its own rule: the id only for the running session's own transcript.
+    sb = Sandbox("sweep-remote-claude")
+    repo = make_repo(sb.root / "repo")
+    transcript = write_transcript(sb.root / "proj", "sess-own", [assistant("msg_1", "2026-10-10T00:00:00Z", repo, "feat/a")])
+    code, out, err = sb.ledger_cmd("capture", "--transcript", str(transcript), extra_env={
+        "CLAUDE_CODE_REMOTE": "true", REMOTE_VAR: "session_01SyntheticAbc", "CLAUDE_CODE_SESSION_ID": "sess-own"})
+    assert code == 0 and {r["remote_session"] for r in sb.pending()} == {"01SyntheticAbc"}, err
+    sb = Sandbox("sweep-remote-claude-other")
+    code, out, err = sb.ledger_cmd("capture", "--transcript", str(transcript), extra_env={
+        "CLAUDE_CODE_REMOTE": "true", REMOTE_VAR: "session_01SyntheticAbc", "CLAUDE_CODE_SESSION_ID": "another"})
+    assert code == 0 and {r["remote_session"] for r in sb.pending()} == {None}, err
+
+
+@case("ledger.runtimes: codex only skips OpenCode, the default sweeps both, names are comma or space separated, unknown ones are reported")
+def _():
+    sb = Sandbox("sweep-runtimes")
+    rollout(sb, "rollout-a", "sess-codex-a")
+    make_opencode(sb.opencode, [("ses_a", None, None, None)], [omsg("m_a", "ses_a", 0)])
+    sb.set_config("ledger.capture = on\nledger.runtimes = codex\n")
+    sessions, runtimes, err = sweep_json(sb)
+    assert [r["runtime"] for r in runtimes] == ["codex"] and {r["runtime"] for r in sb.pending()} == {"codex"} and err == "", (runtimes, err)
+    sb.set_config("ledger.capture = on\nledger.runtimes = opencode\n")
+    sessions, runtimes, err = sweep_json(sb)
+    assert [r["runtime"] for r in runtimes] == ["opencode"] and {r["runtime"] for r in sb.pending()} == {"codex", "opencode"}
+    for text, expected in (("", ["codex", "opencode"]), ("ledger.runtimes = claude,codex,opencode\n", ["codex", "opencode"]),
+                           ("ledger.runtimes = claude\n", []), ("ledger.runtimes = opencode  codex\n", ["codex", "opencode"]),
+                           ("ledger.runtimes = \"codex, opencode\"\n", ["codex", "opencode"])):
+        sb.set_config("ledger.capture = on\n" + text)
+        assert [r["runtime"] for r in sweep_json(sb)[1]] == expected, text
+    sb.set_config("ledger.capture = on\nledger.runtimes = codex,cursor,Aider\n")
+    sessions, runtimes, err = sweep_json(sb)
+    assert [r["runtime"] for r in runtimes] == ["codex"] and len(err.strip().splitlines()) == 1 and "aider" in err and "cursor" in err, err
+
+
+@case("sweep: a location that is not there is reported as missing, not as an error")
+def _():
+    sb = Sandbox("sweep-missing")
+    code, out, err = sb.ledger_cmd("capture", "--sweep")
+    assert code == 0 and err == "", (code, err)
+    assert out.splitlines() == ["sweep: codex files=0 unchanged=0 failed=0 missing=sessions,archived_sessions",
+                                "sweep: opencode rows=0 failed=0 missing=opencode.db"], out
+    assert not (sb.ledger / "capture.log").exists() and sb.pending() == []
+    (sb.codex / "sessions").mkdir(parents=True)                      # one of Codex's two places
+    code, out, err = sb.ledger_cmd("capture", "--sweep")
+    assert code == 0 and "files=0 unchanged=0 failed=0 missing=archived_sessions" in out, out
+
+
+def tripled_sandbox(name: str, **kwargs):
+    """A sandbox with one Claude transcript, one Codex rollout and one OpenCode database."""
+    sb = Sandbox(name)
+    repo = make_repo(sb.root / "repo")
+    rollout(sb, "rollout-h", "sess-codex-h")
+    make_opencode(sb.opencode, [("ses_h", None, str(repo), None)], [omsg("m_h", "ses_h", 0)], **kwargs)
+    return sb, repo
+
+
+@case("hook: capture with capture on records the Claude session and then sweeps the other runtimes")
+def _():
+    sb, repo = tripled_sandbox("sweep-hook")
+    transcript = write_transcript(sb.root / "proj", "sess-hook", [assistant("msg_h", "2026-10-10T00:00:00Z", repo, "feat/a")])
+    assert run_hook(sb, hook_input(sb, transcript, repo)) < 0.5
+    assert wait_for(lambda: {r["runtime"] for r in sb.pending()} == {"claude", "codex", "opencode"}, 60), sb.pending()
+    assert len(sb.pending()) == 1 + 2 + 1
+    assert not (sb.ledger / "capture.log").exists(), log_text(sb)
+    # Capture off: the hook never starts Python, so nothing is swept (the existing contract).
+    off, repo = tripled_sandbox("sweep-hook-off")
+    off.set_config("ledger.capture = off\n")
+    run_hook(off, hook_input(off, transcript, repo))
+    time.sleep(0.3)
+    assert not off.ledger.exists()
+
+
+@case("hook: a sweep that fails leaves one log line and the Claude rows are written; with ledger.runtimes = claude nothing is swept")
+def _():
+    sb, repo = tripled_sandbox("sweep-hook-fail", tables="one")
+    transcript = write_transcript(sb.root / "proj", "sess-hf", [assistant("msg_hf", "2026-10-10T00:00:00Z", repo, "feat/a")])
+    run_hook(sb, hook_input(sb, transcript, repo))
+    assert wait_for(lambda: {r["runtime"] for r in sb.pending()} == {"claude", "codex"}, 60), sb.pending()
+    assert wait_for(lambda: "sweep opencode failed" in log_text(sb), 30)
+    assert len([l for l in log_text(sb).splitlines()]) == 1, log_text(sb)
+    # Anything unexpected in the sweep, in this process: caught, one line, the Claude rows are there, the status is 0.
+    sb, repo = tripled_sandbox("sweep-hook-boom")
+    transcript = write_transcript(sb.root / "proj", "sess-boom", [assistant("msg_b", "2026-10-10T00:00:00Z", repo, "feat/a")])
+    payload = sb.root / "hook.json"
+    payload.write_text(hook_input(sb, transcript, repo))
+    real = ledger_cost.sweep
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("boom https://user:pw@example.invalid/x")
+    ledger_cost.sweep = boom
+    try:
+        code, out, err = run_main(sb, "capture", "--hook-input", str(payload))
+    finally:
+        ledger_cost.sweep = real
+    assert code == 0 and [r["runtime"] for r in sb.pending()] == ["claude"], (code, err, sb.pending())
+    lines = log_text(sb).splitlines()
+    assert len(lines) == 1 and "sweep failed: RuntimeError" in lines[0] and "pw@" not in lines[0], lines
+    sb, repo = tripled_sandbox("sweep-hook-claude-only")
+    sb.set_config("ledger.capture = on\nledger.runtimes = claude\n")
+    transcript = write_transcript(sb.root / "proj", "sess-co", [assistant("msg_c", "2026-10-10T00:00:00Z", repo, "feat/a")])
+    shim, mark = python_shim(sb)
+    run_hook(sb, hook_input(sb, transcript, repo), shim)
+    assert wait_for(finished(mark, 1), 60)
+    assert [r["runtime"] for r in sb.pending()] == ["claude"] and not (sb.ledger / "capture.log").exists()
+
+
+@case("hook with ledger.export = on-stop also exports the swept sessions")
+def _():
+    sb, repo, store = on_stop_sandbox("sweep-stop")
+    rollout(sb, "rollout-s", "sess-codex-s")
+    make_opencode(sb.opencode, [("ses_s", None, str(repo), None)], [omsg("m_s", "ses_s", 0)])
+    shim, mark, log = hook_shims(sb)
+    turn(sb, repo, "sess-claude-s", 1, 0, shim)
+    wanted = {"refs/heads/plumb-ledger/claude/sess-claude-s", "refs/heads/plumb-ledger/codex/sess-codex-s",
+              "refs/heads/plumb-ledger/opencode/ses_s"}
+    assert wait_for(lambda: set(refs(store)) == wanted, 90) and wait_for(finished(mark, 1), 60), refs(store)
+    assert wait_for(lambda: sb.pending() == [], 30), sb.pending()
+    assert len(sb.exported()) == 4
+    assert len(stored_lines(store, "sess-claude-s")) == 1
+
+
+@case("OpenCode rows are priced: the free model costs 0, a per-model checked/source is read and a provider/model name is looked up as written")
+def _():
+    versions = ledger_cost.load_prices()
+    row = record(1, model="opencode/deepseek-v4.1-flash-free", runtime="opencode", inp=1_000_000, out=500_000, cache_read=7, w5=3, w1=0)
+    cost = ledger_cost.price_request(row, versions)
+    assert cost is not None and all(value == 0 for value in cost.values()), cost
+    rates = ledger_cost.model_rates(versions[0], "opencode/deepseek-v4.1-flash-free")
+    assert rates["checked"] == "2026-11-02" and "free tier" in rates["source"], rates
+    assert ledger_cost.model_rates(versions[0], "opencode/other-model") is None
+    assert ledger_cost.price_request(record(2, model="opencode/other-model", runtime="opencode"), versions) is None
+    version = {"id": "x", "effective_from": "1970-01-01T00:00:00Z", "checked": "2026-01-01", "source": "v",
+               "cache_write_multiplier": {"5m": 1.25, "1h": 2}, "per_tokens": 1000000,
+               "models": {"vendor/model-x": {"input": Decimal(2), "output": Decimal(8), "cache_read": Decimal("0.5"),
+                                             "checked": "2026-02-02", "source": "page",
+                                             "long_context": {"threshold_input_tokens": 10, "input": Decimal(4)}}}}
+    version["_from"] = ledger_cost.parse_time(version["effective_from"])
+    cost = ledger_cost.price_request(record(3, model="vendor/model-x", inp=1_000_000, out=1_000_000, cache_read=0), [version])
+    assert cost["input"] == Decimal(4) and cost["output"] == Decimal(8), cost    # the long-context tier, with the extra keys around it
+    sb = Sandbox("opencode-priced")
+    put_pending(sb, "ses_p", [row], "opencode")
+    report = sb.report()
+    assert report["requests"] == 1 and report["priced"] == 1 and Decimal(report["total_cost"]) == 0, report
+
+
 # ---------------------------------------------------------------- the rest of the contract
 
 @case("session-audit's output on its existing fixture is byte-identical")
@@ -1486,9 +2067,10 @@ def _():
     version = data["versions"][0]
     assert version["checked"] == "2026-10-30" and version["cache_write_multiplier"] == {"5m": Decimal("1.25"), "1h": 2}
     models = version["models"]
-    assert {k: (v["input"], v["output"], v["cache_read"]) for k, v in models.items()} == {
+    assert {k: (v["input"], v["output"], v["cache_read"]) for k, v in models.items() if k.startswith("claude-")} == {
         "claude-fable-5-1": (10, 50, Decimal("0.25")), "claude-opus-5-5": (4, 20, Decimal("0.20")),
         "claude-sonnet-5-5": (2, 10, Decimal("0.20")), "claude-haiku-5-5": (Decimal("0.10"), Decimal("0.50"), Decimal("0.01"))}
+    assert sorted(k for k in models if not k.startswith("claude-")) == ["opencode/deepseek-v4.1-flash-free"], list(models)
     assert models["claude-haiku-5-5"]["long_context"] == {
         "threshold_input_tokens": 100000, "input": Decimal("0.50"), "output": Decimal("2.50"), "cache_read": Decimal("0.05")}
 

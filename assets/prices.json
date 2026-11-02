@@ -38,6 +38,13 @@
             "output": 2.50,
             "cache_read": 0.05
           }
+        },
+        "opencode/deepseek-v4.1-flash-free": {
+          "input": 0,
+          "output": 0,
+          "cache_read": 0,
+          "checked": "2026-11-02",
+          "source": "OpenCode free tier; OpenCode itself records cost 0 for these rows."
         }
       }
     }
