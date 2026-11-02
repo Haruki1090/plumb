@@ -1748,6 +1748,28 @@ def _():
     assert [s["session"] for s in sessions] == ["sess-codex-w"] and len(sb.pending()) == 2, (sessions, runtimes)
 
 
+@case("sweep: a rollout capture_one could not read is not indexed as ok; the next sweep reads what it missed")
+def _():
+    sb = Sandbox("sweep-codex-unread")
+    path = rollout(sb, "rollout-u", "sess-codex-u")
+    sweep_json(sb)
+    assert len(sb.pending()) == 2
+    codex_extend(path)
+    real = ledger_cost.head_hash
+
+    def unreadable(*args, **kwargs):
+        raise OSError(5, "Input/output error", str(path))
+    ledger_cost.head_hash = unreadable
+    try:
+        code, out, err = run_main(sb, "capture", "--sweep", "--json")
+    finally:
+        ledger_cost.head_hash = real
+    line = [json.loads(l) for l in out.splitlines() if '"sweep"' in l][0]
+    assert code == 0 and line["failed"] == 1 and len(sb.pending()) == 2, (line, err)
+    sessions, runtimes, err = sweep_json(sb)   # readable again: the grown part is captured
+    assert len(sb.pending()) == 3 and runtimes[0]["failed"] == 0, (sessions, runtimes, sb.pending())
+
+
 @case("capture --runtime opencode with a transcript source is refused: only the sweep reads OpenCode")
 def _():
     sb = Sandbox("opencode-no-transcript")

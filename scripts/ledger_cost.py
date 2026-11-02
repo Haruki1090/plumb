@@ -926,7 +926,14 @@ def sweep_codex(directory: Path, checkouts: Checkouts, sessions: list[dict[str, 
                     continue
                 status = "ok"
                 try:
-                    sessions.append(capture_one(directory, "codex", path, checkouts))
+                    captured = capture_one(directory, "codex", path, checkouts)
+                    if not captured["files"]:
+                        # capture_one could not stat or hash the file and read nothing: not `ok`, and
+                        # not refused either. It stays out of the index, so the next sweep reads it.
+                        summary["failed"] += 1
+                        log_line(cwd, "sweep codex: file skipped: it could not be read this time")
+                        continue
+                    sessions.append(captured)
                 except (LedgerError, OSError) as error:
                     summary["failed"] += 1
                     if isinstance(error, OSError) and getattr(error, "filename", None) != key:
