@@ -59,6 +59,7 @@ SAFE_SESSION = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,127}")
 # The cloud session id the runtime exposes as `<prefix>_<id>`; a record keeps `<id>`, the part a
 # commit's `Claude-Session: https://claude.ai/code/session_<id>` trailer carries.
 REMOTE_SESSION_ENV = "CLAUDE_CODE_REMOTE_SESSION_ID"
+CURRENT_SESSION_ENV = "CLAUDE_CODE_SESSION_ID"   # the running session's own transcript id
 REMOTE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 REMOTE_VALUE = re.compile(r"[A-Za-z0-9]+_([A-Za-z0-9][A-Za-z0-9_-]{0,63})")
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
@@ -123,11 +124,19 @@ def safe_session(value: str) -> str:
     return "x-" + hashlib.sha1(value.encode("utf-8", "replace")).hexdigest()[:20]
 
 
-def remote_session_from_env(env: Any = None) -> str | None:
+def remote_session_from_env(env: Any = None, session: str | None = None) -> str | None:
     """`<id>` of `CLAUDE_CODE_REMOTE_SESSION_ID=<prefix>_<id>`, or None when the variable is absent
-    (a local session) or does not have that shape. Read from the capturing process's own
-    environment: a capture run by hand from another shell records None rather than a wrong id."""
-    value = (os.environ if env is None else env).get(REMOTE_SESSION_ENV)
+    (a local session) or does not have that shape.
+
+    The id belongs to the session that is running this process, not to every transcript it reads:
+    `session` (the transcript's session id, which its subagents share) must equal
+    `CLAUDE_CODE_SESSION_ID`, the id of the running session's own transcript. Another session's
+    transcript (`capture --transcripts <dir>`), or a run where that variable is missing, records None
+    rather than a wrong id. `session=None` skips this check."""
+    env = os.environ if env is None else env
+    if session is not None and (not session or env.get(CURRENT_SESSION_ENV) != session):
+        return None
+    value = env.get(REMOTE_SESSION_ENV)
     match = REMOTE_VALUE.fullmatch(value) if isinstance(value, str) else None
     return match.group(1) if match else None
 
@@ -785,7 +794,8 @@ def capture_one(directory: Path, runtime: str, main: Path, checkouts: Checkouts)
         saved = state["files"].get(str(main), {}).get("codex")
         if isinstance(saved, dict) and isinstance(saved.get("session_id"), str):
             session = safe_session(saved["session_id"])
-    capture = Capture(runtime, session, known_ids(directory, runtime, session), remote_session_from_env())
+    capture = Capture(runtime, session, known_ids(directory, runtime, session),
+                      remote_session_from_env(session=main.stem) if runtime == "claude" else None)
     summary_files = []
     for path, is_main in paths:
         key = str(path)

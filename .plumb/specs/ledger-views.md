@@ -23,7 +23,9 @@ Today `plumb-ledger report` prints cost by task, model, role and token kind for 
 
 - Capture adds one field, `remote_session`: the cloud session id the runtime exposes
   (`CLAUDE_CODE_REMOTE_SESSION_ID`, e.g. `cse_<id>`), reduced to `<id>` (the part after the first `_`).
-  Null when the variable is absent (a local session) or malformed. It is the same id a commit's
+  Null when the variable is absent (a local session) or malformed. It is recorded only for records
+  whose `session` equals `CLAUDE_CODE_SESSION_ID` (the running session's own transcript id; its
+  subagents share the session), so transcripts of other sessions read in the same run get null. It is the same id a commit's
   `Claude-Session: https://claude.ai/code/session_<id>` trailer carries, and those trailers are
   already public wherever the commits are.
 - It joins the allowlist (`FIELDS`) and `docs/ledger.md`. Records captured before this have no field
@@ -93,9 +95,10 @@ The store is the owner's private repository. plumb ships the command and documen
    no access to product repositories, so B is skipped there. Documented in `docs/ledger.md` as an
    example workflow; plumb does not install it.
 2. **Weekly, with the retro.** `plumb:retro` gains a step: run `views` with `--changes` for the
-   week into `views/<ISO week>/`, and write the retro's result (the at most three changes, each with
-   its layer and the number to watch) to `retro/<ISO week>.md` in the store. The next retro first
-   reads the previous week's three numbers. When no store is set, the retro prints the same and writes
+   week into `views/<owner>/<name>/<ISO week>/`, and write the retro's result (the at most three changes, each with
+   its layer and the number to watch) to `retro/<owner>/<name>/<ISO week>.md` in the store (the repository is in the path: one store can
+   serve several repositories). The next retro first reads the previous week's three numbers from the
+   same path. When no store is set, the retro prints the same and writes
    nothing.
 
 The store's default branch then holds only generated views and retro notes; session records stay in

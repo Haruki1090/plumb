@@ -73,7 +73,7 @@ class Sandbox:
         self.env = {**os.environ, "HOME": str(self.root / "home"), "PLUMB_CONFIG": str(self.config),
                     "PLUMB_LEDGER_DIR": str(self.ledger), "GIT_TERMINAL_PROMPT": "0",
                     "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
-        for key in ("PLUMB_LEDGER_GH_FIXTURES", ledger_cost.REMOTE_SESSION_ENV):
+        for key in ("PLUMB_LEDGER_GH_FIXTURES", ledger_cost.REMOTE_SESSION_ENV, ledger_cost.CURRENT_SESSION_ENV):
             self.env.pop(key, None)
 
     def ledger_cmd(self, *args: str, extra_env: dict | None = None, cwd: Path | None = None):
@@ -206,25 +206,44 @@ def _():
     assert ledger_cost.FIELDS[-1] == "remote_session"
 
 
-@case("capture records remote_session from its own environment, and null when the variable is absent")
+@case("remote_session is recorded only for the running session's own transcript (and its subagents): same, different and missing session id")
 def _():
-    sb = Sandbox("capture-env")
-    path = transcript(sb.root / "proj", "sess-cloud", 2, sb.cwd)
-    code, out, err = sb.ledger_cmd("capture", "--json", "--transcript", str(path),
-                                   extra_env={ledger_cost.REMOTE_SESSION_ENV: "cse_TESTID"})
-    assert code == 0, err
-    rows = sb.pending()
-    assert len(rows) == 2 and {r["remote_session"] for r in rows} == {"TESTID"}, rows
+    remote, current = ledger_cost.REMOTE_SESSION_ENV, ledger_cost.CURRENT_SESSION_ENV
+    read = ledger_cost.remote_session_from_env
+    cloud = {remote: "cse_TESTID", current: "sess-cloud"}
+    assert read(cloud, session="sess-cloud") == "TESTID"
+    assert read(cloud, session="sess-other") is None and read(cloud, session="") is None
+    assert read({remote: "cse_TESTID"}, session="sess-cloud") is None          # no id for the running session
+    assert read({current: "sess-cloud"}, session="sess-cloud") is None         # a local session
+    assert read(cloud) == "TESTID"                                              # no session asked for: the variable alone
+
+    def captured(name: str, env: dict | None, *, sessions=("sess-cloud",), subagent=False, many=False) -> list[dict]:
+        sb = Sandbox(name)
+        proj = sb.root / "proj"
+        for session in sessions:
+            transcript(proj, session, 2, sb.cwd)
+        if subagent:
+            side = proj / "sess-cloud" / "subagents"
+            side.mkdir(parents=True)
+            (side / "agent-w1.jsonl").write_text(json.dumps({
+                "type": "assistant", "isSidechain": True, "agentId": "w1", "timestamp": stamp(3), "cwd": str(sb.cwd),
+                "message": {"id": "msg_side", "model": HAIKU, "role": "assistant", "content": [], "usage": usage()}}) + "\n")
+        args = ["--transcripts", str(proj)] if many else ["--transcript", str(proj / f"{sessions[0]}.jsonl")]
+        code, out, err = sb.ledger_cmd("capture", "--json", *args, extra_env=env)
+        assert code == 0, err
+        return sb.pending()
+
+    rows = captured("capture-same", cloud, subagent=True)
+    assert len(rows) == 3 and {r["session"] for r in rows} == {"sess-cloud"} and {r["remote_session"] for r in rows} == {"TESTID"}, rows
+    assert sorted(r["role"] for r in rows) == ["main", "main", "subagent"]       # the subagent's record has the parent's session id
     assert all(list(r) == list(ledger_cost.FIELDS) for r in rows)
-    local = Sandbox("capture-local")
-    code, out, err = local.ledger_cmd("capture", "--json", "--transcript", str(transcript(local.root / "proj", "sess-local", 2, local.cwd)))
-    assert code == 0, err
-    assert [r["remote_session"] for r in local.pending()] == [None, None]
-    odd = Sandbox("capture-odd")
-    code, out, err = odd.ledger_cmd("capture", "--json", "--transcript", str(transcript(odd.root / "proj", "sess-odd", 1, odd.cwd)),
-                                    extra_env={ledger_cost.REMOTE_SESSION_ENV: "not-a-cloud-session"})
-    assert code == 0, err
-    assert [r["remote_session"] for r in odd.pending()] == [None]
+    assert {r["remote_session"] for r in captured("capture-diff", {**cloud, current: "sess-running"}, subagent=True)} == {None}
+    assert {r["remote_session"] for r in captured("capture-nocur", {remote: "cse_TESTID"})} == {None}
+    assert {r["remote_session"] for r in captured("capture-local", None)} == {None}
+    assert {r["remote_session"] for r in captured("capture-odd", {**cloud, remote: "not-a-cloud-session"})} == {None}
+    # a directory of transcripts: only the running session's own gets the id; the others are past sessions
+    mixed = captured("capture-many", cloud, sessions=("sess-old", "sess-cloud", "sess-older"), many=True)
+    assert {r["session"]: r["remote_session"] for r in mixed} == {"sess-old": None, "sess-cloud": "TESTID", "sess-older": None}, mixed
 
 
 @case("a record captured before the field existed reads as null, prices as before and still passes the allowlist")

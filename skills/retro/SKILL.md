@@ -58,9 +58,10 @@ numbers only.
 
 ## 2. Read last week's proposals
 
-Open the previous week's note: `retro/<ISO week>.md` in the store (step 5 writes it; fetch the
-store's default branch, `plumb-config ledger.store`), else the previous `retro/<since>/review.md`
-under `plumb-path run`. For each proposal record its state (adopted, declined, not started) and
+Open the previous week's note: `retro/<owner>/<name>/<previous ISO week>.md` in the store, this
+repository's own path (step 5 writes it; fetch the store's default branch, `plumb-config
+ledger.store`), else the previous `retro/<since>/review.md` under `plumb-path run`. Never read
+another repository's note: one store can serve several. For each proposal record its state (adopted, declined, not started) and
 whether its number moved. A proposal adopted four weeks ago whose number did not move is a finding
 of this week. With neither, say there is no earlier week.
 
@@ -127,16 +128,18 @@ and models, they are not the bill.
 
 With `plumb-config ledger.store` set, the week is kept next to the records so the next retro can read
 it. Clone the store's default branch (it holds only generated views and retro notes), copy the
-views to `views/<ISO week>/` and `review.md` to `retro/<ISO week>.md`, commit and push the default
-branch:
+views to `views/<owner>/<name>/<ISO week>/` and `review.md` to `retro/<owner>/<name>/<ISO week>.md`
+(the repository in the path, so that two repositories sharing one store do not overwrite each
+other), commit and push the default branch:
 
 ```bash
+REPO=<owner/name>
 WEEK=$(python3 -c 'import datetime, sys; print(datetime.date.fromisoformat(sys.argv[1]).strftime("%G-W%V"))' "$SINCE")
 git clone --quiet --depth 1 "$(plumb-config ledger.store)" "$OUT/store"
-mkdir -p "$OUT/store/views/$WEEK" "$OUT/store/retro"
-cp "$OUT"/views/* "$OUT/store/views/$WEEK/" && cp "$OUT/review.md" "$OUT/store/retro/$WEEK.md"
+mkdir -p "$OUT/store/views/$REPO/$WEEK" "$OUT/store/retro/$REPO"
+cp "$OUT"/views/* "$OUT/store/views/$REPO/$WEEK/" && cp "$OUT/review.md" "$OUT/store/retro/$REPO/$WEEK.md"
 git -C "$OUT/store" add views retro
-git -C "$OUT/store" commit --quiet -m "retro $WEEK" && git -C "$OUT/store" push --quiet origin HEAD
+git -C "$OUT/store" commit --quiet -m "retro $REPO $WEEK" && git -C "$OUT/store" push --quiet origin HEAD
 ```
 
 This is the one write outside `$OUT`, and it goes only to the owner's private store, never to a

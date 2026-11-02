@@ -17,7 +17,9 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
   is shown beside it.
 - Capture records `remote_session`, the cloud session id the runtime exposes
   (`CLAUDE_CODE_REMOTE_SESSION_ID`, reduced to the part after the first underscore; null for a local
-  session or a malformed value). It is the id a `Claude-Session:` commit trailer carries. It joins the
+  session or a malformed value). It is the id a `Claude-Session:` commit trailer carries. It is
+  recorded only for the running session's own transcript and its subagents (the record's `session`
+  equals `CLAUDE_CODE_SESSION_ID`); other transcripts read in the same run get null. It joins the
   allowlist; records captured before have no field and read as null.
 - Session-to-pull-request attribution: with `--changes <jsonl>` (repeatable), a request the branch
   rule leaves without a pull request (no pull request on its branch, an unknown branch, or the base
@@ -29,8 +31,9 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
   request was placed in.
 - `docs/ledger.md`: the views, active time, session attribution, and the publishing in the store
   (an example daily workflow for the store, and the weekly retro).
-- `plumb:retro` runs `views` for the week and keeps `views/<ISO week>/` and `retro/<ISO week>.md` in the
-  store; the next retro reads the previous week's note first.
+- `plumb:retro` runs `views` for the week and keeps `views/<owner>/<name>/<ISO week>/` and
+  `retro/<owner>/<name>/<ISO week>.md` in the store (the repository is in the path, so a store shared by
+  several repositories keeps them apart); the next retro reads the previous week's note first.
 
 ### Changed
 

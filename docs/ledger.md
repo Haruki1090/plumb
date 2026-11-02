@@ -112,9 +112,13 @@ their `transcript` and `worktree_at_capture` values.
 `CLAUDE_CODE_REMOTE_SESSION_ID` (`<prefix>_<id>`), reduced to `<id>`, the part after the first
 underscore. It is the id a commit's `Claude-Session: https://claude.ai/code/session_<id>` trailer
 carries, and those trailers are already public wherever the commits are. It is `null` when the
-variable is absent (a local session) or does not have that shape. The value is read from the
-capturing process's own environment, so a capture run by hand from another shell records `null`,
-not a wrong id. Records captured before 0.20.0 have no such field and read as `null`; nothing is
+variable is absent (a local session) or does not have that shape. The value belongs to the session
+running the capturing process, not to every transcript it reads: it is recorded only for records
+whose `session` (the transcript's session id, which its subagents share) equals
+`CLAUDE_CODE_SESSION_ID`, the id of the running session's own transcript. A capture run by hand from
+another shell, one that imports other sessions' transcripts (`--transcripts <dir>`), or a run where
+`CLAUDE_CODE_SESSION_ID` is missing records `null` for them, not a wrong id that would move past work
+to the running session's pull request. Codex records get `null`. Records captured before 0.20.0 have no such field and read as `null`; nothing is
 backfilled. Session-to-pull-request attribution (below) is what it is for.
 
 ### Price
@@ -323,6 +327,8 @@ workflow is not installed by plumb. A team adopts the same thing by pointing `le
 organisation repository.
 
 **Weekly, with the retro.** `plumb:retro` runs `views` with `--prs` and `--changes` for the week into
-`views/<ISO week>/` of the store, and writes its result (at most three changes, each with its layer and
-the number to watch) to `retro/<ISO week>.md`. The next retro reads the previous week's note first.
+`views/<owner>/<name>/<ISO week>/` of the store, and writes its result (at most three changes, each with
+its layer and the number to watch) to `retro/<owner>/<name>/<ISO week>.md`. The repository is in the
+path because one store can serve several repositories (a team's store, or an owner with more than
+one); the next retro reads the previous week's note from the same path, never another repository's.
 With no store set the retro prints the same and writes nothing.
