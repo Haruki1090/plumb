@@ -106,7 +106,16 @@ their `transcript` and `worktree_at_capture` values.
 **The allowlist** — the only fields a record holds, and the only ones that can leave the machine:
 `id`, `time`, `model`, `input`, `output`, `cache_read`, `cache_write_5m`, `cache_write_1h`,
 `repository`, `branch`, `attribution_source`, `role`, `agent_type`, `agent_id`, `session`,
-`runtime`. No message text, tool input or output, file path or credential.
+`runtime`, `remote_session`. No message text, tool input or output, file path or credential.
+
+`remote_session` (0.20.0) is the cloud session id the runtime exposes in
+`CLAUDE_CODE_REMOTE_SESSION_ID` (`<prefix>_<id>`), reduced to `<id>`, the part after the first
+underscore. It is the id a commit's `Claude-Session: https://claude.ai/code/session_<id>` trailer
+carries, and those trailers are already public wherever the commits are. It is `null` when the
+variable is absent (a local session) or does not have that shape. The value is read from the
+capturing process's own environment, so a capture run by hand from another shell records `null`,
+not a wrong id. Records captured before 0.20.0 have no such field and read as `null`; nothing is
+backfilled. Session-to-pull-request attribution (below) is what it is for.
 
 ### Price
 
@@ -154,7 +163,7 @@ reports the key and flags `on-stop` without a store or with capture off.
 
 ```bash
 plumb-ledger prs    --repo <owner/name> --since <day> [--out <json>]
-plumb-ledger report --since <day> --until <day> [--prs <json>]... [--changes <jsonl>] [--rework <json>]
+plumb-ledger report --since <day> --until <day> [--prs <json>]... [--changes <jsonl>]... [--rework <json>]
 ```
 
 A task is (repository, head ref, pull request number). Among pull requests of one repository and
@@ -173,3 +182,147 @@ attribution, ambiguous, no pull request, unidentified and conflicting requests; 
 
 Costs are list prices applied to recorded tokens. On a flat-rate plan they are not the bill; they
 compare tasks and models with each other.
+
+### Session-to-pull-request attribution
+
+A cloud session usually starts on the base branch, investigates, then branches. Its early requests
+belong to no pull request by the rule above, so they form large buckets (`no pull request`, or
+`unknown attribution` while the branch is unknown). `report` and `views` accept `--changes <jsonl>`
+(repeatable; the output of `plumb-ledger changes`, whose `sessions` hold the `Claude-Session:` links
+of each landed pull request's commits) and use it for one more step:
+
+- A request is assigned as before (repository, head ref, pull request by time).
+- Only when that gives no pull request (the branch has none, it is the base branch, or the branch is
+  unknown) and the request's `remote_session` maps to **exactly one** landed pull request of the
+  same repository, the request goes to that pull request. In `views` its attribution is `session`.
+- A session that maps to two or more pull requests leaves the request where it was and is counted as
+  `session_ambiguous`. A session that maps to none, and a record with no `remote_session`, stay where
+  they were. Nothing else is guessed.
+- A request whose repository is unknown (a cloud session often starts outside any checkout, so its
+  first requests have none) goes to a pull request only when its `remote_session` maps to exactly one
+  landed pull request **across all repositories**; it then takes that pull request's repository. Two
+  or more, in one repository or several, leave it unknown and are counted as `session_ambiguous`.
+- `--repo` filters on the repository a request was placed in, after this step: a request moved to a
+  pull request of the wanted repository is counted there, one moved to another repository is left out
+  as another repository, and only requests still without a repository are reported as unknown
+  repository. The active time of a session is still measured on its whole timeline.
+- A request that already has a pull request by its branch, or is `ambiguous` (two open pull requests
+  for the head ref), is never moved.
+- It needs `--prs`: without it tasks are `repository @ branch` and there is no way to tell that a
+  branch has no pull request, so the step is skipped (and the output says so).
+
+Only landed pull requests carry `sessions`, so open ones are left to the branch rule. `report` counts
+the moved requests and `session_ambiguous` (JSON keys `session_attribution` and
+`unknown.session_ambiguous`, and one line of text) only when `--changes` is given; its landed/not-landed
+split reads the same files.
+
+### Views
+
+```bash
+plumb-ledger views --since <day> --until <day> --out <dir> [--changes <jsonl>]... [--prs <json>]...
+                   [--gap-minutes 30] [--repo <owner/name>] [--timezone <tz>]
+```
+
+The cost report is terminal text, and the store's records sit in one branch per session, which GitHub
+does not show as data. `views` reads the same sources as `report` (local records and the store) and
+writes tables that can be read on GitHub without running anything, replacing these files under
+`--out` and nothing else (other files in the directory stay; nothing is written outside it; nothing
+is pushed):
+
+| File | Rows |
+|---|---|
+| `README.md` | Period, time zone, gap, totals (requests, active hours, cost), coverage and every unknown count, links to the others |
+| `tasks.md`, `tasks.csv` | One row per task: repository, head ref, pull request, attribution mix, sessions, requests, active time, span, cost, cost by model family, main / subagent cost |
+| `days.md`, `days.csv` | One row per day of the period in the time zone, empty days included: requests, active time, cost, cost by model family |
+| `models.md`, `models.csv` | One row per model: requests, cost, share, tokens by kind |
+| `sessions.csv` | One row per session: runtime, session, remote session, repositories, branches, first and last request, active time, cost, assigned pull requests |
+
+The Markdown tables are for reading: the 50 costliest rows (a day table lists its 50 latest days, oldest
+first), then a line saying how many more rows the CSV holds. The CSV files hold every row, in RFC 4180
+form (comma, CRLF, a field with a comma, quote or line break is quoted), costliest first. In Markdown,
+`|` and a backslash in a cell are escaped and a line break becomes `<br>`. A task is a pull request,
+a `repository @ head ref` with no pull request (`none`), an `ambiguous` head ref, or the single
+`unknown attribution` row; the attribution column counts requests by how they were attributed
+(`reflog`, `transcript`, `worktree_at_capture`, `unknown`, and `session` for those moved by the rule
+above). Cost uses the same price table and rules as `report`: list prices, a request whose cost
+cannot be known is counted (`unknown_cost_requests`, `(+n unpriced)`) and never added as zero, and
+a cost cell that has no priced request is empty rather than 0. CSV money has six decimals. The
+same records give the same bytes. Without `--changes` the session step is skipped and the README
+says so.
+
+**Active time.** Time is measured per session, not per request. The requests of one session (the
+main transcript and its subagents together), sorted by time, form a timeline. Two consecutive
+requests at most `gap` apart are one stretch of work: the interval between them counts as active
+time and is credited to the task of the **later** request, so time spent switching branches goes to
+the branch switched to. A longer gap is idle and counts nowhere, and the first request of a stretch
+adds nothing. `gap` is 30 minutes (`--gap-minutes`) because a turn that waits on a long CI run or a
+background job issues no request for 10 to 25 minutes while the work goes on. Parallel sessions on
+one task each add their own time (it is effort, not calendar time); the span, first to last request
+of the task, is shown beside it. The timeline uses every record of the session, also those outside
+`--repo` and just outside the period, so that scoping or the period's edge does not turn
+neighbouring work into idle time. The gap is printed with every table.
+
+### Publishing in the store
+
+The store is the owner's private repository, and its default branch can hold generated views and
+retro notes while the session records stay in their `plumb-ledger/<runtime>/<session>` branches
+(one writer per branch, never merged). plumb ships the command; the store's own workflow and the
+weekly run are the owner's to add.
+
+**Daily, in the store's own CI.** Check out the store, bring the session branches into the checkout,
+point `ledger.store` at the checkout itself, write the trailing 28 days into `views/latest/`, and
+commit it to the default branch when it changed. The job has no access to product repositories, so
+there is no `--changes` and no session attribution; the README of the views says so. Pin plumb to a
+release tag or a commit SHA, so the views change only when you move the pin.
+
+```yaml
+name: ledger-views
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ledger-views
+jobs:
+  views:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: <owner>/plumb   # the repository the plugin is installed from
+          ref: <release tag or commit SHA>   # pin it; the views change with plumb's version
+          path: plumb
+      - name: Bring the session branches into the checkout
+        run: git fetch origin '+refs/heads/plumb-ledger/*:refs/heads/plumb-ledger/*'
+      - name: Write the views
+        run: |
+          mkdir -p "$HOME/.claude/plumb"
+          printf 'ledger.store = %s\n' "$GITHUB_WORKSPACE" > "$HOME/.claude/plumb/config"
+          plumb/bin/plumb-ledger views \
+            --since "$(date -u -d '27 days ago' +%F)" --until "$(date -u +%F)" \
+            --timezone UTC --out views/latest
+      - name: Commit when it changed
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git add views/latest
+          git diff --cached --quiet && exit 0
+          git -c user.name=plumb-ledger -c user.email=ledger@plumb.invalid commit -m "views: $(date -u +%F)"
+          git push origin "HEAD:refs/heads/$DEFAULT_BRANCH"
+```
+
+The checkout is a clone of the default branch, so the session branches are fetched into it as local
+branches first; `ledger.store` can then be the checkout's own path and the job reads nothing over the
+network beyond GitHub. `--timezone` is given because the checkout holds no project contract. The
+workflow is not installed by plumb. A team adopts the same thing by pointing `ledger.store` at an
+organisation repository.
+
+**Weekly, with the retro.** `plumb:retro` runs `views` with `--prs` and `--changes` for the week into
+`views/<ISO week>/` of the store, and writes its result (at most three changes, each with its layer and
+the number to watch) to `retro/<ISO week>.md`. The next retro reads the previous week's note first.
+With no store set the retro prints the same and writes nothing.

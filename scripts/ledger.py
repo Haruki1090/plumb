@@ -8,6 +8,7 @@
     plumb-ledger export  ...   push captured records to the owner's store (scripts/ledger_cost.py)
     plumb-ledger prs     ...   pull requests by head ref, for task assignment (scripts/ledger_cost.py)
     plumb-ledger report  ...   the weekly report (scripts/ledger_cost.py)
+    plumb-ledger views   ...   time, cost and model per task as tables in a directory (scripts/ledger_views.py)
 
 This file only dispatches. Each module owns its subcommands, options and help.
 """
@@ -20,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 CHANGES = {"changes", "rework"}
 FAILURES = {"failures"}
-COST = {"capture", "export", "prs", "report"}
+COST = {"capture", "export", "prs", "report", "views"}
 
 
 def main(argv: list[str]) -> int:

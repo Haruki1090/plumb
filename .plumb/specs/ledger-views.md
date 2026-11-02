@@ -40,6 +40,11 @@ Today `plumb-ledger report` prints cost by task, model, role and token kind for 
   and its `remote_session` maps to exactly one pull request of the same repository, the request goes to
   that pull request, marked `attribution = session`. A session that maps to two or more pull requests
   stays where it was and is counted as `session_ambiguous`. Nothing else is guessed.
+- A request whose repository is unknown (a cloud session often starts outside any checkout, so its
+  first requests have no repository) goes to a pull request only when its `remote_session` maps to
+  exactly one pull request across all repositories; the request then takes that pull request's
+  repository. `--repo` filters on the repository after this step, so such a request is counted in the
+  repository it was placed in, and only requests still without one are reported as left out.
 - Only landed pull requests carry `sessions` today; open ones are left to the branch rule.
 
 ### C. Active time

@@ -10,7 +10,8 @@ gather; this skill reads and chooses. It changes nothing by itself: no code, no 
 no pull requests.
 
 The period is last Monday to Sunday in the contract's `ledger.timezone` unless the owner names one.
-Write everything under `plumb-path run`, in `retro/<since>/`, never in the tracked tree.
+Write everything under `plumb-path run`, in `retro/<since>/`, never in the tracked tree; the one
+exception is step 5, which keeps the week in the owner's private ledger store.
 
 ## 0. Check what is there, and say what is not
 
@@ -36,8 +37,15 @@ plumb-ledger changes  --repo <owner/name> --since <SINCE minus 14 days> --until 
 plumb-ledger rework   --changes "$OUT/changes.jsonl" --since "$SINCE" --until "$UNTIL" --json > "$OUT/rework.json"
 plumb-ledger prs      --repo <owner/name> --since <SINCE minus 14 days> --out "$OUT/prs.json"
 plumb-ledger report   --repo <owner/name> --since "$SINCE" --until "$UNTIL" --prs "$OUT/prs.json" --changes "$OUT/changes.jsonl" --rework "$OUT/rework.json" --json > "$OUT/cost.json"
+plumb-ledger views    --repo <owner/name> --since "$SINCE" --until "$UNTIL" --prs "$OUT/prs.json" --changes "$OUT/changes.jsonl" --out "$OUT/views"
 plumb-ledger failures --repo <owner/name> --since "$SINCE" --until "$UNTIL" --json > "$OUT/failures.json"
 ```
+
+`views` writes the same period as tables (`README.md`, `tasks`, `days` and `models` as `.md` and
+`.csv`, `sessions.csv`): active time and cost per task, and what was not attributed. `--changes`
+lets it move a request made on the base branch, or before the branch existed, to the one landed
+pull request its cloud session produced; the README says how many it moved and how many it left.
+Read the tables rather than reprinting them: the review cites a task by its pull request number.
 
 Changes run from 14 days before the period to today: the cohort is still only what landed in the
 period (`rework` bounds it), but a fix that landed after the period and inside its look-ahead window
@@ -50,9 +58,11 @@ numbers only.
 
 ## 2. Read last week's proposals
 
-Open the previous `retro/<since>/review.md`. For each proposal record its state (adopted, declined,
-not started) and whether its number moved. A proposal adopted four weeks ago whose number did not
-move is a finding of this week.
+Open the previous week's note: `retro/<ISO week>.md` in the store (step 5 writes it; fetch the
+store's default branch, `plumb-config ledger.store`), else the previous `retro/<since>/review.md`
+under `plumb-path run`. For each proposal record its state (adopted, declined, not started) and
+whether its number moved. A proposal adopted four weeks ago whose number did not move is a finding
+of this week. With neither, say there is no earlier week.
 
 ## 3. Choose at most three
 
@@ -64,6 +74,10 @@ Look for, in this order:
 - **Cost.** The most expensive tasks, the frontier share, which roles and agent types spend most,
   and which token kind dominates (an hour-long cache write that dominates is fixed by splitting
   sessions, not by changing models).
+- **Time.** Active hours per task beside its cost (`tasks.md`): a task that cost little but took a
+  long stretch of active time, or the reverse, and the spans that are far longer than the active
+  time. Active time counts a stretch of requests with no gap over 30 minutes; it is effort, not the
+  calendar.
 - **Coverage.** Unknown attribution, unknown cost, ambiguous tasks and pending exports. A number you
   cannot attribute is not a number you can act on.
 
@@ -83,6 +97,7 @@ is `plumb:failure-to-rule`.
 | | This week | Last week |
 |---|---|---|
 | Cost (list price applied to recorded tokens) | | |
+| Active hours | | |
 | Frontier share | | |
 | Landed changes | | |
 | Reworked within the window (cohort) | | |
@@ -107,6 +122,27 @@ is `plumb:failure-to-rule`.
 Report the same in short form. Say which machine the local records came from and whether the store
 was read. Costs are list prices applied to recorded tokens: on a flat-rate plan they compare tasks
 and models, they are not the bill.
+
+## 5. Keep the week in the store
+
+With `plumb-config ledger.store` set, the week is kept next to the records so the next retro can read
+it. Clone the store's default branch (it holds only generated views and retro notes), copy the
+views to `views/<ISO week>/` and `review.md` to `retro/<ISO week>.md`, commit and push the default
+branch:
+
+```bash
+WEEK=$(python3 -c 'import datetime, sys; print(datetime.date.fromisoformat(sys.argv[1]).strftime("%G-W%V"))' "$SINCE")
+git clone --quiet --depth 1 "$(plumb-config ledger.store)" "$OUT/store"
+mkdir -p "$OUT/store/views/$WEEK" "$OUT/store/retro"
+cp "$OUT"/views/* "$OUT/store/views/$WEEK/" && cp "$OUT/review.md" "$OUT/store/retro/$WEEK.md"
+git -C "$OUT/store" add views retro
+git -C "$OUT/store" commit --quiet -m "retro $WEEK" && git -C "$OUT/store" push --quiet origin HEAD
+```
+
+This is the one write outside `$OUT`, and it goes only to the owner's private store, never to a
+product repository. A period that is not one Monday-to-Sunday week goes to `<SINCE>..<UNTIL>` in
+place of `<ISO week>`. If the push fails, say so and leave the files in `$OUT`. With no store set,
+write nothing and print the same.
 
 ## How this skill is judged
 
