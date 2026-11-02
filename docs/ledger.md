@@ -273,7 +273,9 @@ neighbouring work into idle time. The gap is printed with every table.
 The store is the owner's private repository, and its default branch can hold generated views and
 retro notes while the session records stay in their `plumb-ledger/<runtime>/<session>` branches
 (one writer per branch, never merged). plumb ships the command; the store's own workflow and the
-weekly run are the owner's to add.
+weekly run are the owner's to add. The default branch must be one outside `plumb-ledger/` (an empty repository first filled by an
+export can end up with a session branch as its default; an export replaces that branch, so views and
+notes on it would be lost). The weekly retro checks this and stops.
 
 **Daily, in the store's own CI.** Check out the store, bring the session branches into the checkout,
 point `ledger.store` at the checkout itself, write the trailing 28 days into `views/latest/`, and

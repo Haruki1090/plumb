@@ -136,6 +136,8 @@ other), commit and push the default branch:
 REPO=<owner/name>
 WEEK=$(python3 -c 'import datetime, sys; print(datetime.date.fromisoformat(sys.argv[1]).strftime("%G-W%V"))' "$SINCE")
 git clone --quiet --depth 1 "$(plumb-config ledger.store)" "$OUT/store"
+BRANCH=$(git -C "$OUT/store" symbolic-ref --short HEAD)
+case "$BRANCH" in plumb-ledger/*) echo "store default branch is a session branch: $BRANCH" >&2; exit 1 ;; esac
 mkdir -p "$OUT/store/views/$REPO/$WEEK" "$OUT/store/retro/$REPO"
 cp "$OUT"/views/* "$OUT/store/views/$REPO/$WEEK/" && cp "$OUT/review.md" "$OUT/store/retro/$REPO/$WEEK.md"
 git -C "$OUT/store" add views retro
@@ -143,7 +145,10 @@ git -C "$OUT/store" commit --quiet -m "retro $REPO $WEEK" && git -C "$OUT/store"
 ```
 
 This is the one write outside `$OUT`, and it goes only to the owner's private store, never to a
-product repository. A period that is not one Monday-to-Sunday week goes to `<SINCE>..<UNTIL>` in
+product repository. If the store's default branch is a session branch (`plumb-ledger/<runtime>/<session>`, which
+happens when an empty repository is first filled by an export), stop and say so: the next export of
+that session replaces the branch and would drop the notes. Make a default branch outside
+`plumb-ledger/` first. A period that is not one Monday-to-Sunday week goes to `<SINCE>..<UNTIL>` in
 place of `<ISO week>`. If the push fails, say so and leave the files in `$OUT`. With no store set,
 write nothing and print the same.
 
