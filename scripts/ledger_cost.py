@@ -928,10 +928,15 @@ def sweep_codex(directory: Path, checkouts: Checkouts, sessions: list[dict[str, 
                 try:
                     sessions.append(capture_one(directory, "codex", path, checkouts))
                 except (LedgerError, OSError) as error:
-                    # Refused by the normalizer, or not readable (permissions, removed meanwhile): this
-                    # file only. The other rollouts go on, and this one waits for a change.
-                    status = "failed"
                     summary["failed"] += 1
+                    if isinstance(error, OSError) and getattr(error, "filename", None) != key:
+                        # Writing the ledger failed (its directory, the disk), not reading this file:
+                        # the file stays out of the index, so the next sweep tries it again.
+                        log_line(cwd, f"sweep codex: ledger write failed: {type(error).__name__}: {redact(str(error))[:200]}")
+                        continue
+                    # Refused by the normalizer, or this file is not readable (permissions): this file
+                    # only. The other rollouts go on, and this one waits for a change.
+                    status = "failed"
                     log_line(cwd, f"sweep codex: file refused: {type(error).__name__}: {redact(str(error))[:200]}")
                 # The size and mtime read before the capture: a file that grows meanwhile differs next time.
                 seen[key] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "status": status}

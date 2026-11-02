@@ -1710,7 +1710,7 @@ def _():
 
     def locked_one(directory, runtime, main, checkouts):
         if main.name == "rollout-a-locked.jsonl":
-            raise PermissionError(13, "Permission denied")
+            raise PermissionError(13, "Permission denied", str(main))
         return real(directory, runtime, main, checkouts)
     ledger_cost.capture_one = locked_one
     try:
@@ -1724,6 +1724,28 @@ def _():
     assert any("file refused: PermissionError" in l for l in log_text(sb).splitlines()), log_text(sb)
     index = json.loads((sb.ledger / "state" / "codex" / "sweep.json").read_text())
     assert sorted(e["status"] for e in index.values()) == ["failed", "ok"], index
+
+
+@case("sweep: a failure to write the ledger is not remembered as a refused file; the next sweep reads it")
+def _():
+    sb = Sandbox("sweep-codex-write-fails")
+    rollout(sb, "rollout-w", "sess-codex-w")
+    real = ledger_cost.capture_one
+
+    def write_fails(directory, runtime, main, checkouts):
+        raise OSError(28, "No space left on device", str(directory / "pending" / runtime / "x.jsonl"))
+    ledger_cost.capture_one = write_fails
+    try:
+        code, out, err = run_main(sb, "capture", "--sweep", "--json")
+    finally:
+        ledger_cost.capture_one = real
+    line = [json.loads(l) for l in out.splitlines() if '"sweep"' in l][0]
+    assert code == 0 and line["failed"] == 1 and sb.pending() == [], (line, err)
+    assert any("ledger write failed: OSError" in l for l in log_text(sb).splitlines()), log_text(sb)
+    index_path = sb.ledger / "state" / "codex" / "sweep.json"
+    assert not index_path.exists() or json.loads(index_path.read_text()) == {}, index_path.read_text()
+    sessions, runtimes, err = sweep_json(sb)   # the ledger is writable again: the unchanged file is read
+    assert [s["session"] for s in sessions] == ["sess-codex-w"] and len(sb.pending()) == 2, (sessions, runtimes)
 
 
 @case("capture --runtime opencode with a transcript source is refused: only the sweep reads OpenCode")
