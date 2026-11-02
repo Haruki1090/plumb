@@ -231,7 +231,9 @@ The cost report is terminal text, and the store's records sit in one branch per 
 does not show as data. `views` reads the same sources as `report` (local records and the store) and
 writes tables that can be read on GitHub without running anything, replacing these files under
 `--out` and nothing else (other files in the directory stay; nothing is written outside it; nothing
-is pushed):
+is pushed). The store's refs are fetched into a cache repository, which `views` keeps in a temporary
+directory and removes when it ends, so neither the ledger directory nor `--out` receives it (a cache
+under `--out` would be committed with the tables); `--store-cache <dir>` names one to keep:
 
 | File | Rows |
 |---|---|
@@ -250,7 +252,7 @@ a `repository @ head ref` with no pull request (`none`), an `ambiguous` head ref
 (`reflog`, `transcript`, `worktree_at_capture`, `unknown`, and `session` for those moved by the rule
 above). Cost uses the same price table and rules as `report`: list prices, a request whose cost
 cannot be known is counted (`unknown_cost_requests`, `(+n unpriced)`) and never added as zero, and
-a row (task, day, model, session) whose requests all lack a price has no cost: the CSV cell (cost, share, main / subagent cost, model family) is empty and the Markdown cell says `unpriced`, never 0 (a day with no request is a real zero). A row with some priced requests shows their sum and how many were not priced. Repository names are compared without case (a record, a `--prs` file and a `changes` row may spell one differently), and a task is shown under the smallest of the spellings seen. CSV money has six decimals. The
+a row (task, day, model, session) whose requests all lack a price has no cost: the CSV cell (cost, share, main / subagent cost, model family) is empty and the Markdown cell says `unpriced`, never 0 (a day with no request is a real zero). A row with some priced requests shows their sum and how many were not priced. Repository names are compared without case everywhere (one key, lower case, for the record, `--prs`, `--changes`, `--rework` and `--repo`: GitHub names are case-insensitive and these sources may spell one differently), and a task is shown under the smallest of the spellings seen. CSV money has six decimals. The
 same records give the same bytes. Without `--changes` the session step is skipped and the README
 says so.
 

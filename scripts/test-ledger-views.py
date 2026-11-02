@@ -595,6 +595,87 @@ def _():
     assert sb.report("--prs", prs, "--changes", changes, "--repo", "EXAMPLE/app")["requests"] == 3
 
 
+@case("a pull request is found whatever the case of the repository name in the record and in --prs: the branch rule wins over the session")
+def _():
+    sb = Sandbox("case-branch")
+    put_all(sb, [record(1, stamp(0), repo="Example/App", branch="feat/y", remote="ONE", session="s1"),     # its own PR (#11) by branch
+                 record(2, stamp(1), repo="Example/App", branch="main", remote="ONE", session="s1"),       # base branch: the session's #10
+                 record(3, stamp(2), repo="Example/App", branch="feat/x", remote="ONE", session="s1")])
+    prs = write_prs(sb, [pull(10, "feat/x"), pull(11, "feat/y")], repo="example/app")
+    changes = write_changes(sb, [change(10, [link("ONE")], repo="example/app", head="feat/x")])
+    tasks = task_rows(sb.views("--prs", prs, "--changes", changes))
+    assert {k: (v["requests"], v["attribution"]) for k, v in tasks.items()} == {
+        "Example/App#10": ("2", "reflog:1 session:1"), "Example/App#11": ("1", "reflog:1")}, tasks
+    report = sb.report("--prs", prs, "--changes", changes)
+    assert report["session_attribution"] == {"applied": True, "assigned": 1, "ambiguous": 0}, report["session_attribution"]
+    assert {row["name"]: row["requests"] for row in report["by_task"]} == {"Example/App#10": 2, "Example/App#11": 1}
+
+
+@case("every comparison of a repository name ignores case, with the record, --prs, --changes, --rework and --repo all spelled differently")
+def _():
+    spellings = [("record", "EXAMPLE/APP"), ("prs", "Example/app"), ("changes", "example/APP"), ("rework", "exAMPLE/app"), ("scope", "ExAmPlE/aPp")]
+    sb = Sandbox("case-all")
+    record_name, prs_name, changes_name, rework_name, scope_name = (name for _, name in spellings)
+    put_all(sb, [record(1, stamp(0), repo=record_name, branch="feat/x", remote="ONE", session="s1"),
+                 record(2, stamp(1), repo=None, branch=None, remote="ONE", session="s2", source="unknown"),   # no repository: the session's #10
+                 record(3, stamp(2), repo=record_name, branch="feat/y", remote="ONE", session="s3"),     # its own PR, not the session's
+                 record(4, stamp(3), repo="example/other", branch="feat/x", remote=None, session="s4")])     # another repository
+    prs = write_prs(sb, [pull(10, "feat/x"), pull(11, "feat/y")], repo=prs_name)
+    changes = write_changes(sb, [change(10, [link("ONE")], repo=changes_name, head="feat/x"),
+                                 change(11, [link("TWO")], repo=changes_name, head="feat/y")])
+    rework = sb.root / "rework.json"
+    rework.write_text(json.dumps({"repository": rework_name, "reworked_changes": [{"number": 10, "fixed_by": [11]}]}))
+    report = sb.report("--prs", prs, "--changes", changes, "--rework", str(rework), "--repo", scope_name)
+    assert report["requests"] == 3 and report["scope"] == {"repository": scope_name, "other_repositories": 1, "unknown_repository": 0}, report["scope"]
+    assert {row["name"]: row["requests"] for row in report["by_task"]} == {"EXAMPLE/APP#10": 2, "EXAMPLE/APP#11": 1}, report["by_task"]
+    assert Decimal(report["landed_split"]["landed"]) == Decimal("0.0003") and Decimal(report["landed_split"]["not_landed"]) == 0
+    assert Decimal(report["rework"]["cost_of_reworked"]) == Decimal("0.0002") and Decimal(report["rework"]["cost_of_fixes"]) == Decimal("0.0001"), report["rework"]
+    files = sb.views("--prs", prs, "--changes", changes, "--repo", scope_name)
+    tasks = task_rows(files)
+    assert set(tasks) == {"EXAMPLE/APP#10", "EXAMPLE/APP#11"} and tasks["EXAMPLE/APP#10"]["requests"] == "2", set(tasks)
+    assert "| Left out: other repositories | 1 |" in files["README.md"]
+    assert ledger_cost.repo_key(" Example/App ") == "example/app" and ledger_cost.repo_key(None) == ""
+
+
+@case("views fetches the store into a scratch directory: a read-only ledger directory works and gets nothing; --store-cache is used when given")
+def _():
+    sb = Sandbox("store-cache")
+    bare = sb.root / "store.git"
+    subprocess.run(["git", "init", "--bare", "-q", "-b", "main", str(bare)], check=True)
+    sb.config.write_text(f"ledger.store = {bare}\n")
+    put_all(sb, [record(1, stamp(0))])
+    code, out, err = sb.ledger_cmd("export")
+    assert code == 0, err
+    shutil.rmtree(sb.ledger / "pending", ignore_errors=True)                  # only the store holds the records now
+    for name in ("state", "exported", "exported-conflicts", "conflicts"):
+        shutil.rmtree(sb.ledger / name, ignore_errors=True)
+    before = snapshot(sb.ledger)
+    modes = []
+    for path in [sb.ledger, *sorted(sb.ledger.rglob("*"))]:
+        if path.is_dir():
+            modes.append((path, path.stat().st_mode))
+            path.chmod(0o555)
+    scratch = Path(tempfile.gettempdir())
+    leftovers = lambda: sorted(p.name for p in scratch.glob("plumb-ledger-views-*"))
+    before_tmp = leftovers()
+    try:
+        files = sb.views(out=sb.root / "direct")
+        assert len(table(files["tasks.csv"])) == 1 and "Store: ok" in files["README.md"], files["README.md"]
+        assert snapshot(sb.ledger) == before, set(snapshot(sb.ledger)) ^ set(before)
+        assert not list(sb.ledger.glob("store-cache-*")) and leftovers() == before_tmp
+        kept = sb.root / "kept-cache.git"
+        sb.views("--store-cache", str(kept), out=sb.root / "second")
+        assert (kept / "HEAD").exists() and snapshot(sb.ledger) == before
+        # nothing of the cache lands in the output directory
+        assert sorted(p.name for p in (sb.root / "second").iterdir()) == sorted(ledger_views.GENERATED)
+    finally:
+        for path, mode in reversed(modes):
+            path.chmod(mode)
+    # the same store with `report` still keeps its cache beside the records (unchanged)
+    code, out, err = sb.ledger_cmd("report", *PERIOD)
+    assert code == 0 and list(sb.ledger.glob("store-cache-*")), err
+
+
 # ---------------------------------------------------------------- D: views
 
 FILES = ["README.md", "days.csv", "days.md", "models.csv", "models.md", "sessions.csv", "tasks.csv", "tasks.md"]

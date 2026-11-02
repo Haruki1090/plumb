@@ -23,6 +23,7 @@ import argparse
 import csv
 import io
 import os
+import tempfile
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
@@ -32,6 +33,7 @@ from typing import Any
 from ledger_cost import (LedgerError, TOKEN_FIELDS, add_source_arguments, canonical_repositories, contract_timezone,
                          day_range, format_time,
                          gather, load_prices, load_prs, money, parse_day, parse_time, place_request, price_request,
+                         repo_key,
                          scope_period, session_map, zone_for)
 
 DEFAULT_GAP_MINUTES = 30
@@ -203,7 +205,7 @@ def build(found: dict[str, Any], pulls: dict | None, sessions: Any, versions: li
     heads: dict[tuple[str, int], str] = {}
     for (repository, head), rows in (pulls or {}).items():
         for pull in rows:
-            heads.setdefault((repository.lower(), pull["number"]), head)
+            heads.setdefault((repo_key(repository), pull["number"]), head)
 
     tasks: dict[tuple[str, str, str, int], Acc] = {}
     models: dict[str, Acc] = {}
@@ -220,12 +222,12 @@ def build(found: dict[str, Any], pulls: dict | None, sessions: Any, versions: li
         cost = price_request(record, versions)
         amount = sum(cost.values(), ZERO) if cost is not None else None
         placed = placements[index]
-        repository = spelling.get((placed.repository or "").lower(), placed.repository)
+        repository = spelling.get(repo_key(placed.repository), placed.repository)
         key = task_key(placed, repository)
         counts["session_ambiguous"] += placed.session_ambiguous
         counts[key[0]] += 1
         counts["session_assigned"] += placed.via == "session"
-        head = placed.head_ref or heads.get(((placed.repository or "").lower(), placed.number or 0))
+        head = placed.head_ref or heads.get((repo_key(placed.repository), placed.number or 0))
         label = "session" if placed.via == "session" else record["attribution_source"]
         day = moment.astimezone(zone).date()
         session_key = (record["runtime"], record["session"])
@@ -240,7 +242,7 @@ def build(found: dict[str, Any], pulls: dict | None, sessions: Any, versions: li
         if record["remote_session"]:
             session.remotes.add(record["remote_session"])
         if record["repository"]:
-            session.repositories.add(spelling.get(record["repository"].lower(), record["repository"]))
+            session.repositories.add(spelling.get(repo_key(record["repository"]), record["repository"]))
         if record["branch"]:
             session.branches.add(record["branch"])
         if key[0] == "pull_request":
@@ -472,6 +474,10 @@ def views_parser() -> argparse.ArgumentParser:
                     "tasks, days and models (.md and .csv) and sessions.csv. Reads the local records and the "
                     "store like `report`. Writes nothing outside --out and never pushes.")
     add_source_arguments(parser)
+    for action in parser._actions:   # views has its own default for the cache (below)
+        if "--store-cache" in action.option_strings:
+            action.help = ("the cache repository for the store's refs (default: a temporary directory, removed "
+                           "when the command ends; nothing is written beside the local records)")
     parser.add_argument("--out", required=True, metavar="DIR", help="the directory the tables are written to (created if missing); only the generated files in it are replaced")
     parser.add_argument("--gap-minutes", type=int, default=DEFAULT_GAP_MINUTES, metavar="N",
                         help=f"two requests of one session at most this far apart are one stretch of work (default {DEFAULT_GAP_MINUTES})")
@@ -487,7 +493,13 @@ def cmd_views(argv: list[str]) -> int:
     zone, _ = zone_for(tz_name)
     now = parse_time(args.now) if args.now else datetime.now(timezone.utc)
     versions = load_prices(Path(args.prices))
-    found = gather(args, start, end)
+    with tempfile.TemporaryDirectory(prefix="plumb-ledger-views-") as scratch:
+        # The store's refs are fetched into a cache repository. `report` keeps it beside the local
+        # records; `views` writes only under --out, and a cache under --out would be committed with the
+        # tables, so it lives in a scratch directory that is removed on exit, unless --store-cache names one.
+        if not args.store_cache:
+            args.store_cache = str(Path(scratch) / "store-cache.git")
+        found = gather(args, start, end)
     pulls = load_prs(args.prs) if args.prs else None
     sessions = session_map(args.changes) if args.changes else None
     scope_period(found, args.repo, pulls, sessions, now)

@@ -1279,6 +1279,14 @@ def cmd_prs(argv: list[str]) -> int:
     return 0
 
 
+def repo_key(name: str | None) -> str:
+    """The key every repository comparison uses: GitHub names are case-insensitive, and a record
+    (its remote URL), a `--prs` file, a `changes` row, a `rework` file and `--repo` may spell one
+    repository differently. Compare keys, never the spellings; show a spelling from
+    canonical_repositories()."""
+    return (name or "").strip().lower()
+
+
 def assign_task(repository: str | None, branch: str | None, moment: datetime | None,
                 pulls: dict[tuple[str, str], list[dict[str, Any]]], now: datetime) -> tuple[str, int | None]:
     """('pr', number) | ('ambiguous', None) | ('none', None) for a known repository and branch.
@@ -1286,7 +1294,7 @@ def assign_task(repository: str | None, branch: str | None, moment: datetime | N
     Among the pull requests of the repository and head ref, in creation order, the request belongs
     to the first whose close time (or now, while open) is at or after the request's time. If that
     first one is open and another is open too, the request is ambiguous."""
-    candidates = pulls.get((repository or "", branch or ""), [])
+    candidates = pulls.get((repo_key(repository), branch or ""), [])
     if moment is None:
         return "none", None
     chosen = None
@@ -1315,7 +1323,7 @@ def load_prs(paths: list[str]) -> dict[tuple[str, str], list[dict[str, Any]]]:
                 created = parse_time(pull.get("created_at"))
                 if created is None or not isinstance(pull.get("number"), int) or not pull.get("head_ref"):
                     continue
-                pulls.setdefault((entry.get("repository", ""), pull["head_ref"]), []).append({
+                pulls.setdefault((repo_key(entry.get("repository") if isinstance(entry.get("repository"), str) else ""), pull["head_ref"]), []).append({
                     "number": pull["number"], "created": created, "closed": parse_time(pull.get("closed_at"))})
     for rows in pulls.values():
         rows.sort(key=lambda p: (p["created"], p["number"]))
@@ -1327,19 +1335,19 @@ def load_prs(paths: list[str]) -> dict[tuple[str, str], list[dict[str, Any]]]:
 SESSION_LINK = re.compile(r"https?://claude\.ai/code/session_([A-Za-z0-9][A-Za-z0-9_-]*)")
 
 class SessionMap:
-    """Which landed pull requests each cloud session produced: id -> {(repository lowercased, number):
+    """Which landed pull requests each cloud session produced: id -> {(repo_key, number):
     (repository as written, head ref or None)}."""
 
     def __init__(self) -> None:
         self.by_id: dict[str, dict[tuple[str, int], tuple[str, str | None]]] = {}
 
     def add(self, identity: str, repository: str, number: int, head: str | None) -> None:
-        self.by_id.setdefault(identity, {}).setdefault((repository.lower(), number), (repository, head))
+        self.by_id.setdefault(identity, {}).setdefault((repo_key(repository), number), (repository, head))
 
     def produced(self, identity: str, repository: str | None) -> list[tuple[str, int, str | None]]:
         """(repository, number, head ref) of the pull requests of the session, sorted: those of one
         repository, or, with repository None, those across all repositories."""
-        wanted = repository.lower() if repository else None
+        wanted = repo_key(repository) if repository else None
         return sorted((name, number, head) for (key, number), (name, head) in self.by_id.get(identity, {}).items()
                       if wanted is None or key == wanted)
 
@@ -1560,18 +1568,18 @@ def load_json(path: str, label: str) -> Any:
 
 
 def rework_numbers(data: Any) -> tuple[set[tuple[str | None, int]], set[tuple[str | None, int]]]:
-    """(originals, fixers) as (repository or None, number) from `plumb-ledger rework --json`.
+    """(originals, fixers) as (repo_key or None, number) from `plumb-ledger rework --json`.
     Accepts a list of numbers or of objects with number / pr / original (+ fixed_by / fix)."""
     originals: set[tuple[str | None, int]] = set()
     fixers: set[tuple[str | None, int]] = set()
-    repo = data.get("repository") if isinstance(data, dict) and isinstance(data.get("repository"), str) else None
+    repo = repo_key(data["repository"]) if isinstance(data, dict) and isinstance(data.get("repository"), str) else None
     # `plumb-ledger rework --json` lists them under reworked_changes (reworked is the count).
     rows = (data.get("reworked_changes", data.get("reworked")) if isinstance(data, dict) else data)
     for row in rows if isinstance(rows, list) else []:
         if isinstance(row, int) and not isinstance(row, bool):
             originals.add((repo, row))
         elif isinstance(row, dict):
-            row_repo = row.get("repository") if isinstance(row.get("repository"), str) else repo
+            row_repo = repo_key(row["repository"]) if isinstance(row.get("repository"), str) else repo
             for key in ("number", "pr", "original"):
                 if isinstance(row.get(key), int):
                     originals.add((row_repo, row[key]))
@@ -1596,7 +1604,7 @@ def landed_numbers(path: str) -> set[tuple[str, int]]:
         with contextlib.suppress(ValueError):
             row = json.loads(line)
             if isinstance(row, dict) and row.get("kind") == "pull_request" and isinstance(row.get("number"), int) and row.get("merged_at"):
-                landed.add((row.get("repository") or "", row["number"]))
+                landed.add((repo_key(row.get("repository") if isinstance(row.get("repository"), str) else ""), row["number"]))
     return landed
 
 
@@ -1607,7 +1615,7 @@ def canonical_repositories(names: Any) -> dict[str, str]:
     chosen: dict[str, str] = {}
     for name in names:
         if name:
-            key = name.lower()
+            key = repo_key(name)
             chosen[key] = min(chosen.get(key, name), name)
     return chosen
 
@@ -1653,7 +1661,7 @@ def build_report(records: list[dict[str, Any]], pulls: dict[tuple[str, str], lis
             if any(word in (record["model"] or "").lower() for word in FRONTIER):
                 frontier += amount
         session_ambiguous += placed.session_ambiguous
-        name = spelling.get((placed.repository or "").lower(), placed.repository)
+        name = spelling.get(repo_key(placed.repository), placed.repository)
         if placed.kind == "unknown":
             unknown_attribution += 1
             task = "unknown attribution"
@@ -1756,14 +1764,14 @@ def scope_period(found: dict[str, Any], repo: str | None, pulls: dict | None, se
     never added."""
     if not repo:
         return
-    merged, wanted = found["merged"], repo.lower()
+    merged, wanted = found["merged"], repo_key(repo)
     kept, other, unknown = [], 0, 0
     for index in found["in_period_index"]:
         record = merged[index]
         name = place_request(record, parse_time(record["time"]), pulls, now, sessions).repository
         if not name:
             unknown += 1
-        elif name.lower() == wanted:
+        elif repo_key(name) == wanted:
             kept.append(index)
         else:
             other += 1
@@ -1806,7 +1814,7 @@ def cmd_report(argv: list[str]) -> int:
         for name, row in result["by_task"].items():
             match = re.fullmatch(r"(.+)#(\d+)", name)
             if match:
-                is_landed = any((repo == "" or repo.lower() == match.group(1).lower()) and number == int(match.group(2))
+                is_landed = any((repo == "" or repo == repo_key(match.group(1))) and number == int(match.group(2))
                                 for repo, number in landed)
                 split["landed" if is_landed else "not_landed"] += row["cost"]
         result["landed_split"] = split
@@ -1817,7 +1825,7 @@ def cmd_report(argv: list[str]) -> int:
             sum_cost = Decimal(0)
             for name, row in result["by_task"].items():
                 match = re.fullmatch(r"(.+)#(\d+)", name)
-                if match and any((repo is None or repo.lower() == match.group(1).lower()) and number == int(match.group(2))
+                if match and any((repo is None or repo == repo_key(match.group(1))) and number == int(match.group(2))
                                  for repo, number in wanted):
                     sum_cost += row["cost"]
             return sum_cost
