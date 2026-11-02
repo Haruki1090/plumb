@@ -250,7 +250,7 @@ a `repository @ head ref` with no pull request (`none`), an `ambiguous` head ref
 (`reflog`, `transcript`, `worktree_at_capture`, `unknown`, and `session` for those moved by the rule
 above). Cost uses the same price table and rules as `report`: list prices, a request whose cost
 cannot be known is counted (`unknown_cost_requests`, `(+n unpriced)`) and never added as zero, and
-a cost cell that has no priced request is empty rather than 0. CSV money has six decimals. The
+a row (task, day, model, session) whose requests all lack a price has no cost: the CSV cell (cost, share, main / subagent cost, model family) is empty and the Markdown cell says `unpriced`, never 0 (a day with no request is a real zero). A row with some priced requests shows their sum and how many were not priced. Repository names are compared without case (a record, a `--prs` file and a `changes` row may spell one differently), and a task is shown under the smallest of the spellings seen. CSV money has six decimals. The
 same records give the same bytes. Without `--changes` the session step is skipped and the README
 says so.
 

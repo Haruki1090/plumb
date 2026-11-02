@@ -539,6 +539,62 @@ def _():
     assert minutes(everything[f"{REPO}#10"]) == minutes(tasks[f"{REPO}#10"]) == 10
 
 
+@case("a row whose requests are all unpriced has no cost (empty in CSV, `unpriced` in Markdown), not zero; a mixed row keeps its priced sum")
+def _():
+    sb = Sandbox("unpriced")
+    rows = [record(1, stamp(0), branch="feat/x", session="s1"),                                   # priced
+            record(2, stamp(1), branch="feat/x", session="s1", model="gpt-test"),                  # not priced: a mixed row
+            record(3, stamp(0), branch="feat/y", session="s2", model="gpt-test"),                  # only unpriced: task, session, model
+            record(4, stamp(1), branch="feat/y", session="s2", model="gpt-test", role="subagent")]
+    put_all(sb, rows)
+    files = sb.views("--prs", write_prs(sb, [pull(10, "feat/x"), pull(11, "feat/y")]),
+                     period=("--since", "2026-10-10", "--until", "2026-10-12"))
+    tasks = task_rows(files)
+    mixed, bare = tasks[f"{REPO}#10"], tasks[f"{REPO}#11"]
+    assert (mixed["cost_usd"], mixed["unknown_cost_requests"]) == ("0.000100", "1"), mixed
+    assert (bare["cost_usd"], bare["cost_main"], bare["cost_subagent"], bare["cost_other"], bare["unknown_cost_requests"]) == ("", "", "", "", "2"), bare
+    md = {l.split("|")[3].strip(): l for l in files["tasks.md"].splitlines() if l.startswith(f"| {REPO}")}
+    assert "$0.0001 (+1 unpriced)" in md["#10"] and md["#11"].count("unpriced") == 2 and "$0.0000" not in md["#11"], md
+    models = {r["model"]: r for r in table(files["models.csv"])}
+    assert models["gpt-test"]["cost_usd"] == "" and models["gpt-test"]["share"] == "" and models[HAIKU]["share"] == "1.0000", models
+    assert "| gpt-test | 3 | unpriced | - |" in files["models.md"], files["models.md"]
+    sessions = {r["session"]: r for r in table(files["sessions.csv"])}
+    assert sessions["s2"]["cost_usd"] == "" and sessions["s1"]["cost_usd"] == "0.000100"
+    days = {r["date"]: r for r in table(files["days.csv"])}
+    assert days["2026-10-10"]["cost_usd"] == "0.000100" and days["2026-10-11"]["cost_usd"] == "0.000000"   # a day with no request is a real zero
+    alone = Sandbox("unpriced-day")
+    put_all(alone, [record(1, stamp(0), model="gpt-test")])
+    once = alone.views("--prs", write_prs(alone, [pull(10, "feat/x")]), period=("--since", "2026-10-10", "--until", "2026-10-11"))
+    assert table(once["days.csv"])[0]["cost_usd"] == "" and table(once["days.csv"])[1]["cost_usd"] == "0.000000"
+    assert "| Cost | unpriced |" in once["README.md"] and "| unpriced |" in once["days.md"]
+
+
+@case("repository names compare without case: landed split, rework and tasks agree when a record, `--prs` and `changes` spell it differently")
+def _():
+    sb = Sandbox("repo-case")
+    put_all(sb, [record(1, stamp(0), repo="Example/App", branch="feat/x", remote="ONE", session="s1"),
+                 record(2, stamp(1), repo=None, branch=None, remote="ONE", session="s2", source="unknown"),       # moved by session
+                 record(3, stamp(2), repo="Example/App", branch="feat/y", remote="TWO", session="s3")])
+    prs = write_prs(sb, [pull(10, "feat/x"), pull(11, "feat/y")], repo="Example/App")
+    changes = write_changes(sb, [change(10, [link("ONE")], repo="example/app", head="feat/x"),
+                                 change(11, [link("TWO")], repo="EXAMPLE/APP", head="feat/y")])
+    rework = sb.root / "rework.json"
+    rework.write_text(json.dumps({"repository": "example/APP", "reworked_changes": [{"number": 10, "fixed_by": [11]}]}))
+    report = sb.report("--prs", prs, "--changes", changes, "--rework", str(rework))
+    names = {row["name"]: row["requests"] for row in report["by_task"]}
+    assert names == {"Example/App#10": 2, "Example/App#11": 1}, names                 # one task, one spelling
+    assert Decimal(report["landed_split"]["landed"]) == Decimal("0.0003") and Decimal(report["landed_split"]["not_landed"]) == 0, report["landed_split"]
+    assert report["rework"]["reworked_changes"] == 1, report["rework"]
+    assert Decimal(report["rework"]["cost_of_reworked"]) == Decimal("0.0002") and Decimal(report["rework"]["cost_of_fixes"]) == Decimal("0.0001"), report["rework"]
+    files = sb.views("--prs", prs, "--changes", changes)
+    tasks = task_rows(files)
+    assert set(tasks) == {"Example/App#10", "Example/App#11"} and tasks["Example/App#10"]["requests"] == "2", set(tasks)
+    assert {r["pull_requests"] for r in table(files["sessions.csv"])} == {"Example/App#10", "Example/App#11"}
+    assert {r["repositories"] for r in table(files["sessions.csv"])} == {"Example/App", ""}
+    # --repo matches without case too
+    assert sb.report("--prs", prs, "--changes", changes, "--repo", "EXAMPLE/app")["requests"] == 3
+
+
 # ---------------------------------------------------------------- D: views
 
 FILES = ["README.md", "days.csv", "days.md", "models.csv", "models.md", "sessions.csv", "tasks.csv", "tasks.md"]
@@ -624,7 +680,7 @@ def _():
     assert task["unknown_cost_requests"] == "2" and Decimal(task["cost_usd"]) == Decimal("0.0001") and task["cost_other"] == "", task
     assert "(+2 unpriced)" in files["tasks.md"] and "| Requests with unknown cost (not in the cost) | 2 |" in files["README.md"]
     models = {row["model"]: row for row in table(files["models.csv"])}
-    assert models["gpt-test"]["unknown_cost_requests"] == "1" and models["gpt-test"]["cost_usd"] == "0.000000"
+    assert models["gpt-test"]["unknown_cost_requests"] == "1" and models["gpt-test"]["cost_usd"] == "" and models["gpt-test"]["share"] == ""
     assert table(files["sessions.csv"])[0]["unknown_cost_requests"] == "2"
 
 

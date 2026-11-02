@@ -1600,6 +1600,18 @@ def landed_numbers(path: str) -> set[tuple[str, int]]:
     return landed
 
 
+def canonical_repositories(names: Any) -> dict[str, str]:
+    """lowercase name -> the spelling shown for it: the smallest of the spellings seen, whatever the
+    order. GitHub names are case-insensitive, and a record, a pull request row from `changes` and a
+    `--prs` file may spell one repository differently; a task must not split in two for that."""
+    chosen: dict[str, str] = {}
+    for name in names:
+        if name:
+            key = name.lower()
+            chosen[key] = min(chosen.get(key, name), name)
+    return chosen
+
+
 def build_report(records: list[dict[str, Any]], pulls: dict[tuple[str, str], list[dict[str, Any]]] | None,
                  versions: list[dict[str, Any]], now: datetime, sessions: SessionMap | None = None) -> dict[str, Any]:
     """Pure: records in, the report's numbers out. Every Decimal is rendered with str().
@@ -1623,7 +1635,9 @@ def build_report(records: list[dict[str, Any]], pulls: dict[tuple[str, str], lis
         else:
             row["cost"] += sum(cost.values(), zero)
 
-    for record in records:
+    placements = [place_request(record, parse_time(record["time"]), pulls, now, sessions) for record in records]
+    spelling = canonical_repositories(placed.repository for placed in placements)
+    for record, placed in zip(records, placements):
         cost = price_request(record, versions)
         moment = parse_time(record["time"])
         if moment is None:
@@ -1638,16 +1652,16 @@ def build_report(records: list[dict[str, Any]], pulls: dict[tuple[str, str], lis
                 by_kind[key] += value
             if any(word in (record["model"] or "").lower() for word in FRONTIER):
                 frontier += amount
-        placed = place_request(record, moment, pulls, now, sessions)
         session_ambiguous += placed.session_ambiguous
+        name = spelling.get((placed.repository or "").lower(), placed.repository)
         if placed.kind == "unknown":
             unknown_attribution += 1
             task = "unknown attribution"
         elif placed.kind == "branch":
-            task = f"{placed.repository} @ {placed.branch}"
+            task = f"{name} @ {placed.branch}"
         elif placed.kind == "pr":
             session_assigned += placed.via == "session"
-            task = f"{placed.repository}#{placed.number}"
+            task = f"{name}#{placed.number}"
         elif placed.kind == "ambiguous":
             ambiguous += 1
             task = "ambiguous"
@@ -1792,7 +1806,8 @@ def cmd_report(argv: list[str]) -> int:
         for name, row in result["by_task"].items():
             match = re.fullmatch(r"(.+)#(\d+)", name)
             if match:
-                is_landed = any(repo in ("", match.group(1)) and number == int(match.group(2)) for repo, number in landed)
+                is_landed = any((repo == "" or repo.lower() == match.group(1).lower()) and number == int(match.group(2))
+                                for repo, number in landed)
                 split["landed" if is_landed else "not_landed"] += row["cost"]
         result["landed_split"] = split
     if args.rework:
@@ -1802,7 +1817,8 @@ def cmd_report(argv: list[str]) -> int:
             sum_cost = Decimal(0)
             for name, row in result["by_task"].items():
                 match = re.fullmatch(r"(.+)#(\d+)", name)
-                if match and any(repo in (None, match.group(1)) and number == int(match.group(2)) for repo, number in wanted):
+                if match and any((repo is None or repo.lower() == match.group(1).lower()) and number == int(match.group(2))
+                                 for repo, number in wanted):
                     sum_cost += row["cost"]
             return sum_cost
 

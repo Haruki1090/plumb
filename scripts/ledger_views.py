@@ -29,7 +29,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any
 
-from ledger_cost import (LedgerError, TOKEN_FIELDS, add_source_arguments, contract_timezone, day_range, format_time,
+from ledger_cost import (LedgerError, TOKEN_FIELDS, add_source_arguments, canonical_repositories, contract_timezone,
+                         day_range, format_time,
                          gather, load_prices, load_prs, money, parse_day, parse_time, place_request, price_request,
                          scope_period, session_map, zone_for)
 
@@ -172,19 +173,26 @@ class Acc:
                 self.tokens[key] += record[key]
 
     @property
+    def unpriced(self) -> bool:
+        """Every request of the row has a cost that cannot be known: the row has no cost to show,
+        which is not the same as a cost of zero."""
+        return self.requests > 0 and self.unknown_cost == self.requests
+
+    @property
     def span(self) -> timedelta:
         return (self.last - self.first) if self.first and self.last else timedelta(0)
 
 
-def task_key(placed: Any) -> tuple[str, str, str, int]:
-    """(state, repository, head ref, pull request number) of where a request goes."""
+def task_key(placed: Any, repository: str | None) -> tuple[str, str, str, int]:
+    """(state, repository, head ref, pull request number) of where a request goes; `repository` is
+    the spelling shown for the placed repository."""
     if placed.kind == "pr":
-        return "pull_request", placed.repository, "", placed.number
+        return "pull_request", repository, "", placed.number
     if placed.kind == "branch":
-        return "branch", placed.repository, placed.branch, 0
+        return "branch", repository, placed.branch, 0
     if placed.kind == "unknown":
         return "unknown_attribution", "", "", 0
-    return ("ambiguous" if placed.kind == "ambiguous" else "no_pull_request"), placed.repository, placed.branch, 0
+    return ("ambiguous" if placed.kind == "ambiguous" else "no_pull_request"), repository, placed.branch, 0
 
 
 def build(found: dict[str, Any], pulls: dict | None, sessions: Any, versions: list[dict[str, Any]], now: datetime,
@@ -203,13 +211,17 @@ def build(found: dict[str, Any], pulls: dict | None, sessions: Any, versions: li
     per_session: dict[tuple[str, str], Acc] = {}
     counts: Counter[str] = Counter()
     total = Acc()
+    placements = {index: place_request(merged[index], parse_time(merged[index]["time"]), pulls, now, sessions)
+                  for index in found["in_period_index"]}
+    spelling = canonical_repositories(placed.repository for placed in placements.values())
     for index in found["in_period_index"]:
         record = merged[index]
         moment = parse_time(record["time"])
         cost = price_request(record, versions)
         amount = sum(cost.values(), ZERO) if cost is not None else None
-        placed = place_request(record, moment, pulls, now, sessions)
-        key = task_key(placed)
+        placed = placements[index]
+        repository = spelling.get((placed.repository or "").lower(), placed.repository)
+        key = task_key(placed, repository)
         counts["session_ambiguous"] += placed.session_ambiguous
         counts[key[0]] += 1
         counts["session_assigned"] += placed.via == "session"
@@ -228,11 +240,11 @@ def build(found: dict[str, Any], pulls: dict | None, sessions: Any, versions: li
         if record["remote_session"]:
             session.remotes.add(record["remote_session"])
         if record["repository"]:
-            session.repositories.add(record["repository"])
+            session.repositories.add(spelling.get(record["repository"].lower(), record["repository"]))
         if record["branch"]:
             session.branches.add(record["branch"])
         if key[0] == "pull_request":
-            session.pulls.add(f"{placed.repository}#{placed.number}")
+            session.pulls.add(f"{repository}#{placed.number}")
     return {"total": total, "tasks": tasks, "models": models, "days": per_day, "sessions": per_session,
             "counts": counts}
 
@@ -252,8 +264,17 @@ def family_text(acc: Acc) -> str:
     return ", ".join(f"{name} {money(value)}" for name, value in sorted(parts, key=lambda p: (-p[1], p[0])))
 
 
-def cost_text(acc: Acc) -> str:
-    return money(acc.cost) + (f" (+{acc.unknown_cost} unpriced)" if acc.unknown_cost else "")
+def cost_text(acc: Acc, value: Decimal | None = None) -> str:
+    """Markdown cost: `unpriced` when no request of the row has a price, else the sum of the priced
+    ones and, when some are not, how many."""
+    if acc.unpriced:
+        return "unpriced"
+    return money(acc.cost if value is None else value) + (f" (+{acc.unknown_cost} unpriced)" if acc.unknown_cost else "")
+
+
+def cost_cell(acc: Acc, value: Decimal | None = None) -> str:
+    """CSV cost: empty when no request of the row has a price."""
+    return "" if acc.unpriced else fixed(acc.cost if value is None else value)
 
 
 def task_order(item: tuple[tuple[str, str, str, int], Acc]) -> tuple:
@@ -271,12 +292,13 @@ def tasks_tables(data: dict[str, Any]) -> tuple[list[str], list[list[Any]], list
     for key, acc in ordered:
         head = key[2] or "; ".join(sorted(acc.heads))
         csv_rows.append([key[1], head, key[3] or "", key[0], attribution_text(acc), len(acc.sessions), acc.requests,
-                         acc.unknown_cost, minutes_text(acc.active), minutes_text(acc.span), fixed(acc.cost),
-                         *family_cells(acc), fixed(acc.main), fixed(acc.sub),
+                         acc.unknown_cost, minutes_text(acc.active), minutes_text(acc.span), cost_cell(acc),
+                         *family_cells(acc), cost_cell(acc, acc.main), cost_cell(acc, acc.sub),
                          format_time(acc.first), format_time(acc.last)])
         md_rows.append([key[1] or "-", head or "-", pull_text(key) or "-", attribution_text(acc), len(acc.sessions),
                         acc.requests, duration_text(acc.active), duration_text(acc.span), cost_text(acc),
-                        family_text(acc) or "-", f"{money(acc.main)} / {money(acc.sub)}"])
+                        family_text(acc) or "-",
+                        "unpriced" if acc.unpriced else f"{money(acc.main)} / {money(acc.sub)}"])
     csv_headers = ["repository", "head_ref", "pull_request", "state", "attribution", "sessions", "requests",
                    "unknown_cost_requests", "active_minutes", "span_minutes", "cost_usd",
                    *[f"cost_{name}" for name in FAMILIES], "cost_main", "cost_subagent", "first_request", "last_request"]
@@ -291,9 +313,9 @@ def models_tables(data: dict[str, Any]) -> tuple[list[str], list[list[Any]], lis
     csv_rows, md_rows = [], []
     for name, acc in ordered:
         share = fixed_share(acc.cost, whole)
-        csv_rows.append([name, family_of(name), acc.requests, acc.unknown_cost, fixed(acc.cost), share,
+        csv_rows.append([name, family_of(name), acc.requests, acc.unknown_cost, cost_cell(acc), "" if acc.unpriced else share,
                          *[acc.tokens[key] for key in TOKEN_FIELDS]])
-        md_rows.append([name, acc.requests, cost_text(acc), percent(acc.cost, whole),
+        md_rows.append([name, acc.requests, cost_text(acc), "-" if acc.unpriced else percent(acc.cost, whole),
                         *[f"{acc.tokens[key]:,}" for key in TOKEN_FIELDS]])
     csv_headers = ["model", "family", "requests", "unknown_cost_requests", "cost_usd", "share", *TOKEN_FIELDS]
     md_headers = ["Model", "Requests", "Cost", "Share", "Input", "Output", "Cache read", "Cache write 5m", "Cache write 1h"]
@@ -308,7 +330,7 @@ def days_tables(data: dict[str, Any]) -> tuple[list[str], list[list[Any]], list[
     csv_rows, md_rows = [], []
     for day in sorted(data["days"]):
         acc = data["days"][day]
-        csv_rows.append([day.isoformat(), acc.requests, acc.unknown_cost, minutes_text(acc.active), fixed(acc.cost),
+        csv_rows.append([day.isoformat(), acc.requests, acc.unknown_cost, minutes_text(acc.active), cost_cell(acc),
                          *family_cells(acc)])
         md_rows.append([day.isoformat(), acc.requests, duration_text(acc.active), cost_text(acc), family_text(acc) or "-"])
     csv_headers = ["date", "requests", "unknown_cost_requests", "active_minutes", "cost_usd",
@@ -322,7 +344,7 @@ def sessions_csv(data: dict[str, Any]) -> str:
     for (runtime, session), acc in sorted(data["sessions"].items(), key=lambda item: (format_time(item[1].first), item[0])):
         rows.append([runtime, session, ";".join(sorted(acc.remotes)), ";".join(sorted(acc.repositories)),
                      ";".join(sorted(acc.branches)), format_time(acc.first), format_time(acc.last), acc.requests,
-                     acc.unknown_cost, minutes_text(acc.active), fixed(acc.cost), ";".join(sorted(acc.pulls))])
+                     acc.unknown_cost, minutes_text(acc.active), cost_cell(acc), ";".join(sorted(acc.pulls))])
     return csv_text(["runtime", "session", "remote_session", "repositories", "branches", "first_request",
                      "last_request", "requests", "unknown_cost_requests", "active_minutes", "cost_usd",
                      "pull_requests"], rows)
@@ -371,7 +393,7 @@ def readme(data: dict[str, Any], found: dict[str, Any], args: Any, label: str, g
         *md_table(["", ""], [
             ["Requests", f"{total.requests:,}"],
             ["Active time", f"{hours} h"],
-            ["Cost", money(total.cost)],
+            ["Cost", cost_text(total)],
             ["Requests with unknown cost (not in the cost)", f"{unknown_cost:,}"],
         ], {1}), "",
         "## Not attributed, not known", "",

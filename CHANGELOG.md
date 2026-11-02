@@ -37,6 +37,9 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
 
 ### Changed
 
+- `plumb-ledger report` and `views` compare repository names without case (landed split, rework, tasks),
+  and a task is shown under one spelling. In `views`, a row whose requests are all unpriced shows no
+  cost (empty in CSV, `unpriced` in Markdown) instead of 0.
 - `plumb-ledger report` accepts `--changes` more than once and applies the session rule to a run
   that also has `--prs`; its landed split reads every file. The text gains one line, and the JSON the
   keys `session_attribution` and `unknown.session_ambiguous`, only when `--changes` is given.
