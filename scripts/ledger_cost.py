@@ -4,8 +4,10 @@
                          [--transcripts <dir>] [--cwd <dir>] [--json]
     plumb-ledger export  [--session <id>] [--runtime claude|codex] [--check] [--ledger-dir <dir>]
     plumb-ledger prs     --repo <owner/name> --since <date> [--out <json>]
-    plumb-ledger report  --since <date> --until <date> [--prs <json>] [--changes <jsonl>]
+    plumb-ledger report  --since <date> --until <date> [--prs <json>] [--changes <jsonl>]...
                          [--rework <json>] [--store-cache <dir>] [--json]
+    plumb-ledger views   --since <date> --until <date> --out <dir> [--changes <jsonl>]... [--prs <json>]...
+                         [--gap-minutes 30] [--repo <owner/name>] [--timezone <tz>]   (scripts/ledger_views.py)
 
 scripts/ledger.py dispatches here with argv[0] naming the subcommand. See each subcommand's --help.
 
@@ -46,7 +48,7 @@ PRICES_FILE = PLUGIN / "assets" / "prices.json"
 # an exported file or the store passes through project().
 FIELDS = ("id", "time", "model", "input", "output", "cache_read", "cache_write_5m",
           "cache_write_1h", "repository", "branch", "attribution_source", "role", "agent_type",
-          "agent_id", "session", "runtime")
+          "agent_id", "session", "runtime", "remote_session")
 TOKEN_FIELDS = ("input", "output", "cache_read", "cache_write_5m", "cache_write_1h")
 # `transcript` and `worktree_at_capture` are no longer written but old records in stores hold them.
 SOURCES = ("reflog", "transcript", "worktree_at_capture", "unknown")
@@ -54,6 +56,12 @@ RUNTIMES = ("claude", "codex")
 FRONTIER = ("fable", "mythos", "opus")
 SAFE = re.compile(r"[\w./@+:#=,%~\-\[\]]{1,200}")
 SAFE_SESSION = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,127}")
+# The cloud session id the runtime exposes as `<prefix>_<id>`; a record keeps `<id>`, the part a
+# commit's `Claude-Session: https://claude.ai/code/session_<id>` trailer carries.
+REMOTE_SESSION_ENV = "CLAUDE_CODE_REMOTE_SESSION_ID"
+CURRENT_SESSION_ENV = "CLAUDE_CODE_SESSION_ID"   # the running session's own transcript id
+REMOTE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
+REMOTE_VALUE = re.compile(r"[A-Za-z0-9]+_([A-Za-z0-9][A-Za-z0-9_-]{0,63})")
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
 HOOK_TEMP_PREFIX = "plumb-ledger-hook."
 # Under refs/heads/: a cloud session's git proxy accepts branch pushes (forced ones too) but drops a
@@ -114,6 +122,23 @@ def safe_session(value: str) -> str:
     if (SAFE_SESSION.fullmatch(value) and ".." not in value and not value.endswith((".", ".lock"))):
         return value
     return "x-" + hashlib.sha1(value.encode("utf-8", "replace")).hexdigest()[:20]
+
+
+def remote_session_from_env(env: Any = None, session: str | None = None) -> str | None:
+    """`<id>` of `CLAUDE_CODE_REMOTE_SESSION_ID=<prefix>_<id>`, or None when the variable is absent
+    (a local session) or does not have that shape.
+
+    The id belongs to the session that is running this process, not to every transcript it reads:
+    `session` (the transcript's session id, which its subagents share) must equal
+    `CLAUDE_CODE_SESSION_ID`, the id of the running session's own transcript. Another session's
+    transcript (`capture --transcripts <dir>`), or a run where that variable is missing, records None
+    rather than a wrong id. `session=None` skips this check."""
+    env = os.environ if env is None else env
+    if session is not None and (not session or env.get(CURRENT_SESSION_ENV) != session):
+        return None
+    value = env.get(REMOTE_SESSION_ENV)
+    match = REMOTE_VALUE.fullmatch(value) if isinstance(value, str) else None
+    return match.group(1) if match else None
 
 
 def parse_time(value: Any) -> datetime | None:
@@ -195,6 +220,8 @@ def project(raw: Any) -> dict[str, Any] | None:
     record["session"] = session
     runtime = raw.get("runtime")
     record["runtime"] = runtime if runtime in RUNTIMES else None
+    remote = raw.get("remote_session")   # absent in records captured before 0.20.0: null
+    record["remote_session"] = remote if isinstance(remote, str) and REMOTE_ID.fullmatch(remote) else None
     if session is None or record["runtime"] is None:
         return None
     return record
@@ -575,9 +602,11 @@ def load_meta(path: Path) -> dict[str, Any] | None:
 class Capture:
     """One capture run for one session: counts, the ids already held, and the new records."""
 
-    def __init__(self, runtime: str, session: str, known: dict[str, tuple[Any, ...]]) -> None:
+    def __init__(self, runtime: str, session: str, known: dict[str, tuple[Any, ...]],
+                 remote_session: str | None = None) -> None:
         self.runtime = runtime
         self.session = session
+        self.remote_session = remote_session
         self.known = dict(known)               # id -> tokens_of(record)
         self.new: list[dict[str, Any]] = []
         self.counts: Counter[str] = Counter()
@@ -592,7 +621,7 @@ class Capture:
             "cache_write_5m": request["cache_write_5m"], "cache_write_1h": request["cache_write_1h"],
             "repository": attribution[0], "branch": attribution[1], "attribution_source": attribution[2],
             "role": role, "agent_type": agent_type, "agent_id": agent_id,
-            "session": self.session, "runtime": self.runtime,
+            "session": self.session, "runtime": self.runtime, "remote_session": self.remote_session,
         })
         if record is None:
             return
@@ -765,7 +794,8 @@ def capture_one(directory: Path, runtime: str, main: Path, checkouts: Checkouts)
         saved = state["files"].get(str(main), {}).get("codex")
         if isinstance(saved, dict) and isinstance(saved.get("session_id"), str):
             session = safe_session(saved["session_id"])
-    capture = Capture(runtime, session, known_ids(directory, runtime, session))
+    capture = Capture(runtime, session, known_ids(directory, runtime, session),
+                      remote_session_from_env(session=main.stem) if runtime == "claude" else None)
     summary_files = []
     for path, is_main in paths:
         key = str(path)
@@ -1249,6 +1279,14 @@ def cmd_prs(argv: list[str]) -> int:
     return 0
 
 
+def repo_key(name: str | None) -> str:
+    """The key every repository comparison uses: GitHub names are case-insensitive, and a record
+    (its remote URL), a `--prs` file, a `changes` row, a `rework` file and `--repo` may spell one
+    repository differently. Compare keys, never the spellings; show a spelling from
+    canonical_repositories()."""
+    return (name or "").strip().lower()
+
+
 def assign_task(repository: str | None, branch: str | None, moment: datetime | None,
                 pulls: dict[tuple[str, str], list[dict[str, Any]]], now: datetime) -> tuple[str, int | None]:
     """('pr', number) | ('ambiguous', None) | ('none', None) for a known repository and branch.
@@ -1256,7 +1294,7 @@ def assign_task(repository: str | None, branch: str | None, moment: datetime | N
     Among the pull requests of the repository and head ref, in creation order, the request belongs
     to the first whose close time (or now, while open) is at or after the request's time. If that
     first one is open and another is open too, the request is ambiguous."""
-    candidates = pulls.get((repository or "", branch or ""), [])
+    candidates = pulls.get((repo_key(repository), branch or ""), [])
     if moment is None:
         return "none", None
     chosen = None
@@ -1285,24 +1323,123 @@ def load_prs(paths: list[str]) -> dict[tuple[str, str], list[dict[str, Any]]]:
                 created = parse_time(pull.get("created_at"))
                 if created is None or not isinstance(pull.get("number"), int) or not pull.get("head_ref"):
                     continue
-                pulls.setdefault((entry.get("repository", ""), pull["head_ref"]), []).append({
+                pulls.setdefault((repo_key(entry.get("repository") if isinstance(entry.get("repository"), str) else ""), pull["head_ref"]), []).append({
                     "number": pull["number"], "created": created, "closed": parse_time(pull.get("closed_at"))})
     for rows in pulls.values():
         rows.sort(key=lambda p: (p["created"], p["number"]))
     return pulls
 
 
+# ---------------------------------------------------------------- session attribution
+
+SESSION_LINK = re.compile(r"https?://claude\.ai/code/session_([A-Za-z0-9][A-Za-z0-9_-]*)")
+
+class SessionMap:
+    """Which landed pull requests each cloud session produced: id -> {(repo_key, number):
+    (repository as written, head ref or None)}."""
+
+    def __init__(self) -> None:
+        self.by_id: dict[str, dict[tuple[str, int], tuple[str, str | None]]] = {}
+
+    def add(self, identity: str, repository: str, number: int, head: str | None) -> None:
+        self.by_id.setdefault(identity, {}).setdefault((repo_key(repository), number), (repository, head))
+
+    def produced(self, identity: str, repository: str | None) -> list[tuple[str, int, str | None]]:
+        """(repository, number, head ref) of the pull requests of the session, sorted: those of one
+        repository, or, with repository None, those across all repositories."""
+        wanted = repo_key(repository) if repository else None
+        return sorted((name, number, head) for (key, number), (name, head) in self.by_id.get(identity, {}).items()
+                      if wanted is None or key == wanted)
+
+
+def session_map(paths: list[str]) -> SessionMap:
+    """Which landed pull requests a session produced, from the `sessions` of `plumb-ledger changes`
+    rows (the `Claude-Session:` trailers of the pull request's commits). Only pull request rows
+    count; a value that is not a session link is ignored."""
+    found = SessionMap()
+    for path in paths:
+        try:
+            lines = Path(path).read_text(encoding="utf-8").splitlines()
+        except OSError as error:
+            raise LedgerError(f"--changes {path}: not readable ({type(error).__name__})") from error
+        for line in lines:
+            with contextlib.suppress(ValueError):
+                row = json.loads(line)
+                if not isinstance(row, dict) or row.get("kind") != "pull_request":
+                    continue
+                number, repository = row.get("number"), row.get("repository")
+                if isinstance(number, bool) or not isinstance(number, int) or not isinstance(repository, str) or not repository:
+                    continue
+                head = row.get("head_ref") if isinstance(row.get("head_ref"), str) and 0 < len(row["head_ref"]) <= 200 else None
+                for value in row.get("sessions") if isinstance(row.get("sessions"), list) else []:
+                    for identity in SESSION_LINK.findall(value) if isinstance(value, str) else []:
+                        found.add(identity, repository, number, head)
+    return found
+
+
+class Placement:
+    """Where one request goes. `kind` is `unknown` (repository or branch unknown), `branch` (no pull
+    requests were given: the task is repository @ branch), `pr`, `ambiguous` or `none` (the branch
+    has no pull request). `via` is `branch` or `session`; `session_ambiguous` marks a request the
+    session rule looked at and left, because its session produced two or more pull requests."""
+
+    __slots__ = ("kind", "repository", "branch", "number", "head_ref", "via", "session_ambiguous")
+
+    def __init__(self, kind: str, repository: str | None, branch: str | None, number: int | None = None,
+                 head_ref: str | None = None, via: str = "branch", session_ambiguous: bool = False) -> None:
+        self.kind, self.repository, self.branch, self.number = kind, repository, branch, number
+        self.head_ref, self.via, self.session_ambiguous = head_ref, via, session_ambiguous
+
+
+def place_request(record: dict[str, Any], moment: datetime | None,
+                  pulls: dict[tuple[str, str], list[dict[str, Any]]] | None, now: datetime,
+                  sessions: SessionMap | None = None) -> Placement:
+    """The task of a request: first by repository, branch and time as `assign_task` does. Only when
+    that gives no pull request (the branch has none, is the base branch, or is unknown) and the
+    request's cloud session produced exactly one landed pull request of the same repository, the
+    request goes to that pull request (`via = session`). Two or more: it stays and is marked.
+    A request whose repository is unknown (a cloud session often starts outside any checkout) goes
+    to a pull request only when its session produced exactly one across all repositories, and then
+    takes that pull request's repository. Nothing else is guessed; a run without `pulls` is never
+    moved."""
+    repository, branch = record["repository"], record["branch"]
+    if repository is None or branch is None:
+        placed = Placement("unknown", repository, branch)
+    elif pulls is None:
+        return Placement("branch", repository, branch)
+    else:
+        kind, number = assign_task(repository, branch, moment, pulls, now)
+        if kind == "pr":
+            return Placement("pr", repository, branch, number, branch)
+        placed = Placement(kind, repository, branch)
+    if (placed.kind not in ("unknown", "none") or sessions is None or pulls is None
+            or not record.get("remote_session")):
+        return placed
+    produced = sessions.produced(record["remote_session"], repository)
+    if not produced:
+        return placed
+    if len(produced) > 1:
+        placed.session_ambiguous = True
+        return placed
+    (name, number, head), = produced
+    return Placement("pr", repository or name, branch, number, head, "session")
+
+
 # ---------------------------------------------------------------- report
 
+def zone_for(tz_name: str | None) -> tuple[Any, str]:
+    """(tzinfo, label) of a time zone name; UTC for none."""
+    if not tz_name:
+        return timezone.utc, "UTC"
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(tz_name), tz_name
+    except Exception as error:  # noqa: BLE001 - zoneinfo raises several types
+        raise LedgerError(f"unknown time zone: {tz_name}") from error
+
+
 def day_range(since: str, until: str, tz_name: str | None) -> tuple[datetime, datetime, str]:
-    zone: Any = timezone.utc
-    label = "UTC"
-    if tz_name:
-        try:
-            from zoneinfo import ZoneInfo
-            zone, label = ZoneInfo(tz_name), tz_name
-        except Exception as error:  # noqa: BLE001 - zoneinfo raises several types
-            raise LedgerError(f"unknown time zone: {tz_name}") from error
+    zone, label = zone_for(tz_name)
     start = datetime.combine(parse_day(since), datetime.min.time(), zone)
     end = datetime.combine(parse_day(until) + timedelta(days=1), datetime.min.time(), zone)
     if end <= start:
@@ -1431,18 +1568,18 @@ def load_json(path: str, label: str) -> Any:
 
 
 def rework_numbers(data: Any) -> tuple[set[tuple[str | None, int]], set[tuple[str | None, int]]]:
-    """(originals, fixers) as (repository or None, number) from `plumb-ledger rework --json`.
+    """(originals, fixers) as (repo_key or None, number) from `plumb-ledger rework --json`.
     Accepts a list of numbers or of objects with number / pr / original (+ fixed_by / fix)."""
     originals: set[tuple[str | None, int]] = set()
     fixers: set[tuple[str | None, int]] = set()
-    repo = data.get("repository") if isinstance(data, dict) and isinstance(data.get("repository"), str) else None
+    repo = repo_key(data["repository"]) if isinstance(data, dict) and isinstance(data.get("repository"), str) else None
     # `plumb-ledger rework --json` lists them under reworked_changes (reworked is the count).
     rows = (data.get("reworked_changes", data.get("reworked")) if isinstance(data, dict) else data)
     for row in rows if isinstance(rows, list) else []:
         if isinstance(row, int) and not isinstance(row, bool):
             originals.add((repo, row))
         elif isinstance(row, dict):
-            row_repo = row.get("repository") if isinstance(row.get("repository"), str) else repo
+            row_repo = repo_key(row["repository"]) if isinstance(row.get("repository"), str) else repo
             for key in ("number", "pr", "original"):
                 if isinstance(row.get(key), int):
                     originals.add((row_repo, row[key]))
@@ -1467,16 +1604,31 @@ def landed_numbers(path: str) -> set[tuple[str, int]]:
         with contextlib.suppress(ValueError):
             row = json.loads(line)
             if isinstance(row, dict) and row.get("kind") == "pull_request" and isinstance(row.get("number"), int) and row.get("merged_at"):
-                landed.add((row.get("repository") or "", row["number"]))
+                landed.add((repo_key(row.get("repository") if isinstance(row.get("repository"), str) else ""), row["number"]))
     return landed
 
 
+def canonical_repositories(names: Any) -> dict[str, str]:
+    """lowercase name -> the spelling shown for it: the smallest of the spellings seen, whatever the
+    order. GitHub names are case-insensitive, and a record, a pull request row from `changes` and a
+    `--prs` file may spell one repository differently; a task must not split in two for that."""
+    chosen: dict[str, str] = {}
+    for name in names:
+        if name:
+            key = repo_key(name)
+            chosen[key] = min(chosen.get(key, name), name)
+    return chosen
+
+
 def build_report(records: list[dict[str, Any]], pulls: dict[tuple[str, str], list[dict[str, Any]]] | None,
-                 versions: list[dict[str, Any]], now: datetime) -> dict[str, Any]:
-    """Pure: records in, the report's numbers out. Every Decimal is rendered with str()."""
+                 versions: list[dict[str, Any]], now: datetime, sessions: SessionMap | None = None) -> dict[str, Any]:
+    """Pure: records in, the report's numbers out. Every Decimal is rendered with str().
+    With `sessions` (and `pulls`), a request the branch rule leaves without a pull request may go to
+    the one pull request its session produced; see place_request."""
     zero = Decimal(0)
     total = zero
     priced = unknown_cost = unknown_attribution = ambiguous = no_pr = unknown_time = 0
+    session_assigned = session_ambiguous = 0
     by_task: dict[str, dict[str, Any]] = {}
     by_model: dict[str, dict[str, Any]] = {}
     by_role: dict[str, dict[str, Any]] = {}
@@ -1491,7 +1643,9 @@ def build_report(records: list[dict[str, Any]], pulls: dict[tuple[str, str], lis
         else:
             row["cost"] += sum(cost.values(), zero)
 
-    for record in records:
+    placements = [place_request(record, parse_time(record["time"]), pulls, now, sessions) for record in records]
+    spelling = canonical_repositories(placed.repository for placed in placements)
+    for record, placed in zip(records, placements):
         cost = price_request(record, versions)
         moment = parse_time(record["time"])
         if moment is None:
@@ -1506,32 +1660,37 @@ def build_report(records: list[dict[str, Any]], pulls: dict[tuple[str, str], lis
                 by_kind[key] += value
             if any(word in (record["model"] or "").lower() for word in FRONTIER):
                 frontier += amount
-        repository, branch = record["repository"], record["branch"]
-        if repository is None or branch is None:
+        session_ambiguous += placed.session_ambiguous
+        name = spelling.get(repo_key(placed.repository), placed.repository)
+        if placed.kind == "unknown":
             unknown_attribution += 1
             task = "unknown attribution"
-        elif pulls is None:
-            task = f"{repository} @ {branch}"
+        elif placed.kind == "branch":
+            task = f"{name} @ {placed.branch}"
+        elif placed.kind == "pr":
+            session_assigned += placed.via == "session"
+            task = f"{name}#{placed.number}"
+        elif placed.kind == "ambiguous":
+            ambiguous += 1
+            task = "ambiguous"
         else:
-            kind, number = assign_task(repository, branch, moment, pulls, now)
-            if kind == "pr":
-                task = f"{repository}#{number}"
-            elif kind == "ambiguous":
-                ambiguous += 1
-                task = "ambiguous"
-            else:
-                no_pr += 1
-                task = "no pull request"
+            no_pr += 1
+            task = "no pull request"
         bump(by_task, task, cost)
         bump(by_model, record["model"] or "unknown model", cost)
         role = "main" if record["role"] == "main" else f"subagent:{record['agent_type'] or 'unknown'}"
         bump(by_role, role, cost)
-    return {
+    result = {
         "requests": len(records), "priced": priced, "total_cost": total, "frontier_cost": frontier,
         "by_task": by_task, "by_model": by_model, "by_role": by_role, "by_token_kind": by_kind,
         "unknown": {"cost": unknown_cost, "attribution": unknown_attribution, "ambiguous": ambiguous,
                     "no_pull_request": no_pr, "time": unknown_time},
     }
+    if sessions is not None:
+        result["unknown"]["session_ambiguous"] = session_ambiguous
+        result["session_attribution"] = {"applied": pulls is not None, "assigned": session_assigned,
+                                         "ambiguous": session_ambiguous}
+    return result
 
 
 def render_table(table: dict[str, dict[str, Any]], limit: int | None = None) -> list[dict[str, Any]]:
@@ -1541,34 +1700,38 @@ def render_table(table: dict[str, dict[str, Any]], limit: int | None = None) -> 
     return rows[:limit] if limit else rows
 
 
+def add_source_arguments(parser: argparse.ArgumentParser) -> None:
+    """The options `report` and `views` share: where records come from and which are kept."""
+    parser.add_argument("--since", required=True, metavar="YYYY-MM-DD")
+    parser.add_argument("--until", required=True, metavar="YYYY-MM-DD", help="inclusive")
+    parser.add_argument("--prs", action="append", default=[], metavar="FILE", help="output of `plumb-ledger prs` (repeatable, one per repository); without it tasks are repository @ branch")
+    parser.add_argument("--changes", action="append", default=[], metavar="FILE", help="output of `plumb-ledger changes` (repeatable): splits cost into landed and not landed pull requests, and moves a request the branch rule leaves without a pull request to the one landed pull request its cloud session produced (needs --prs)")
+    parser.add_argument("--store-cache", metavar="DIR", help="the cache repository for the store's refs (default: <ledger dir>/store-cache-<hash of the store URL>.git)")
+    parser.add_argument("--ledger-dir", action="append", default=[], metavar="DIR", help="look here for local records (repeatable)")
+    parser.add_argument("--repo", metavar="OWNER/NAME", help="only this repository's requests, by the repository a request is placed in (see --changes); requests of other "
+                        "repositories, and those still without one, are counted and left out")
+    parser.add_argument("--timezone", metavar="ZONE", help="calendar days in this zone (default: ledger.timezone of the contract, else UTC)")
+    parser.add_argument("--prices", metavar="FILE", default=str(PRICES_FILE), help=argparse.SUPPRESS)
+    parser.add_argument("--now", metavar="ISO", help=argparse.SUPPRESS)
+
+
 def report_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="plumb-ledger report",
         description="The weekly cost report: total, by task (top 10), model, frontier share, role and "
                     "agent type, token kind; cost of reworked changes; what is unknown; coverage. Reads the "
                     "local records and the store's refs (fetched into a cache repository).")
-    parser.add_argument("--since", required=True, metavar="YYYY-MM-DD")
-    parser.add_argument("--until", required=True, metavar="YYYY-MM-DD", help="inclusive")
-    parser.add_argument("--prs", action="append", default=[], metavar="FILE", help="output of `plumb-ledger prs` (repeatable, one per repository); without it tasks are repository @ branch")
-    parser.add_argument("--changes", metavar="FILE", help="output of `plumb-ledger changes`: splits cost into landed and not landed pull requests")
+    add_source_arguments(parser)
     parser.add_argument("--rework", metavar="FILE", help="output of `plumb-ledger rework --json`: adds the cost of reworked changes")
-    parser.add_argument("--store-cache", metavar="DIR", help="the cache repository for the store's refs (default: <ledger dir>/store-cache-<hash of the store URL>.git)")
-    parser.add_argument("--ledger-dir", action="append", default=[], metavar="DIR", help="look here for local records (repeatable)")
-    parser.add_argument("--repo", metavar="OWNER/NAME", help="only this repository's requests; requests of other "
-                        "repositories, and those whose repository is unknown, are counted and left out")
-    parser.add_argument("--timezone", metavar="ZONE", help="calendar days in this zone (default: ledger.timezone of the contract, else UTC)")
-    parser.add_argument("--prices", metavar="FILE", default=str(PRICES_FILE), help=argparse.SUPPRESS)
-    parser.add_argument("--now", metavar="ISO", help=argparse.SUPPRESS)
     parser.add_argument("--json", action="store_true", help="print JSON (money as exact decimal strings)")
     return parser
 
 
-def cmd_report(argv: list[str]) -> int:
-    args = report_parser().parse_args(argv)
-    tz_name = args.timezone or contract_timezone()
-    start, end, label = day_range(args.since, args.until, tz_name)
-    now = parse_time(args.now) if args.now else datetime.now(timezone.utc)
-    versions = load_prices(Path(args.prices))
+def gather(args: argparse.Namespace, start: datetime, end: datetime) -> dict[str, Any]:
+    """The records of the period from the local directories and the store, merged by id, and what
+    is known about them. `merged` is every record with its time (the timeline of a session needs
+    the requests around the period); `in_period` is the period's and `in_period_index` their
+    positions in `merged`. scope_period() then applies --repo."""
     dirs = ledger_dirs(os.getcwd(), args.ledger_dir)
     pending, exported, local_conflicts, pending_sessions = collect_local(dirs)
 
@@ -1581,29 +1744,62 @@ def cmd_report(argv: list[str]) -> int:
         store_rows, store_conflicts, store_status = fetch_store(store, cache)
     merged, conflicts, unidentified = merge_sources([pending, exported, store_rows], local_conflicts | store_conflicts)
     in_period = []
-    for record in merged:
+    for index, record in enumerate(merged):
         moment = parse_time(record["time"])
         if moment is not None and start <= moment < end:
-            in_period.append(record)
+            in_period.append(index)
     outside_time = sum(1 for record in merged if parse_time(record["time"]) is None)
-    scope = None
-    if args.repo:
-        # One repository's retro must not carry another's cost. A request whose repository is unknown
-        # cannot be placed: it is counted, never added.
-        wanted = args.repo.lower()
-        other = sum(1 for r in in_period if r.get("repository") and str(r["repository"]).lower() != wanted)
-        unknown = sum(1 for r in in_period if not r.get("repository"))
-        in_period = [r for r in in_period if r.get("repository") and str(r["repository"]).lower() == wanted]
-        scope = {"repository": args.repo, "other_repositories": other, "unknown_repository": unknown}
+    return {"merged": merged, "in_period_index": in_period, "in_period": [merged[i] for i in in_period],
+            "unidentified": unidentified, "conflicts": conflicts, "outside_time": outside_time,
+            "scope": None, "pending_sessions": pending_sessions, "pending_records": len(pending),
+            "store": store, "store_status": store_status}
+
+
+def scope_period(found: dict[str, Any], repo: str | None, pulls: dict | None, sessions: SessionMap | None,
+                 now: datetime) -> None:
+    """Keep the period's requests of --repo, by the repository a request is placed in: a request
+    whose repository is unknown but whose session produced exactly one pull request is counted in
+    that pull request's repository. Only requests still without a repository are reported as
+    unknown. One repository's retro must not carry another's cost; what cannot be placed is counted,
+    never added."""
+    if not repo:
+        return
+    merged, wanted = found["merged"], repo_key(repo)
+    kept, other, unknown = [], 0, 0
+    for index in found["in_period_index"]:
+        record = merged[index]
+        name = place_request(record, parse_time(record["time"]), pulls, now, sessions).repository
+        if not name:
+            unknown += 1
+        elif repo_key(name) == wanted:
+            kept.append(index)
+        else:
+            other += 1
+    found["in_period_index"] = kept
+    found["in_period"] = [merged[i] for i in kept]
+    found["scope"] = {"repository": repo, "other_repositories": other, "unknown_repository": unknown}
+
+
+def cmd_report(argv: list[str]) -> int:
+    args = report_parser().parse_args(argv)
+    tz_name = args.timezone or contract_timezone()
+    start, end, label = day_range(args.since, args.until, tz_name)
+    now = parse_time(args.now) if args.now else datetime.now(timezone.utc)
+    versions = load_prices(Path(args.prices))
+    found = gather(args, start, end)
     pulls = load_prs(args.prs) if args.prs else None
-    result = build_report(in_period, pulls, versions, now)
+    sessions = session_map(args.changes) if args.changes else None
+    scope_period(found, args.repo, pulls, sessions, now)
+    in_period, conflicts, scope = found["in_period"], found["conflicts"], found["scope"]
+    store, store_status = found["store"], found["store_status"]
+    result = build_report(in_period, pulls, versions, now, sessions)
     period_ids = {record["id"] for record in in_period if record["id"]}
     result["unknown"]["unidentified"] = sum(1 for record in in_period if record["id"] is None)
     result["unknown"]["id_conflicts"] = len(conflicts & period_ids)
-    result["unknown"]["time"] = outside_time
-    pending_records = len(pending)
+    result["unknown"]["time"] = found["outside_time"]
+    pending_records = found["pending_records"]
     result["coverage"] = {
-        "pending_sessions": pending_sessions, "pending_records": pending_records, "store": store_status.split(":")[0],
+        "pending_sessions": found["pending_sessions"], "pending_records": pending_records, "store": store_status.split(":")[0],
         "store_detail": store_status, "complete": pending_records == 0 and store_status in ("unset", "ok"),
         "note": "cloud sessions are not covered (ledger.store is unset)" if not store else "",
     }
@@ -1611,12 +1807,15 @@ def cmd_report(argv: list[str]) -> int:
     if scope:
         result["scope"] = scope
     if args.changes:
-        landed = landed_numbers(args.changes)
+        landed: set[tuple[str, int]] = set()
+        for path in args.changes:
+            landed |= landed_numbers(path)
         split = {"landed": Decimal(0), "not_landed": Decimal(0)}
         for name, row in result["by_task"].items():
             match = re.fullmatch(r"(.+)#(\d+)", name)
             if match:
-                is_landed = any(repo in ("", match.group(1)) and number == int(match.group(2)) for repo, number in landed)
+                is_landed = any((repo == "" or repo == repo_key(match.group(1))) and number == int(match.group(2))
+                                for repo, number in landed)
                 split["landed" if is_landed else "not_landed"] += row["cost"]
         result["landed_split"] = split
     if args.rework:
@@ -1626,7 +1825,8 @@ def cmd_report(argv: list[str]) -> int:
             sum_cost = Decimal(0)
             for name, row in result["by_task"].items():
                 match = re.fullmatch(r"(.+)#(\d+)", name)
-                if match and any(repo in (None, match.group(1)) and number == int(match.group(2)) for repo, number in wanted):
+                if match and any((repo is None or repo == repo_key(match.group(1))) and number == int(match.group(2))
+                                 for repo, number in wanted):
                     sum_cost += row["cost"]
             return sum_cost
 
@@ -1698,6 +1898,12 @@ def print_report(result: dict[str, Any]) -> None:
         scope = result["scope"]
         print(f"\nrepository: {scope['repository']} only; left out: {scope['other_repositories']} request(s) of other "
               f"repositories, {scope['unknown_repository']} whose repository is unknown")
+    if "session_attribution" in result:
+        moved = result["session_attribution"]
+        print("\nsession attribution: " + (
+            f"{moved['assigned']} request(s) moved to the pull request their session produced; "
+            f"{moved['ambiguous']} left (the session produced several)" if moved["applied"]
+            else "skipped (it needs --prs)"))
     print("\ncoverage: " + ("complete" if coverage["complete"] else "INCOMPLETE"))
     print(f"  pending export: {coverage['pending_records']} requests in {coverage['pending_sessions']} session(s)")
     print(f"  store: {coverage['store_detail']}" + (f" ({coverage['note']})" if coverage["note"] else ""))
@@ -1705,12 +1911,17 @@ def print_report(result: dict[str, Any]) -> None:
 
 # ---------------------------------------------------------------- entry
 
-COMMANDS = {"capture": cmd_capture, "export": cmd_export, "prs": cmd_prs, "report": cmd_report}
+def cmd_views(argv: list[str]) -> int:
+    import ledger_views   # imports this module: loaded on demand
+    return ledger_views.cmd_views(argv)
+
+
+COMMANDS = {"capture": cmd_capture, "export": cmd_export, "prs": cmd_prs, "report": cmd_report, "views": cmd_views}
 
 
 def main(argv: list[str]) -> int:
     if not argv or argv[0] not in COMMANDS:
-        print("usage: plumb-ledger capture|export|prs|report [options]", file=sys.stderr)
+        print("usage: plumb-ledger capture|export|prs|report|views [options]", file=sys.stderr)
         return 2
     hook_cwd = os.getcwd()
     try:

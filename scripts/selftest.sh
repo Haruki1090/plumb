@@ -1422,7 +1422,7 @@ else
 fi
 
 if [ -n "${PLUMB_SELFTEST_QUICK:-}" ]; then
-  printf '  %-4s %s\n' "--" "work ledger, cost-per-task, failure-record and bootstrap suites skipped: quick mode (run scripts/selftest.sh for them)"
+  printf '  %-4s %s\n' "--" "work ledger, cost-per-task, ledger-views, failure-record and bootstrap suites skipped: quick mode (run scripts/selftest.sh for them)"
 elif command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-ledger-changes.py" >/dev/null \
     && ok "work ledger: landed changes (merge, squash, rebase, pagination, shallow clone) and the rework rate" \
@@ -1430,6 +1430,9 @@ elif command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-ledger-cost.py" >/dev/null \
     && ok "cost per task: capture, identity, price, export, task assignment, report, hook latency" \
     || ng "cost per task (run scripts/test-ledger-cost.py)"
+  python3 -B "$root/scripts/test-ledger-views.py" >/dev/null \
+    && ok "ledger views: remote_session, session attribution, active time, tables (escaping, determinism, writes only under --out)" \
+    || ng "ledger views (run scripts/test-ledger-views.py)"
   python3 -B "$root/scripts/test-ledger-failures.py" >/dev/null \
     && ok "failure records: created in the period, blocks in bodies and comments, problems kept, findings" \
     || ng "failure records (run scripts/test-ledger-failures.py)"

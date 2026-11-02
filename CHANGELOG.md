@@ -2,6 +2,49 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.20.0] - 2026-11-02
+
+### Added
+
+- `plumb-ledger views --since <day> --until <day> --out <dir>`: time, cost and model per task as
+  tables the store can show on GitHub. It writes `README.md` (totals, coverage, every unknown count),
+  `tasks`, `days` and `models` as Markdown (the 50 costliest rows and the count of the rest) and CSV
+  (every row, RFC 4180), and `sessions.csv`. The same records give the same bytes, only the
+  generated files under `--out` are replaced, and nothing is pushed.
+- Active time per task. Time is measured per session (main transcript and subagents together):
+  two consecutive requests at most `--gap-minutes` apart (30 by default) are one stretch, the
+  interval is credited to the task of the later request, and a longer gap counts nowhere. The span
+  is shown beside it.
+- Capture records `remote_session`, the cloud session id the runtime exposes
+  (`CLAUDE_CODE_REMOTE_SESSION_ID`, reduced to the part after the first underscore; null for a local
+  session or a malformed value). It is the id a `Claude-Session:` commit trailer carries. It is
+  recorded only for the running session's own transcript and its subagents (the record's `session`
+  equals `CLAUDE_CODE_SESSION_ID`); other transcripts read in the same run get null. It joins the
+  allowlist; records captured before have no field and read as null.
+- Session-to-pull-request attribution: with `--changes <jsonl>` (repeatable), a request the branch
+  rule leaves without a pull request (no pull request on its branch, an unknown branch, or the base
+  branch) goes to the one landed pull request its cloud session produced, marked
+  `attribution = session`. A session that produced several leaves the request where it was and is
+  counted as `session_ambiguous`. A request with no repository (a cloud session that started outside
+  any checkout) is moved when its session produced exactly one landed pull request across all
+  repositories, and takes that pull request's repository; `--repo` then filters on the repository a
+  request was placed in.
+- `docs/ledger.md`: the views, active time, session attribution, and the publishing in the store
+  (an example daily workflow for the store, and the weekly retro).
+- `plumb:retro` runs `views` for the week and keeps `views/<owner>/<name>/<ISO week>/` and
+  `retro/<owner>/<name>/<ISO week>.md` in the store (the repository is in the path, so a store shared by
+  several repositories keeps them apart); the next retro reads the previous week's note first.
+
+### Changed
+
+- `plumb-ledger report` and `views` compare repository names by one lower-case key everywhere (the
+  record, `--prs`, `--changes`, `--rework`, `--repo`), and a task is shown under one spelling. `views`
+  fetches the store into a temporary directory (or `--store-cache`) instead of the ledger directory. In `views`, a row whose requests are all unpriced shows no
+  cost (empty in CSV, `unpriced` in Markdown) instead of 0.
+- `plumb-ledger report` accepts `--changes` more than once and applies the session rule to a run
+  that also has `--prs`; its landed split reads every file. The text gains one line, and the JSON the
+  keys `session_attribution` and `unknown.session_ambiguous`, only when `--changes` is given.
+
 ## [0.19.0] - 2026-10-31
 
 ### Added
