@@ -268,11 +268,15 @@ A model may carry its own `checked` and `source`, which override the version's f
 its name is looked up as written (`opencode/deepseek-v4.1-flash-free` has a provider prefix). A model
 that a version was missing may be added to it when its price held for the whole version (that turns
 an unknown cost into a known one and changes no priced row); changing a listed price still needs a
-new version. An unknown model (Codex models today) or missing token counts make that request's cost
-unknown — counted and shown, never zero. Codex models stay unpriced until their list price has been
-checked against the provider's own page (a third-party listing is not enough). Sums keep full
+new version. An unknown model or missing token counts make that request's cost unknown — counted
+and shown, never zero. A model's price is added only from the provider's own pages (a third-party
+listing is not enough), and its `source` says which page and how it was read. Sums keep full
 precision; only the display rounds. OpenCode's free-tier model is priced 0, which is also what
-OpenCode records for those rows.
+OpenCode records for those rows. `gpt-6.1-sol` (0.21.1) is priced at the OpenAI API's standard
+tier, with its long-context tier above 272K input tokens; a Codex session on a subscription is not
+billed per token, so its cost, like a flat-rate Claude plan's, compares work rather than states a
+bill. Codex rows put cache writes in `cache_write_5m`, which the version prices at 1.25x input, the
+rate OpenAI lists for this model.
 
 ### Store and export
 
