@@ -75,13 +75,18 @@ request that is new since the last capture. With capture off the hook checks the
 shell and returns without starting Python (about 10 ms). With it on, the hook only spawns the work
 (p95 under 30 ms on a 52 MB transcript) and each capture reads only the bytes appended since the
 saved offset. The hook never fails a turn. By hand: `plumb-ledger capture --transcript <path>` or,
-for Codex, `--runtime codex --transcripts <dir>`.
+for Codex, `--runtime codex --transcripts <dir>` (every `.jsonl` below `<dir>`, recursively, sorted by
+path; for Claude it stays the direct files of `<dir>`, because subagent transcripts are read through
+their main transcript). `plumb-ledger capture --sweep` captures the other runtimes on the machine
+(next section). OpenCode has no transcript files: `--runtime opencode` with `--transcript` or
+`--transcripts` is refused, and only the sweep reads it.
 
 Records live in `~/.claude/plumb/ledger` (or `PLUMB_LEDGER_DIR`) for every repository; each carries
 its repository. Nothing is written under a product repository.
 
 **Identity.** Claude `claude:<message.id>`, because `requestId` is absent on many records and mixing
-the two keys double-counts; Codex `codex:<session>:<n>`, never merged across sessions. The copies of
+the two keys double-counts; Codex `codex:<session>:<n>`, never merged across sessions; OpenCode
+`opencode:<message id>`. The copies of
 one request (one per content block, or in a forked transcript) count once. Copies whose usage differs are kept
 once and reported as conflicts. A request with no id is kept and counted as unidentified; identical unidentified rows are separate requests and all of them are exported and counted.
 
@@ -118,8 +123,140 @@ whose `session` (the transcript's session id, which its subagents share) equals
 `CLAUDE_CODE_SESSION_ID`, the id of the running session's own transcript. A capture run by hand from
 another shell, one that imports other sessions' transcripts (`--transcripts <dir>`), or a run where
 `CLAUDE_CODE_SESSION_ID` is missing records `null` for them, not a wrong id that would move past work
-to the running session's pull request. Codex records get `null`. Records captured before 0.20.0 have no such field and read as `null`; nothing is
+to the running session's pull request. Records captured before 0.20.0 have no such field and read as `null`; nothing is
 backfilled. Session-to-pull-request attribution (below) is what it is for.
+
+Codex and OpenCode records (0.21.0) have no `CLAUDE_CODE_SESSION_ID` to compare with, so the rule is
+the container's: they get the id only when `CLAUDE_CODE_REMOTE=true` (the process runs inside a
+cloud session's own container, which holds that session's work and nothing else). Elsewhere, on a
+laptop and also on one driven by Remote Control, they get `null`. Claude records keep the rule above.
+
+### Other runtimes: Codex and OpenCode (`capture --sweep`)
+
+The Stop hook sees only Claude Code's transcript. `plumb-ledger capture --sweep` captures the other
+runtimes from their default locations on the machine, as a source next to `--hook-input`,
+`--transcript` and `--transcripts` (it excludes them; `--runtime` is ignored). Claude is not swept:
+its transcripts are captured by the Stop hook of the session that wrote them, and `remote_session`
+depends on that binding.
+
+| Runtime | Location |
+|---|---|
+| `codex` | `$CODEX_HOME/sessions` and `$CODEX_HOME/archived_sessions` (`CODEX_HOME` defaults to `~/.codex`), every `*.jsonl` below them, recursively |
+| `opencode` | `$OPENCODE_DATA_DIR/opencode.db`, else `${XDG_DATA_HOME:-~/.local/share}/opencode/opencode.db` |
+
+`ledger.runtimes` in `~/.claude/plumb/config` picks the runtimes, separated by commas or white space
+(default `claude,codex,opencode`; `claude` is accepted and does nothing in a sweep). A name that is
+not a runtime is ignored with one stderr line. A location that does not exist is not an error: the
+summary has one line per runtime with `missing=<what>`.
+
+```text
+$ plumb-ledger capture --sweep
+capture: codex session=... new=2 duplicates=0 unidentified=0 conflicts=0 bytes_read=1314
+sweep: codex files=41 unchanged=40 failed=0 missing=archived_sessions
+sweep: opencode rows=12 failed=0 missing=none
+```
+
+`--json` prints the same as JSON lines: one per session, then one per runtime with `"kind": "sweep"`.
+The exit status is 1 when a runtime failed (below), 0 otherwise.
+
+**Codex.** A sweep must stay cheap when it runs after every turn on a machine with hundreds of
+rollouts. `state/codex/sweep.json` keeps, per rollout path, its size, its mtime and a status (`ok` or
+`failed`). A file whose size and mtime are unchanged since the last sweep is not opened; a changed
+one is read from its saved offset. `failed` is a rollout the normalizer refused (for example one that
+starts with a usage total it never observed) or one that could not be read (permissions): it is counted in `failed=`, not retried until its size
+or mtime changes, and leaves one line (the error type and a short masked message, never the file's
+content) in `capture.log` per change. Rows already captured from it stay, and the sweep goes on
+with the other files; a refused file does not change the exit status. A rollout that Codex moves to
+`archived_sessions/` is read again once under its new path, and its ids, already held, absorb it. A
+missing or unreadable index means every file is checked again (the per-file offsets still prevent
+reading a file twice).
+
+**OpenCode** (2.x) keeps its sessions in a SQLite database. The adapter opens it read-only
+(`mode=ro`, then `PRAGMA query_only = ON`) and queries two tables, selecting only these columns:
+`session_v2.id, parent_id, directory, model` and `session_message.id, session_id, type,
+time_updated, data`. The database also holds account and credential tables; no query names them.
+From `data` it reads the time, tokens, model and agent, and nothing else (no message text). A
+database that cannot be opened, stays locked past 5 seconds or lacks these tables or columns is a
+defined failure for OpenCode only: one stderr line, one line in `capture.log`, exit status 1, and the
+other runtimes of the sweep still run.
+
+A row is an assistant message with `time.completed` set and a `tokens` object; one OpenCode step
+writes one assistant message, so a row is one model call, retries included. A message that is still
+streaming is skipped and picked up by a later sweep.
+
+| Record | From |
+|---|---|
+| `id` | `opencode:<session_message.id>` |
+| `time` | `data.time.created` (epoch milliseconds, UTC) |
+| `model` | `<data.model.providerID>/<data.model.id>`; when `data.model` is missing, the same keys of `session_v2.model` |
+| `input` | `data.tokens.input` (OpenCode stores non-cached input) |
+| `output` | `data.tokens.output + data.tokens.reasoning` (OpenCode stores visible output and reasoning apart and bills both at the output rate; Claude and Codex rows count reasoning inside output). When `reasoning` is absent altogether, `output`; when either is not a non-negative integer, `null` |
+| `cache_read` | `data.tokens.cache.read` |
+| `cache_write_5m`, `cache_write_1h` | `data.tokens.cache.write` and `0` (no TTL split, the Codex convention); both `null` when the write figure is unknown |
+| `session` | the root of the `parent_id` chain. A missing parent stops the walk at the last session found; a cycle ends at its smallest id |
+| `role`, `agent_id`, `agent_type` | `main` when the message's own session is the root; else `subagent` with that session's id and `data.agent` (for example `general`) |
+| `repository`, `branch`, `attribution_source` | the HEAD reflog of `session_v2.directory` at `time`, as for Codex rows |
+| `runtime`, `remote_session` | `opencode`; the rule above |
+
+A token value that is not a non-negative integer is `null`, never zero; a row whose tokens are all
+`null` is skipped and counted in `skipped_lines`. Repeats of an id are dropped, and a repeat with
+different tokens is a conflict, as for Claude. The sweep keeps a watermark per database in
+`state/opencode/<hash of the path>.json`, the largest `time_updated` it has seen, advanced only after the
+sessions' pending rows are written. It reads the rows after the watermark minus ten minutes (rows
+committed late are caught; ids absorb the repeats), and a database whose `time_updated` goes behind the
+watermark (a restore) is read again from the start. A row committed more than ten minutes behind the
+watermark is not seen.
+
+**Not captured.** OpenCode records usage for title generation and compaction only in its session
+totals, not in a message, so it is not in the ledger. The ledger prices from `assets/prices.json`
+for every runtime and does not read OpenCode's own `cost` column.
+
+**The Stop hook.** With `ledger.capture = on`, the hook's background capture runs the Claude capture
+as before and then the sweep, in the same process under the same lock. A failure in the sweep never
+fails the Claude capture or the hook; it leaves a line in `capture.log`. With `ledger.export =
+on-stop`, every runtime the hook swept is exported at the end of the turn as `plumb-ledger export
+--runtime <runtime>`: every session of it that is still pending, not only the ones this turn added
+to, so a session whose push failed is sent on a later turn even when its rollout or database rows did
+not change. With nothing pending, that export does not reach the store. The first sweep on a machine with many old rollouts exports one branch per
+session; it runs in the background and is resumable (pending rows stay until pushed).
+
+**A machine with no Claude session running.** plumb does not install a scheduled job. On a laptop,
+run the sweep and the export every 15 minutes, for example with a macOS LaunchAgent
+(`~/Library/LaunchAgents/dev.plumb.ledger.plist`, loaded with `launchctl load`):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>dev.plumb.ledger</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>plumb-ledger capture --sweep; plumb-ledger export</string>
+  </array>
+  <key>StartInterval</key><integer>900</integer>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>
+```
+
+Put the directory that holds `plumb-ledger` on that `PATH` (or write its full path in the command).
+
+or a `crontab -e` line (`plumb-ledger` on cron's `PATH`, or give its full path):
+
+```cron
+*/15 * * * * plumb-ledger capture --sweep; plumb-ledger export
+```
+
+The two commands are joined with `;`, not `&&`: a runtime that fails (an unreadable OpenCode
+database) makes `capture --sweep` exit 1, and the rows the other runtimes captured must still be
+exported. `export` does nothing without `ledger.store`. `capture --sweep` does not need `ledger.capture = on`
+(it runs when called); only the Stop hook is gated by that setting.
 
 ### Price
 
@@ -127,8 +264,15 @@ backfilled. Session-to-pull-request attribution (below) is what it is for.
 against the provider's published list, and per-model rates in USD per million tokens, including a
 long-context tier decided per request on input + cache read + cache write. Each request is priced
 with the version in effect at its time. Add a version for a price change; never edit an old one.
-An unknown model (Codex models today) or missing token counts make that request's cost unknown —
-counted and shown, never zero. Sums keep full precision; only the display rounds.
+A model may carry its own `checked` and `source`, which override the version's for that model, and
+its name is looked up as written (`opencode/deepseek-v4.1-flash-free` has a provider prefix). A model
+that a version was missing may be added to it when its price held for the whole version (that turns
+an unknown cost into a known one and changes no priced row); changing a listed price still needs a
+new version. An unknown model (Codex models today) or missing token counts make that request's cost
+unknown — counted and shown, never zero. Codex models stay unpriced until their list price has been
+checked against the provider's own page (a third-party listing is not enough). Sums keep full
+precision; only the display rounds. OpenCode's free-tier model is priced 0, which is also what
+OpenCode records for those rows.
 
 ### Store and export
 

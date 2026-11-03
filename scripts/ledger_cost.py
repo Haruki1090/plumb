@@ -1,8 +1,8 @@
 """Cost per task: capture, price, store, export, task assignment and the weekly report.
 
-    plumb-ledger capture [--hook-input <file> | --transcript <path>] [--runtime claude|codex]
-                         [--transcripts <dir>] [--cwd <dir>] [--json]
-    plumb-ledger export  [--session <id>] [--runtime claude|codex] [--check] [--ledger-dir <dir>]
+    plumb-ledger capture [--hook-input <file> | --transcript <path> | --transcripts <dir> | --sweep]
+                         [--runtime claude|codex|opencode] [--cwd <dir>] [--json]
+    plumb-ledger export  [--session <id>] [--runtime claude|codex|opencode] [--check] [--ledger-dir <dir>]
     plumb-ledger prs     --repo <owner/name> --since <date> [--out <json>]
     plumb-ledger report  --since <date> --until <date> [--prs <json>] [--changes <jsonl>]...
                          [--rework <json>] [--store-cache <dir>] [--json]
@@ -32,6 +32,7 @@ import io
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 from collections import Counter
@@ -39,6 +40,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP, localcontext
 from pathlib import Path
 from typing import Any, Iterator
+from urllib.parse import quote
 
 SCRIPTS = Path(__file__).resolve().parent
 PLUGIN = SCRIPTS.parent
@@ -52,7 +54,8 @@ FIELDS = ("id", "time", "model", "input", "output", "cache_read", "cache_write_5
 TOKEN_FIELDS = ("input", "output", "cache_read", "cache_write_5m", "cache_write_1h")
 # `transcript` and `worktree_at_capture` are no longer written but old records in stores hold them.
 SOURCES = ("reflog", "transcript", "worktree_at_capture", "unknown")
-RUNTIMES = ("claude", "codex")
+RUNTIMES = ("claude", "codex", "opencode")
+SWEPT = ("codex", "opencode")   # the runtimes `capture --sweep` reads; Claude is captured by its own Stop hook
 FRONTIER = ("fable", "mythos", "opus")
 SAFE = re.compile(r"[\w./@+:#=,%~\-\[\]]{1,200}")
 SAFE_SESSION = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,127}")
@@ -139,6 +142,14 @@ def remote_session_from_env(env: Any = None, session: str | None = None) -> str 
     value = env.get(REMOTE_SESSION_ENV)
     match = REMOTE_VALUE.fullmatch(value) if isinstance(value, str) else None
     return match.group(1) if match else None
+
+
+def cloud_remote_session() -> str | None:
+    """`remote_session` of a Codex or OpenCode record: the cloud session id, only when this process
+    runs inside that cloud session's own container (`CLAUDE_CODE_REMOTE=true`), which holds that
+    session's work and nothing else. Elsewhere (a laptop, also one driven by Remote Control) the
+    variable can name a session these transcripts do not belong to, so the record gets None."""
+    return remote_session_from_env(session=None) if os.environ.get("CLAUDE_CODE_REMOTE") == "true" else None
 
 
 def parse_time(value: Any) -> datetime | None:
@@ -675,6 +686,15 @@ def capture_claude_file(path: Path, is_main: bool, offset: int, capture: Capture
     return end, end - offset
 
 
+def cwd_attribution(checkouts: Checkouts, cwd: str | None, time_text: Any) -> tuple[str | None, str | None, str]:
+    """(repository, branch, source) of a record that has a directory and a time but no branch of its
+    own (Codex, OpenCode): the directory's HEAD reflog at that time."""
+    if cwd and checkouts.top(cwd):
+        branch, source = checkouts.from_reflog(cwd, timestamp_seconds(time_text)) or (None, "unknown")
+        return checkouts.repository(cwd), branch, source
+    return None, None, "unknown"
+
+
 def codex_cwd(rec: dict[str, Any]) -> str | None:
     payload = rec.get("payload")
     if rec.get("type") in ("session_meta", "turn_context") and isinstance(payload, dict):
@@ -719,14 +739,10 @@ def capture_codex_file(path: Path, entry: dict[str, Any], offset: int, capture: 
             "cache_write_5m": total, "cache_write_1h": 0 if total is not None else None,
         }
         # Codex rows carry no branch, but they have a cwd and a time: the reflog gives the branch.
-        repository, branch, source = None, None, "unknown"
-        if cwd and checkouts.top(cwd):
-            repository = checkouts.repository(cwd)
-            branch, source = checkouts.from_reflog(cwd, timestamp_seconds(request["time"])) or (None, "unknown")
         if identity is not None and identity in capture.known:
             capture.counts["duplicates"] += 1
             continue
-        capture.add(request, "main", None, None, (repository, branch, source), identity)
+        capture.add(request, "main", None, None, cwd_attribution(checkouts, cwd, request["time"]), identity)
     entry["codex"] = {"previous": normalizer.previous, "sequence": normalizer.sequence,
                       "model": normalizer.model, "session_id": normalizer.session_id, "cwd": cwd}
     if normalizer.session_id:
@@ -792,10 +808,17 @@ def capture_one(directory: Path, runtime: str, main: Path, checkouts: Checkouts)
     else:
         paths = [(main, True)]
         saved = state["files"].get(str(main), {}).get("codex")
+        if saved is None:
+            # The same rollout under another path (Codex moves old ones to archived_sessions/ keeping
+            # the name, so the state file, which is named after it, knows the session): read it from
+            # the start, and let the ids already held absorb what was captured at the old path.
+            saved = next((entry["codex"] for entry in state["files"].values()
+                          if isinstance(entry, dict) and isinstance(entry.get("codex"), dict)
+                          and isinstance(entry["codex"].get("session_id"), str)), None)
         if isinstance(saved, dict) and isinstance(saved.get("session_id"), str):
             session = safe_session(saved["session_id"])
     capture = Capture(runtime, session, known_ids(directory, runtime, session),
-                      remote_session_from_env(session=main.stem) if runtime == "claude" else None)
+                      remote_session_from_env(session=main.stem) if runtime == "claude" else cloud_remote_session())
     summary_files = []
     for path, is_main in paths:
         key = str(path)
@@ -831,6 +854,327 @@ def capture_one(directory: Path, runtime: str, main: Path, checkouts: Checkouts)
             "bytes_read": sum(f["bytes_read"] for f in summary_files), "files": summary_files}
 
 
+# ---------------------------------------------------------------- sweep: every other runtime on the machine
+
+def sweep_runtimes() -> list[str]:
+    """The runtimes `ledger.runtimes` names that a sweep reads (default: all of them). The list is
+    separated by commas or white space; a name that is not a runtime is ignored with one stderr line."""
+    names = [name.lower() for name in re.split(r"[,\s]+", config("ledger.runtimes", ",".join(RUNTIMES))) if name]
+    unknown = sorted({clean(name, 40) or "?" for name in names if name not in RUNTIMES})
+    if unknown:
+        print("plumb-ledger capture: ledger.runtimes ignores unknown runtime(s): " + ", ".join(unknown), file=sys.stderr)
+    return [runtime for runtime in SWEPT if runtime in names]
+
+
+def codex_roots() -> list[tuple[str, Path]]:
+    home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex").expanduser()
+    return [(name, home / name) for name in ("sessions", "archived_sessions")]
+
+
+def codex_files(root: Path) -> list[Path]:
+    """Every rollout below `root` (Codex writes sessions/YYYY/MM/DD/rollout-*.jsonl), sorted by path."""
+    return sorted(path for path in root.rglob("*.jsonl") if path.is_file())
+
+
+def load_sweep_index(path: Path) -> dict[str, dict[str, Any]]:
+    """path -> {size, mtime_ns, status}. A missing or unreadable index, or an entry that does not have
+    that shape, means the file is checked again (its own offsets still prevent reading it twice)."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    index: dict[str, dict[str, Any]] = {}
+    for key, entry in (data.items() if isinstance(data, dict) else []):
+        if (isinstance(entry, dict) and integer(entry.get("size")) is not None
+                and integer(entry.get("mtime_ns")) is not None and entry.get("status") in ("ok", "failed")):
+            index[key] = {"size": entry["size"], "mtime_ns": entry["mtime_ns"], "status": entry["status"]}
+    return index
+
+
+def sweep_codex(directory: Path, checkouts: Checkouts, sessions: list[dict[str, Any]], cwd: str | None) -> dict[str, Any]:
+    """Capture every Codex rollout that changed since the last sweep.
+
+    state/codex/sweep.json holds, per rollout path, the size and mtime the file had when it was last
+    looked at and whether it was `ok` or `failed` (refused by the normalizer, for example a rollout
+    that starts with a usage total it never observed). A file whose size and mtime are unchanged is
+    not opened; a failed one is counted and not retried until it changes. The error type and a short
+    masked message go to capture.log once per change of the file, never the file's content. The
+    per-file state (offset, head hash, normalizer state) is the one `capture_one` keeps."""
+    index_path = directory / "state" / "codex" / "sweep.json"
+    index = load_sweep_index(index_path)
+    summary: dict[str, Any] = {"runtime": "codex", "kind": "sweep", "files": 0, "unchanged": 0, "failed": 0, "missing": []}
+    seen: dict[str, dict[str, Any]] = {}
+    missing_roots: list[str] = []
+    try:
+        for name, root in codex_roots():
+            if not root.is_dir():
+                summary["missing"].append(name)
+                missing_roots.append(str(root) + os.sep)
+                continue
+            for path in codex_files(root):
+                key = str(path)
+                try:
+                    stat = path.stat()
+                except OSError:
+                    continue
+                summary["files"] += 1
+                previous = index.get(key)
+                if previous and previous["size"] == stat.st_size and previous["mtime_ns"] == stat.st_mtime_ns:
+                    seen[key] = previous
+                    summary["unchanged"] += 1
+                    summary["failed"] += previous["status"] == "failed"
+                    continue
+                status = "ok"
+                try:
+                    captured = capture_one(directory, "codex", path, checkouts)
+                    if not captured["files"]:
+                        # capture_one could not stat or hash the file and read nothing: not `ok`, and
+                        # not refused either. It stays out of the index, so the next sweep reads it.
+                        summary["failed"] += 1
+                        log_line(cwd, "sweep codex: file skipped: it could not be read this time")
+                        continue
+                    sessions.append(captured)
+                except (LedgerError, OSError) as error:
+                    summary["failed"] += 1
+                    if isinstance(error, OSError) and getattr(error, "filename", None) != key:
+                        # Writing the ledger failed (its directory, the disk), not reading this file:
+                        # the file stays out of the index, so the next sweep tries it again.
+                        log_line(cwd, f"sweep codex: ledger write failed: {type(error).__name__}: {redact(str(error))[:200]}")
+                        continue
+                    # Refused by the normalizer, or this file is not readable (permissions): this file
+                    # only. The other rollouts go on, and this one waits for a change.
+                    status = "failed"
+                    log_line(cwd, f"sweep codex: file refused: {type(error).__name__}: {redact(str(error))[:200]}")
+                # The size and mtime read before the capture: a file that grows meanwhile differs next time.
+                seen[key] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "status": status}
+    finally:
+        # Paths no longer listed (a rollout moved to archived_sessions/) leave the index; those below a
+        # location that was not there are kept.
+        kept = {key: entry for key, entry in index.items() if key not in seen
+                and any(key.startswith(prefix) for prefix in missing_roots)}
+        atomic_write(index_path, json.dumps({**kept, **seen}, sort_keys=True))
+    return summary
+
+
+def opencode_db() -> Path:
+    override = os.environ.get("OPENCODE_DATA_DIR")
+    if override:
+        return Path(override).expanduser() / "opencode.db"
+    data_home = os.environ.get("XDG_DATA_HOME")
+    base = Path(data_home).expanduser() if data_home else Path.home() / ".local" / "share"
+    return base / "opencode" / "opencode.db"
+
+
+OPENCODE_LOOKBACK_MS = 600_000   # rows committed late: re-read this far behind the watermark
+
+
+def as_json_object(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, (bytes, bytearray)):
+        value = bytes(value).decode("utf-8", "replace")
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return None
+    return value if isinstance(value, dict) else None
+
+
+def millis_to_time(value: Any) -> str | None:
+    """Epoch milliseconds to the record's time text, exact to the millisecond, or None."""
+    ms = integer(value)
+    if ms is None:
+        return None
+    try:
+        return format_time(datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(milliseconds=ms))
+    except (OverflowError, ValueError):
+        return None
+
+
+def opencode_model(data: dict[str, Any], session_model: Any) -> str | None:
+    """`<providerID>/<id>` from the message's own `model`, else from the session's."""
+    for source in (data.get("model"), as_json_object(session_model)):
+        if isinstance(source, dict) and isinstance(source.get("providerID"), str) and isinstance(source.get("id"), str):
+            return f"{source['providerID']}/{source['id']}"
+    return None
+
+
+def opencode_request(data: dict[str, Any], session_model: Any) -> dict[str, Any] | None:
+    """The token facts of one completed assistant message, or None when it is still streaming or has
+    no tokens object. Nothing but numbers and the model; `skipped` marks a row with no usable number."""
+    moments = data.get("time")
+    tokens = data.get("tokens")
+    if not isinstance(moments, dict) or not integer(moments.get("completed")) or not isinstance(tokens, dict):
+        return None
+    cache = tokens.get("cache") if isinstance(tokens.get("cache"), dict) else {}
+    written = integer(cache.get("write"))
+    if "reasoning" in tokens:
+        # OpenCode stores the visible output and the reasoning apart and bills both at the output
+        # rate; Claude and Codex rows count reasoning inside output. A sum with an unknown part is
+        # unknown (None), never the part that is known.
+        visible, reasoning = integer(tokens.get("output")), integer(tokens.get("reasoning"))
+        output = visible + reasoning if visible is not None and reasoning is not None else None
+    else:
+        output = integer(tokens.get("output"))   # no reasoning figure at all: output is all there is
+    request = {
+        "time": millis_to_time(moments.get("created")), "model": opencode_model(data, session_model),
+        "input": integer(tokens.get("input")), "output": output, "cache_read": integer(cache.get("read")),
+        "cache_write_5m": written, "cache_write_1h": 0 if written is not None else None,
+    }
+    request["skipped"] = all(request[key] is None for key in TOKEN_FIELDS)
+    return request
+
+
+class OpenCodeSessions:
+    """Read-only lookups in session_v2, cached: the row of a session and the root of its parent chain."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+        self.rows: dict[str, tuple[Any, Any, Any] | None] = {}
+
+    def row(self, identity: str) -> tuple[Any, Any, Any] | None:
+        """(parent_id, directory, model) of one session, or None when there is no such session."""
+        if identity not in self.rows:
+            found = self.conn.execute("SELECT parent_id, directory, model FROM session_v2 WHERE id = ?",
+                                      (identity,)).fetchone()
+            self.rows[identity] = tuple(found) if found else None
+        return self.rows[identity]
+
+    def root(self, identity: str) -> str:
+        """The top of the parent_id chain. A missing parent stops the walk at the last session found;
+        a cycle ends at its smallest id, so every member of it has the same root."""
+        chain = [identity]
+        while len(chain) < 100:
+            found = self.row(chain[-1])
+            parent = found[0] if found else None
+            if not isinstance(parent, str) or not parent or self.row(parent) is None:
+                return chain[-1]
+            if parent in chain:
+                return min(chain[chain.index(parent):])
+            chain.append(parent)
+        return chain[-1]
+
+
+def opencode_failure(error: BaseException) -> LedgerError:
+    return LedgerError(f"opencode database: {type(error).__name__}: {redact(str(error))[:120]}")
+
+
+def sweep_opencode(directory: Path, checkouts: Checkouts, sessions: list[dict[str, Any]], cwd: str | None) -> dict[str, Any]:
+    """Capture the completed assistant messages of OpenCode's SQLite database.
+
+    Read-only (`mode=ro`, `query_only`), and only these columns of these two tables:
+    session_v2.id, parent_id, directory, model and session_message.id, session_id, type, time_updated,
+    data (the contract also lists seq; it is not needed). The database also holds account and
+    credential tables; no query names them. `data` is parsed for time, tokens, model and agent and
+    nothing else. The watermark (the largest time_updated seen) is advanced only after every
+    session's pending rows are written; a sweep re-reads the ten minutes behind it, and the ids
+    already held absorb the repeats."""
+    summary: dict[str, Any] = {"runtime": "opencode", "kind": "sweep", "rows": 0, "failed": 0, "missing": []}
+    db = opencode_db()
+    if not db.is_file():
+        summary["missing"].append("opencode.db")
+        return summary
+    state_path = directory / "state" / "opencode" / (hashlib.sha1(str(db).encode("utf-8", "replace")).hexdigest()[:16] + ".json")
+    try:
+        saved = json.loads(state_path.read_text(encoding="utf-8"))
+        stored = integer(saved.get("watermark")) if isinstance(saved, dict) else None
+    except (OSError, ValueError):
+        stored = None
+    watermark = stored or 0
+    newest = watermark
+    groups: dict[str, list[dict[str, Any]]] = {}
+    try:
+        conn = sqlite3.connect(f"file:{quote(str(db))}?mode=ro", uri=True, timeout=5)
+        try:
+            conn.text_factory = lambda raw: raw.decode("utf-8", "replace")
+            conn.execute("PRAGMA query_only = ON")
+            latest = conn.execute("SELECT MAX(time_updated) FROM session_message").fetchone()[0]
+            if isinstance(latest, (int, float)) and latest < watermark:
+                watermark = newest = 0   # the database went back in time (a restore): read it all, the ids absorb repeats
+            lookup = OpenCodeSessions(conn)
+            rows = conn.execute("SELECT id, session_id, time_updated, data FROM session_message "
+                                "WHERE type = 'assistant' AND time_updated > ? ORDER BY time_updated, id",
+                                (watermark - OPENCODE_LOOKBACK_MS,))
+            for message_id, session_id, updated, raw in rows:
+                summary["rows"] += 1
+                if isinstance(updated, (int, float)) and not isinstance(updated, bool):
+                    newest = max(newest, int(updated))
+                if not isinstance(session_id, str) or not session_id:
+                    continue
+                data = as_json_object(raw)
+                found = lookup.row(session_id)
+                request = opencode_request(data, found[2] if found else None) if data is not None else {"skipped": True}
+                if request is None:
+                    continue   # still streaming, or no tokens object
+                root = lookup.root(session_id)
+                child = root != session_id
+                request.update({
+                    "message_id": message_id if isinstance(message_id, str) and message_id else None,
+                    "directory": found[1] if found and isinstance(found[1], str) else None,
+                    "role": "subagent" if child else "main",
+                    "agent_id": session_id if child else None,
+                    "agent_type": data.get("agent") if child and data is not None else None,
+                })
+                groups.setdefault(root, []).append(request)
+        finally:
+            conn.close()
+    except sqlite3.Error as error:
+        raise opencode_failure(error) from error
+    for root, requests in groups.items():
+        session = safe_session(root)
+        capture = Capture("opencode", session, known_ids(directory, "opencode", session), cloud_remote_session())
+        for request in requests:
+            if request["skipped"]:
+                capture.counts["skipped_lines"] += 1
+                continue
+            identity = clean("opencode:" + request["message_id"], 210) if request["message_id"] else None
+            if identity is not None and identity in capture.known:
+                capture.counts["duplicates"] += 1
+                if request_tokens(request) != capture.known[identity] and identity not in capture.conflicts:
+                    capture.conflicts.append(identity)
+                continue
+            capture.add(request, request["role"], clean(request["agent_type"], 100), clean(request["agent_id"], 100),
+                        cwd_attribution(checkouts, request["directory"], request["time"]), identity)
+        if capture.new:
+            pending = directory / "pending" / "opencode" / f"{session}.jsonl"
+            pending.parent.mkdir(parents=True, exist_ok=True)
+            with open(pending, "a", encoding="utf-8") as handle:
+                handle.write("".join(record_line(record) + "\n" for record in capture.new))
+        if capture.conflicts:
+            append_conflicts(directory, "opencode", session, capture.conflicts)
+        sessions.append({"runtime": "opencode", "session": session, "new": len(capture.new),
+                         "duplicates": capture.counts["duplicates"], "unidentified": capture.counts["unidentified"],
+                         "conflicts": len(capture.conflicts), "skipped_lines": capture.counts["skipped_lines"],
+                         "bytes_read": 0, "files": []})
+    if newest and newest != stored:
+        atomic_write(state_path, json.dumps({"watermark": newest}))
+    return summary
+
+
+SWEEPERS = {"codex": sweep_codex, "opencode": sweep_opencode}
+
+
+def sweep(directory: Path, checkouts: Checkouts, cwd: str | None) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+    """Capture every runtime of `ledger.runtimes` other than Claude from its default location.
+    Returns (the sessions captured, one summary per runtime, status). A runtime that fails (a
+    database that cannot be opened, anything unexpected) leaves one stderr line and one capture.log
+    line, makes the status 1 and does not stop the others; a location that is not there is only
+    reported as missing."""
+    sessions: list[dict[str, Any]] = []
+    runtimes: list[dict[str, Any]] = []
+    status = 0
+    for runtime in sweep_runtimes():
+        try:
+            runtimes.append(SWEEPERS[runtime](directory, checkouts, sessions, cwd))
+        except Exception as error:  # noqa: BLE001 - one runtime's failure must not stop the others
+            message = redact(str(error))[:200] if isinstance(error, LedgerError) \
+                else f"{type(error).__name__}: {redact(str(error))[:200]}"
+            print(f"plumb-ledger capture: sweep {runtime}: {message}", file=sys.stderr)
+            log_line(cwd, f"sweep {runtime} failed: {message}")
+            runtimes.append({"runtime": runtime, "kind": "sweep", "failed": 1, "missing": [], "error": message})
+            status = 1
+    return sessions, runtimes, status
+
+
 def read_hook_input(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -853,8 +1197,10 @@ def capture_parser() -> argparse.ArgumentParser:
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--hook-input", metavar="FILE", help="the Stop hook's JSON (session_id, transcript_path, cwd)")
     source.add_argument("--transcript", metavar="PATH", help="a main transcript (.jsonl)")
-    source.add_argument("--transcripts", metavar="DIR", help="a directory of transcripts (every direct .jsonl)")
-    parser.add_argument("--runtime", choices=RUNTIMES, default="claude")
+    source.add_argument("--transcripts", metavar="DIR", help="a directory of transcripts (every direct .jsonl; with --runtime codex, every .jsonl below it)")
+    source.add_argument("--sweep", action="store_true", help="capture the other runtimes on this machine from their default locations "
+                        "(Codex rollouts, OpenCode's database), as ledger.runtimes lists them; --runtime is ignored")
+    parser.add_argument("--runtime", choices=RUNTIMES, default="claude", help="the runtime of --transcript / --transcripts (default: claude)")
     parser.add_argument("--cwd", metavar="DIR", help="the checkout the session ran in, for repository and branch (default: the hook's cwd, else the current directory)")
     parser.add_argument("--json", action="store_true", help="print the summary as JSON")
     return parser
@@ -862,6 +1208,9 @@ def capture_parser() -> argparse.ArgumentParser:
 
 def cmd_capture(argv: list[str]) -> int:
     args = capture_parser().parse_args(argv)
+    if args.runtime == "opencode" and not args.sweep:
+        # OpenCode keeps its sessions in a database, not in transcript files; only the sweep reads it.
+        raise LedgerError("OpenCode has no transcript files: use capture --sweep")
     cwd = args.cwd
     mains: list[Path] = []
     if args.hook_input:
@@ -877,12 +1226,16 @@ def cmd_capture(argv: list[str]) -> int:
         directory = Path(args.transcripts).expanduser()
         if not directory.is_dir():
             raise LedgerError(f"transcript directory not found: {directory}")
-        mains = sorted(p for p in directory.iterdir() if p.is_file() and p.suffix == ".jsonl")
-    else:
-        raise LedgerError("give --hook-input, --transcript or --transcripts")
+        if args.runtime == "codex":   # Codex writes sessions/YYYY/MM/DD/rollout-*.jsonl
+            mains = codex_files(directory)
+        else:   # Claude's subagent transcripts are read through their main transcript
+            mains = sorted(p for p in directory.iterdir() if p.is_file() and p.suffix == ".jsonl")
+    elif not args.sweep:
+        raise LedgerError("give --hook-input, --transcript, --transcripts or --sweep")
     cwd = cwd or os.getcwd()
     directory = ledger_dir(cwd, True)
-    summaries = []
+    summaries: list[dict[str, Any]] = []
+    runtimes: list[dict[str, Any]] = []
     status = 0
     with locked(directory):
         checkouts = Checkouts()
@@ -896,40 +1249,68 @@ def cmd_capture(argv: list[str]) -> int:
             except LedgerError as error:
                 print(f"plumb-ledger capture: {error}", file=sys.stderr)
                 status = 1
+        if args.sweep:
+            swept, runtimes, code = sweep(directory, checkouts, cwd)
+            summaries += swept
+            status = status or code
+        elif args.hook_input:
+            # After the Claude capture, under the same lock: the other runtimes on this machine. A
+            # failure here never fails the Claude capture or the hook; it leaves one line in the log.
+            try:
+                if config("ledger.capture", "off") == "on":
+                    swept, runtimes, _ = sweep(directory, checkouts, cwd)
+                    summaries += swept
+            except Exception as error:  # noqa: BLE001 - the hook's background job must not raise
+                log_line(cwd, f"sweep failed: {type(error).__name__}: {redact(str(error))[:200]}")
     for summary in summaries:
         if args.json:
             print(json.dumps(summary, sort_keys=True))
         else:
             print("capture: {runtime} session={session} new={new} duplicates={duplicates} "
                   "unidentified={unidentified} conflicts={conflicts} bytes_read={bytes_read}".format(**summary))
+    for line in runtimes:
+        if args.json:
+            print(json.dumps(line, sort_keys=True))
+        else:
+            counts = " ".join(f"{key}={line[key]}" for key in ("files", "unchanged", "rows") if key in line)
+            print(f"sweep: {line['runtime']} {counts + ' ' if counts else ''}failed={line['failed']} "
+                  f"missing={','.join(line['missing']) or 'none'}")
     if args.hook_input:
-        export_on_stop(summaries, cwd)
+        export_on_stop(summaries, cwd, [line["runtime"] for line in runtimes])
     return status
 
 
-def export_on_stop(summaries: list[dict[str, Any]], cwd: str | None) -> None:
+def export_on_stop(summaries: list[dict[str, Any]], cwd: str | None, swept: list[str] = ()) -> None:
     """The end of a turn in a cloud session: a container can be reclaimed with no session-end event,
     so when the owner opted in (ledger.capture = on, ledger.export = on-stop, ledger.store set) the
-    sessions this hook run captured something new for (a row, or a conflicting copy) are exported now, by the same code path as
+    Claude sessions this hook run captured something new for (a row, or a conflicting copy) are exported now, by the same code path as
     `plumb-ledger export --session <id>`. Only the hook path calls this, in its background job: it
     never raises, and what goes wrong leaves one line (type and a short, masked message) in the
-    capture log while the records stay pending. A session with nothing new does not push."""
+    capture log while the records stay pending. A session with nothing new does not push.
+
+    Each runtime the hook swept (`swept`) is exported as `plumb-ledger export --runtime <runtime>`,
+    which sends every session of it that is still pending, not only the ones this run added to: a
+    swept session whose push failed gets no new row on the next turn (its rollout or database rows
+    are unchanged), so it would otherwise stay pending until the container is gone. With nothing
+    pending that export returns without touching the network."""
     try:
         if config("ledger.capture", "off") != "on" or config("ledger.export", "manual") != "on-stop":
             return
         # A conflicting copy found by this capture is news too, even with no new row: cmd_export
         # sends a session whose conflicts changed, and the container may not wait for another turn.
-        due = [s for s in summaries if s.get("new") or s.get("conflicts")]
-        if not due:
-            return
+        jobs = [["--session", s["session"], "--runtime", s["runtime"]] for s in summaries
+                if s.get("runtime") not in swept and (s.get("new") or s.get("conflicts"))]
+        due_swept = any(s.get("new") or s.get("conflicts") for s in summaries if s.get("runtime") in swept)
         if not config("ledger.store"):
-            log_line(cwd, "export skipped: ledger.store is unset")
+            if jobs or due_swept:
+                log_line(cwd, "export skipped: ledger.store is unset")
             return
-        for summary in due:
+        jobs += [["--runtime", runtime] for runtime in dict.fromkeys(swept)]
+        for job in jobs:
             out, err = io.StringIO(), io.StringIO()
             try:
                 with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                    code = cmd_export(["--session", summary["session"], "--runtime", summary["runtime"]])
+                    code = cmd_export(job)
             except LedgerError as error:
                 log_line(cwd, f"export failed: LedgerError: {redact(str(error))[:200]}")
                 continue
@@ -973,6 +1354,9 @@ def version_in_effect(versions: list[dict[str, Any]], moment: datetime) -> dict[
 
 
 def model_rates(version: dict[str, Any], model: str) -> dict[str, Any] | None:
+    """The rates of a model in a version. A model may carry its own `checked` and `source` (they
+    override the version's for that model); pricing reads only the rate keys, so they change no sum.
+    A name with a provider prefix (`opencode/deepseek-v4.1-flash-free`) is looked up as it is."""
     models = version["models"]
     name = re.sub(r"\[[^\]]*\]$", "", model)  # a context-window suffix such as [1m]
     for candidate in (name, re.sub(r"-\d{8}$", "", name)):

@@ -30,6 +30,9 @@
 #                                        (for a cloud session, whose container can vanish without a
 #                                        session-end event); `manual` (the default) pushes only when
 #                                        `plumb-ledger export` is run
+#   ledger.runtimes         = codex     the runtimes `plumb-ledger capture --sweep` (and the Stop hook,
+#                                        after the Claude capture) reads, separated by commas or white
+#                                        space; default `claude,codex,opencode` (claude is not swept)
 #
 # **"Not configured" is not an error.** Unset still exits 0 and returns the default.
 # Exit 1 here and every caller ends up writing || true, which hides the real failures.

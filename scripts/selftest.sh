@@ -1428,7 +1428,7 @@ elif command -v python3 >/dev/null 2>&1; then
     && ok "work ledger: landed changes (merge, squash, rebase, pagination, shallow clone) and the rework rate" \
     || ng "work ledger: landed changes and the rework rate (run scripts/test-ledger-changes.py)"
   python3 -B "$root/scripts/test-ledger-cost.py" >/dev/null \
-    && ok "cost per task: capture, identity, price, export, task assignment, report, hook latency" \
+    && ok "cost per task: capture, identity, price, export, task assignment, report, hook latency, sweep (Codex rollouts, OpenCode)" \
     || ng "cost per task (run scripts/test-ledger-cost.py)"
   python3 -B "$root/scripts/test-ledger-views.py" >/dev/null \
     && ok "ledger views: remote_session, session attribution, active time, tables (escaping, determinism, writes only under --out)" \
