@@ -2,6 +2,16 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.21.1] - 2026-11-03
+
+### Changed
+
+- `assets/prices.json`: `claude-opus-4-8` ($5 input, $0.50 cache read, $25 output per MTok; the cache
+  writes are the version's 1.25x and 2x) and `gpt-6.1-sol` ($2 input, $0.10 cached input, $10 output
+  per MTok, cache write at 1.25x input, and above 272K input tokens the whole request at 2x input and
+  cache and 1.5x output), each with its own `checked` and `source`. Rows of these models had an
+  unknown cost; they are now priced. No listed price changed.
+
 ## [0.21.0] - 2026-11-02
 
 ### Added

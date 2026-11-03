@@ -2182,10 +2182,28 @@ def _():
     models = version["models"]
     assert {k: (v["input"], v["output"], v["cache_read"]) for k, v in models.items() if k.startswith("claude-")} == {
         "claude-fable-5-1": (10, 50, Decimal("0.25")), "claude-opus-5-5": (4, 20, Decimal("0.20")),
-        "claude-sonnet-5-5": (2, 10, Decimal("0.20")), "claude-haiku-5-5": (Decimal("0.10"), Decimal("0.50"), Decimal("0.01"))}
-    assert sorted(k for k in models if not k.startswith("claude-")) == ["opencode/deepseek-v4.1-flash-free"], list(models)
+        "claude-sonnet-5-5": (2, 10, Decimal("0.20")), "claude-haiku-5-5": (Decimal("0.10"), Decimal("0.50"), Decimal("0.01")),
+        "claude-opus-4-8": (5, 25, Decimal("0.50"))}
+    assert sorted(k for k in models if not k.startswith("claude-")) == ["gpt-6.1-sol", "opencode/deepseek-v4.1-flash-free"], list(models)
+    gpt = models["gpt-6.1-sol"]
+    assert (gpt["input"], gpt["output"], gpt["cache_read"]) == (2, 10, Decimal("0.10")) and gpt["checked"] == "2026-11-03"
+    assert gpt["long_context"] == {"threshold_input_tokens": 272000, "input": 4, "output": 15, "cache_read": Decimal("0.20")}
+    assert all(models[k]["checked"] == "2026-11-03" and models[k]["source"] for k in ("claude-opus-4-8", "gpt-6.1-sol"))
     assert models["claude-haiku-5-5"]["long_context"] == {
         "threshold_input_tokens": 100000, "input": Decimal("0.50"), "output": Decimal("2.50"), "cache_read": Decimal("0.05")}
+
+
+@case("a Codex row is priced at gpt-6.1-sol's rates: cache write at 1.25x input, and the whole request at the long-context rates above 272K input")
+def _():
+    versions = ledger_cost.load_prices()
+    row = record(1, model="gpt-6.1-sol", runtime="codex", inp=100_000, out=10_000, cache_read=50_000, w5=20_000, w1=0)
+    cost = ledger_cost.price_request(row, versions)
+    assert cost is not None and sum(cost.values()) == Decimal("0.2") + Decimal("0.1") + Decimal("0.005") + Decimal("0.05"), cost
+    big = record(2, model="gpt-6.1-sol", runtime="codex", inp=200_000, out=10_000, cache_read=72_001, w5=0, w1=0)
+    cost = ledger_cost.price_request(big, versions)
+    assert sum(cost.values()) == Decimal("0.8") + Decimal("0.15") + Decimal("0.0144002"), cost
+    opus48 = record(3, model="claude-opus-4-8", inp=1_000_000, out=0, cache_read=0, w5=0, w1=1_000_000)
+    assert sum(ledger_cost.price_request(opus48, versions).values()) == Decimal(15)
 
 
 @case("every subcommand prints usage for --help and exits 0; the doctor ledger block reports capture, the store and the export mode")

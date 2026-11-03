@@ -39,6 +39,26 @@
             "cache_read": 0.05
           }
         },
+        "claude-opus-4-8": {
+          "input": 5,
+          "output": 25,
+          "cache_read": 0.50,
+          "checked": "2026-11-03",
+          "source": "Claude API pricing page (platform.claude.com/docs/en/about-claude/pricing): $5 input, $6.25 5m write, $10 1h write, $0.50 cache hit, $25 output per MTok; the writes are the version's 1.25x and 2x."
+        },
+        "gpt-6.1-sol": {
+          "input": 2,
+          "output": 10,
+          "cache_read": 0.10,
+          "checked": "2026-11-03",
+          "source": "OpenAI API standard tier as OpenAI's model and pricing pages state it (developers.openai.com/api/docs/models/gpt-6.1-sol, /api/docs/pricing), read through a search restricted to OpenAI's domains: $2 input, $0.10 cached input, $2.50 cache write (1.25x, the version's 5m multiplier; Codex rows put cache writes in cache_write_5m), $10 output per MTok; above 272K input tokens the whole request is 2x input and cache and 1.5x output. Batch, Flex, fast and ultrafast tiers are not modelled.",
+          "long_context": {
+            "threshold_input_tokens": 272000,
+            "input": 4,
+            "output": 15,
+            "cache_read": 0.20
+          }
+        },
         "opencode/deepseek-v4.1-flash-free": {
           "input": 0,
           "output": 0,
