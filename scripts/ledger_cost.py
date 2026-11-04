@@ -2301,6 +2301,108 @@ def cmd_views(argv: list[str]) -> int:
     return ledger_views.cmd_views(argv)
 
 
+# ---------------------------------------------------------------- run and watch (the other runtimes, on time)
+
+WATCH_DEFAULT_SECONDS = 300
+
+
+def sweep_now(cwd: str | None) -> str | None:
+    """`capture --sweep`, then `export` when the owner chose automatic exports (`ledger.export =
+    on-stop`), each as a child process so that a failure in one never stops the caller. None when
+    both succeeded, else one short line saying which failed. Their own output is not shown: the
+    caller's terminal belongs to the command it runs."""
+    steps = [["capture", "--sweep"]]
+    if config("ledger.export") == "on-stop":
+        steps.append(["export"])
+    failed = []
+    for step in steps:
+        out = run([sys.executable, str(SCRIPTS / "ledger.py"), *step], cwd=cwd, timeout=GIT_TIMEOUT * 5)
+        if out is None or out.returncode != 0:
+            failed.append(f"{' '.join(step)} exited {out.returncode if out else 'without an answer'}")
+            log_line(cwd, f"sweep failed: {failed[-1]}")
+    return "; ".join(failed) or None
+
+
+def run_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="plumb-ledger run",
+        description="Run a command (Codex, OpenCode) and, when it ends for any reason it can see, capture "
+                    "the other runtimes (`capture --sweep`) and, with `ledger.export = on-stop`, export them. "
+                    "The command keeps the terminal; its exit status is this one's.",
+        usage="plumb-ledger run -- COMMAND [ARGS...]")
+    parser.add_argument("command", nargs=argparse.REMAINDER)
+    return parser
+
+
+def cmd_run(argv: list[str]) -> int:
+    import signal
+    args = run_parser().parse_args(argv)
+    command = args.command[1:] if args.command[:1] == ["--"] else args.command
+    if not command:
+        raise LedgerError("no command given (plumb-ledger run -- COMMAND [ARGS...])")
+    cwd = os.getcwd()
+    try:
+        child = subprocess.Popen(command)
+    except OSError as error:
+        print(f"plumb-ledger run: cannot start {command[0]}: {type(error).__name__}", file=sys.stderr)
+        return 127
+    forwarded = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+
+    def forward(signum, _frame):
+        with contextlib.suppress(ProcessLookupError):
+            child.send_signal(signum)
+    previous = {signum: signal.signal(signum, forward) for signum in forwarded}
+    try:
+        code = child.wait()
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+    # SIGKILL of this process is the one end it cannot see; `watch` covers that.
+    problem = sweep_now(cwd)
+    if problem:
+        print(f"plumb-ledger run: {problem} (see capture.log)", file=sys.stderr)
+    return 128 - code if code < 0 else code
+
+
+def watch_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="plumb-ledger watch",
+        description="Capture the other runtimes every few minutes, for as long as the process lives: "
+                    "`capture --sweep`, then `export` with `ledger.export = on-stop`. One watch per ledger "
+                    "directory: a second one exits 0 at once. Start it in the background from a session-start "
+                    "hook of a cloud session, so a container reclaimed mid-run loses at most one interval.")
+    parser.add_argument("--interval", type=int, default=WATCH_DEFAULT_SECONDS, metavar="SECONDS",
+                        help=f"seconds between sweeps (default {WATCH_DEFAULT_SECONDS})")
+    parser.add_argument("--iterations", type=int, default=0, help=argparse.SUPPRESS)   # tests: stop after N sweeps
+    return parser
+
+
+def cmd_watch(argv: list[str]) -> int:
+    import time
+    args = watch_parser().parse_args(argv)
+    if args.interval < 1:
+        raise LedgerError("--interval must be at least 1 second")
+    cwd = os.getcwd()
+    directory = ledger_dir(cwd, True)
+    handle = open(directory / "watch.lock", "a")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        print("watch: already running for this ledger directory", file=sys.stderr)
+        return 0
+    try:
+        done = 0
+        while not args.iterations or done < args.iterations:
+            time.sleep(args.interval)
+            sweep_now(cwd)
+            done += 1
+    finally:
+        fcntl.flock(handle, fcntl.LOCK_UN)
+        handle.close()
+    return 0
+
+
 # ---------------------------------------------------------------- records (for a warehouse)
 
 COST_PLACES = Decimal("0.000000001")   # nine decimals: BigQuery NUMERIC keeps exactly this many
@@ -2370,12 +2472,12 @@ def cmd_records(argv: list[str]) -> int:
 
 
 COMMANDS = {"capture": cmd_capture, "export": cmd_export, "prs": cmd_prs, "records": cmd_records,
-            "report": cmd_report, "views": cmd_views}
+            "report": cmd_report, "run": cmd_run, "views": cmd_views, "watch": cmd_watch}
 
 
 def main(argv: list[str]) -> int:
     if not argv or argv[0] not in COMMANDS:
-        print("usage: plumb-ledger capture|export|prs|records|report|views [options]", file=sys.stderr)
+        print("usage: plumb-ledger capture|export|prs|records|report|run|views|watch [options]", file=sys.stderr)
         return 2
     hook_cwd = os.getcwd()
     try:

@@ -15,6 +15,16 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
   `--store-cache` names one, and exits 2 with nothing written when a set store cannot be read.
 - `assets/bigquery/requests.schema.json`: the BigQuery schema of those lines (tested against them).
 - `docs/ledger.md`: "Records for a warehouse", with a staging load and a `MERGE` on `id` for BigQuery.
+- `plumb-ledger run -- COMMAND`: runs Codex or OpenCode with the terminal left to it, passes SIGINT,
+  SIGTERM and SIGHUP on, and when it ends runs `capture --sweep` and, with `ledger.export = on-stop`,
+  `export`. Its exit status is the command's (128 + the signal for a signal; 127 when it cannot start).
+- `plumb-ledger watch [--interval <seconds>]` (default 300): the same sweep and export on an interval for
+  as long as it lives, one per ledger directory (`watch.lock`; a second one exits 0 at once). For a
+  cloud session's session-start hook, so a run cut short by the container's reclaim loses at most one
+  interval.
+- `docs/cloud-setup.md`: "Codex and OpenCode in a cloud session", setup-script lines that put
+  `plumb-ledger` on PATH, add the session-start hook for `watch` to `~/.claude/settings.json` and a
+  rule for starting Codex and OpenCode to `~/.claude/CLAUDE.md`, each safe to run twice.
 
 ## [0.21.1] - 2026-11-03
 

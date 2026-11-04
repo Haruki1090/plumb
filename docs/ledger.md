@@ -220,6 +220,27 @@ to, so a session whose push failed is sent on a later turn even when its rollout
 not change. With nothing pending, that export does not reach the store. The first sweep on a machine with many old rollouts exports one branch per
 session; it runs in the background and is resumable (pending rows stay until pushed).
 
+**Runs that outlive a turn: `run` and `watch`.** The Stop hook sweeps when a Claude turn ends. Codex or
+OpenCode started from a Claude session can still be running then: rows written after the last turn
+are captured only by a later turn, and are lost when the container is reclaimed first. Two commands
+close that gap; both run `capture --sweep` and then, with `ledger.export = on-stop`, `export`, each as
+a child process (a failure leaves a line in `capture.log` and never stops the caller).
+
+```bash
+plumb-ledger run -- COMMAND [ARGS...]          # e.g. plumb-ledger run -- codex exec "..."
+plumb-ledger watch [--interval <seconds>]      # default 300
+```
+
+- `run` starts the command with the terminal left to it, passes SIGINT, SIGTERM and SIGHUP on to it,
+  and sweeps when it ends, whatever its exit status; that status (128 + the signal for a signal) is
+  `run`'s own. A command that cannot be started is 127. Only a SIGKILL of `run` itself skips the
+  sweep.
+- `watch` sweeps every interval for as long as it lives. One `watch` holds `watch.lock` in the
+  ledger directory; a second one exits 0 at once, so a hook that fires again (resume, clear,
+  compaction) starts nothing new. Start it in the background from a session-start hook, never from
+  the environment's setup script: the setup script runs before the session, so the cloud session id
+  that `remote_session` needs is not yet in its environment (`docs/cloud-setup.md` has the lines).
+
 **A machine with no Claude session running.** plumb does not install a scheduled job. On a laptop,
 run the sweep and the export every 15 minutes, for example with a macOS LaunchAgent
 (`~/Library/LaunchAgents/dev.plumb.ledger.plist`, loaded with `launchctl load`):
