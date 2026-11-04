@@ -2,6 +2,16 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.22.1] - 2026-11-04
+
+### Changed
+
+- `assets/prices.json`: OpenCode Go's `opencode-go/deepseek-v4.1-flash` ($0.15 input, $0.003 cache read,
+  $0.60 output per MTok), `opencode-go/deepseek-v4-pro` ($0.66, $0.022, $1.98) and `opencode-go/glm-5.3`
+  ($1.40, $0.26, $4.40), at Go's Off-Peak list price, each with its own `checked` and `source`. Peak
+  hours (2x) are not modelled. Rows of these models had an unknown cost; they are now priced. No listed
+  price changed.
+
 ## [0.22.0] - 2026-11-04
 
 ### Added

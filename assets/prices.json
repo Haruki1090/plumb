@@ -65,6 +65,27 @@
           "cache_read": 0,
           "checked": "2026-11-02",
           "source": "OpenCode free tier; OpenCode itself records cost 0 for these rows."
+        },
+        "opencode-go/deepseek-v4.1-flash": {
+          "input": 0.15,
+          "output": 0.60,
+          "cache_read": 0.003,
+          "checked": "2026-11-04",
+          "source": "OpenCode Go list price at Off-Peak, USD per MTok, from OpenCode's own model catalog models.dev (github.com/sst/models.dev, providers/opencode-go/models/deepseek-v4.1-flash.toml at commit 065c9d1), which transcribes opencode.ai/v2/docs/console/go/ (accessed 2026-10-21); opencode.ai itself could not be opened from the session. Peak (01:00-04:00 and 06:00-10:00 UTC, Monday to Friday) is 2x and is not modelled. Go lists no cache-write price; a cache write is priced at the version's 1.25x input. On the Go subscription this is not the bill; it compares work."
+        },
+        "opencode-go/deepseek-v4-pro": {
+          "input": 0.66,
+          "output": 1.98,
+          "cache_read": 0.022,
+          "checked": "2026-11-04",
+          "source": "OpenCode Go list price at Off-Peak, USD per MTok, from OpenCode's own model catalog models.dev (github.com/sst/models.dev, providers/opencode-go/models/deepseek-v4-pro.toml at commit 065c9d1), which transcribes opencode.ai/v2/docs/console/go/ (accessed 2026-10-21); opencode.ai itself could not be opened from the session. Peak (01:00-04:00 and 06:00-10:00 UTC, Monday to Friday) is 2x and is not modelled. Go lists no cache-write price; a cache write is priced at the version's 1.25x input. On the Go subscription this is not the bill; it compares work."
+        },
+        "opencode-go/glm-5.3": {
+          "input": 1.40,
+          "output": 4.40,
+          "cache_read": 0.26,
+          "checked": "2026-11-04",
+          "source": "OpenCode Go list price at Off-Peak, USD per MTok, from OpenCode's own model catalog models.dev (github.com/sst/models.dev, providers/opencode-go/models/glm-5.3.toml at commit 065c9d1), which transcribes opencode.ai/v2/docs/console/go/ (accessed 2026-10-21); opencode.ai itself could not be opened from the session. Peak (01:00-04:00 and 06:00-10:00 UTC, Monday to Friday) is 2x and is not modelled. Go lists no cache-write price; a cache write is priced at the version's 1.25x input. On the Go subscription this is not the bill; it compares work."
         }
       }
     }
