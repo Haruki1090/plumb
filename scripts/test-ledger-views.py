@@ -906,6 +906,74 @@ def _():
     assert table(files["sessions.csv"])[0]["requests"] in ("1",) and len(table(files["sessions.csv"])) == 2
 
 
+# ---------------------------------------------------------------- records (for a warehouse)
+
+def records_cmd(sb: Sandbox, *args: str, period: tuple = PERIOD):
+    code, out, err = sb.ledger_cmd("records", *period, *args)
+    return code, [json.loads(line) for line in out.splitlines() if line], err
+
+
+@case("records prints the period's requests as JSON lines: the allowlisted fields, the exact list-price cost, the price version, and null (never 0) for an unknown cost")
+def _():
+    sb = Sandbox("records-lines")
+    put_all(sb, [record(1, stamp(0)), record(2, stamp(1), model="made-up-model"),
+                 record(3, "2026-10-20T00:00:00.000Z")])                      # outside the period
+    code, rows, err = records_cmd(sb)
+    assert code == 0, err
+    assert [r["id"] for r in rows] == ["claude:m1", "claude:m2"], rows
+    assert list(rows[0]) == [*ledger_cost.FIELDS, "cost_usd", "price_version", "conflict"], list(rows[0])
+    schema = json.loads((PLUGIN / "assets" / "bigquery" / "requests.schema.json").read_text())
+    assert [column["name"] for column in schema] == list(rows[0]), "assets/bigquery/requests.schema.json is out of step"
+    assert (rows[0]["cost_usd"], rows[0]["price_version"], rows[0]["conflict"]) == ("0.000100000", "2026-10-30", False), rows[0]
+    assert (rows[1]["cost_usd"], rows[1]["price_version"]) == (None, None), rows[1]
+    assert "records: 2 requests" in err and "unpriced=1" in err and "store=unset" in err, err
+
+
+@case("records --out writes the same bytes every run and nothing in the ledger directory")
+def _():
+    sb = Sandbox("records-out")
+    put_all(sb, [record(1, stamp(0)), record(2, stamp(2), session="s2"), record(3, stamp(1), runtime="opencode", session="o1")])
+    before = snapshot(sb.ledger)
+    target = sb.root / "out" / "records.jsonl"
+    code, rows, err = records_cmd(sb, "--out", str(target))
+    assert code == 0 and rows == [], (code, err)
+    first = target.read_bytes()
+    code, _, err = records_cmd(sb, "--out", str(target))
+    assert code == 0 and target.read_bytes() == first, err
+    assert [json.loads(line)["id"] for line in first.decode().splitlines()] == ["claude:m1", "opencode:m3", "claude:m2"]   # by time
+    assert snapshot(sb.ledger) == before
+
+
+@case("records flags the first copy of an id whose copies disagree, and keeps one row for it")
+def _():
+    sb = Sandbox("records-conflict")
+    put_all(sb, [record(1, stamp(0))])
+    exported = sb.ledger / "exported" / "claude"
+    exported.mkdir(parents=True)
+    (exported / "s1.jsonl").write_text(json.dumps(record(1, stamp(0), inp=2000)) + "\n")
+    code, rows, err = records_cmd(sb)
+    assert code == 0, err
+    assert len(rows) == 1 and rows[0]["conflict"] is True and "conflicting=1" in err, (rows, err)
+
+
+@case("records reads the store; a store that cannot be read is an error and writes nothing")
+def _():
+    sb = Sandbox("records-store")
+    bare = sb.root / "store.git"
+    subprocess.run(["git", "init", "--bare", "-q", "-b", "main", str(bare)], check=True)
+    sb.config.write_text(f"ledger.store = {bare}\n")
+    put_all(sb, [record(1, stamp(0))])
+    code, out, err = sb.ledger_cmd("export")
+    assert code == 0, err
+    shutil.rmtree(sb.ledger, ignore_errors=True)                               # only the store holds the record now
+    code, rows, err = records_cmd(sb)
+    assert code == 0 and [r["id"] for r in rows] == ["claude:m1"] and "store=ok" in err, (code, rows, err)
+    sb.config.write_text(f"ledger.store = {sb.root / 'missing.git'}\n")
+    target = sb.root / "records.jsonl"
+    code, rows, err = records_cmd(sb, "--out", str(target))
+    assert code == 2 and rows == [] and not target.exists() and "nothing written" in err, (code, err)
+
+
 shutil.rmtree(ROOT, ignore_errors=True)
 print()
 if FAILED:

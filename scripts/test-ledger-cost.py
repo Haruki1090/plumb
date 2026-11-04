@@ -2232,6 +2232,93 @@ def _():
         assert len(export_lines) == 1 and export_lines[0][:6] == expected, (text, export_lines)
 
 
+# ---------------------------------------------------------------- run and watch
+
+WRITE_ROLLOUT = """
+import json, os, pathlib, sys
+path = pathlib.Path(os.environ["CODEX_HOME"]) / "sessions/2026/10/10/rollout-run.jsonl"
+path.parent.mkdir(parents=True, exist_ok=True)
+tc = lambda t, l: json.dumps({"type": "event_msg", "timestamp": "2026-10-10T00:00:05Z", "payload": {
+    "type": "token_count", "info": {"total_token_usage": t, "last_token_usage": l}}})
+a = {"input_tokens": 100, "cached_input_tokens": 40, "output_tokens": 10}
+path.write_text("\\n".join([json.dumps({"type": "session_meta", "payload": {"id": "sess-run"}}),
+                            json.dumps({"type": "turn_context", "payload": {"model": "gpt-test"}}), tc(a, a)]) + "\\n")
+"""
+
+
+def bare_store(sb: Sandbox) -> Path:
+    store = sb.root / "store.git"
+    subprocess.run(["git", "init", "--bare", "-q", "-b", "main", str(store)], check=True)
+    return store
+
+
+def store_refs(store: Path) -> list[str]:
+    out = subprocess.run(["git", "-C", str(store), "for-each-ref", "--format=%(refname)"], capture_output=True, text=True)
+    return out.stdout.split()
+
+
+@case("run: the command keeps the terminal and its exit status; what it used is captured, and exported with ledger.export = on-stop")
+def _():
+    sb = Sandbox("run-exit")
+    store = bare_store(sb)
+    sb.set_config(f"ledger.capture = on\nledger.store = {store}\nledger.export = on-stop\n")
+    code, out, err = sb.ledger_cmd("run", "--", sys.executable, "-c", WRITE_ROLLOUT + "print('from the command'); sys.exit(3)")
+    assert code == 3 and out == "from the command\n" and err == "", (code, out, err)
+    assert [r["session"] for r in sb.exported()] == ["sess-run"], (sb.pending(), sb.exported())
+    assert store_refs(store) == ["refs/heads/plumb-ledger/codex/sess-run"], store_refs(store)
+
+
+@case("run: without automatic exports it only captures; a missing command is 127 and no command at all is 2")
+def _():
+    sb = Sandbox("run-capture-only")
+    code, out, err = sb.ledger_cmd("run", "--", sys.executable, "-c", WRITE_ROLLOUT)
+    assert code == 0 and [r["session"] for r in sb.pending()] == ["sess-run"] and sb.exported() == [], (code, err)
+    code, out, err = sb.ledger_cmd("run", "--", str(sb.root / "no-such-command"))
+    assert code == 127 and "cannot start" in err, (code, err)
+    code, out, err = sb.ledger_cmd("run")
+    assert code == 2 and "no command given" in err, (code, err)
+
+
+@case("run: a SIGTERM is passed to the command, and what it used before ending is still captured")
+def _():
+    sb = Sandbox("run-term")
+    ready = sb.root / "ready"
+    child = ("import pathlib, signal, sys, time\n"
+             "def done(*_):\n"
+             "    exec(compile(WRITE, 'write', 'exec'), {})\n"
+             "    sys.exit(7)\n"
+             "signal.signal(signal.SIGTERM, done)\n"
+             f"pathlib.Path({str(ready)!r}).write_text('1')\n"
+             "while True: time.sleep(0.1)\n")
+    child = f"WRITE = {WRITE_ROLLOUT!r}\n" + child
+    proc = subprocess.Popen([str(LEDGER), "run", "--", sys.executable, "-c", child], cwd=sb.cwd, env=sb.env,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    for _ in range(200):
+        if ready.exists():
+            break
+        time.sleep(0.05)
+    proc.terminate()
+    _out, err = proc.communicate(timeout=120)
+    assert proc.returncode == 7, (proc.returncode, err)
+    assert [r["session"] for r in sb.pending()] == ["sess-run"], sb.pending()
+
+
+@case("watch: sweeps on its interval, and a second watch on the same ledger directory exits 0 at once")
+def _():
+    sb = Sandbox("watch")
+    rollout(sb, "rollout-w", "sess-watch")
+    code, out, err = sb.ledger_cmd("watch", "--interval", "1", "--iterations", "1")
+    assert code == 0 and len(sb.pending()) == 2, (code, err, sb.pending())
+    import fcntl
+    with open(sb.ledger / "watch.lock", "a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        started = time.monotonic()
+        code, out, err = sb.ledger_cmd("watch", "--interval", "60")
+        assert code == 0 and "already running" in err and time.monotonic() - started < 30, (code, err)
+    code, out, err = sb.ledger_cmd("watch", "--interval", "0")
+    assert code == 2 and "at least 1" in err, (code, err)
+
+
 shutil.rmtree(ROOT, ignore_errors=True)
 print()
 if FAILED:

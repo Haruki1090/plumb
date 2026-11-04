@@ -53,6 +53,63 @@ What each line does:
   login cannot be done by a setup script: if `plumb-bootstrap` reports it missing, log in from the
   session (for Codex, `codex login --device-auth`).
 
+## Codex and OpenCode in a cloud session
+
+The Stop hook captures Codex and OpenCode at the end of each Claude turn. A run that is still going
+when the turn ends, or that the container's reclaim cuts short, needs the two commands of
+`docs/ledger.md` ("Runs that outlive a turn"). Add these lines to the setup script after the ones
+above. Each is safe to run twice.
+
+```bash
+# plumb-ledger on PATH, resolved at each call (an update moves the plugin's install path)
+cat > /usr/local/bin/plumb-ledger <<'SH'
+#!/bin/sh
+root=$(claude plugin list --json 2>/dev/null | python3 -c 'import json,sys; print(next(p["installPath"] for p in json.load(sys.stdin) if p["id"] == "plumb@plumb"))' 2>/dev/null)
+[ -n "$root" ] || { echo "plumb-ledger: plumb is not installed" >&2; exit 127; }
+exec "$root/bin/plumb-ledger" "$@"
+SH
+chmod +x /usr/local/bin/plumb-ledger
+
+# A session-start hook that keeps one `watch` running: a reclaimed container loses at most 5 minutes
+python3 - <<'PY'
+import json, pathlib
+path = pathlib.Path.home() / ".claude" / "settings.json"
+data = json.loads(path.read_text()) if path.exists() else {}
+command = "setsid nohup plumb-ledger watch --interval 300 >/dev/null 2>&1 </dev/null &"
+groups = data.setdefault("hooks", {}).setdefault("SessionStart", [])
+if not any("plumb-ledger watch" in h.get("command", "") for g in groups for h in g.get("hooks", [])):
+    groups.append({"hooks": [{"type": "command", "command": command}]})
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(data, indent=2) + "\n")
+PY
+
+# How Claude starts Codex and OpenCode, in the user CLAUDE.md (replaced, not duplicated, on a re-run)
+python3 - <<'PY'
+import pathlib, re
+path = pathlib.Path.home() / ".claude" / "CLAUDE.md"
+begin, end = "<!-- plumb:ledger-run -->", "<!-- /plumb:ledger-run -->"
+block = f"""{begin}
+## Starting Codex and OpenCode
+- Wrap them: `plumb-ledger run -- codex ...`, `plumb-ledger run -- opencode ...`, so what they use is recorded when they end.
+- Run them in the foreground or as a background task of the Bash tool, never detached with `nohup` or a trailing `&`.
+{end}
+"""
+text = path.read_text() if path.exists() else ""
+text = re.sub(re.escape(begin) + r".*?" + re.escape(end) + r"\n?", "", text, flags=re.S)
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(text + ("\n" if text and not text.endswith("\n") else "") + block)
+PY
+```
+
+- The shim asks Claude Code where plumb is installed each time, so it follows plugin updates.
+- The hook starts `watch` in its own session (`setsid`), so it outlives the hook, and returns at once. The hook fires again on resume,
+  clear and compaction; the lock keeps one `watch` running.
+- The setup script itself must not start `watch`: it runs before the session and has no cloud
+  session id to record.
+- Check it in a new session: `pgrep -af '[l]edger.py watch'` shows one process (`plumb-ledger` runs as
+  `python3 .../scripts/ledger.py`, so the name `plumb-ledger` is not in the process list), and after a short Codex
+  or OpenCode run `plumb-ledger report --since <today> --until <today>` lists its rows.
+
 ## Keep a cached environment current
 
 Run this at the start of each session, from whatever the environment already runs there (a
