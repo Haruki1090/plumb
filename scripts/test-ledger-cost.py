@@ -2148,6 +2148,8 @@ def _():
     version["_from"] = ledger_cost.parse_time(version["effective_from"])
     cost = ledger_cost.price_request(record(3, model="vendor/model-x", inp=1_000_000, out=1_000_000, cache_read=0), [version])
     assert cost["input"] == Decimal(4) and cost["output"] == Decimal(8), cost    # the long-context tier, with the extra keys around it
+    flash = record(4, model="opencode-go/deepseek-v4.1-flash", runtime="opencode", inp=1_000_000, out=1_000_000, cache_read=1_000_000, w5=0, w1=0)
+    assert sum(ledger_cost.price_request(flash, versions).values()) == Decimal("0.753"), "Go's DeepSeek V4.1 Flash at Off-Peak"
     sb = Sandbox("opencode-priced")
     put_pending(sb, "ses_p", [row], "opencode")
     report = sb.report()
@@ -2184,7 +2186,14 @@ def _():
         "claude-fable-5-1": (10, 50, Decimal("0.25")), "claude-opus-5-5": (4, 20, Decimal("0.20")),
         "claude-sonnet-5-5": (2, 10, Decimal("0.20")), "claude-haiku-5-5": (Decimal("0.10"), Decimal("0.50"), Decimal("0.01")),
         "claude-opus-4-8": (5, 25, Decimal("0.50"))}
-    assert sorted(k for k in models if not k.startswith("claude-")) == ["gpt-6.1-sol", "opencode/deepseek-v4.1-flash-free"], list(models)
+    assert sorted(k for k in models if not k.startswith("claude-")) == [
+        "gpt-6.1-sol", "opencode-go/deepseek-v4-pro", "opencode-go/deepseek-v4.1-flash", "opencode-go/glm-5.3",
+        "opencode/deepseek-v4.1-flash-free"], list(models)
+    assert {k: (v["input"], v["output"], v["cache_read"]) for k, v in models.items() if k.startswith("opencode-go/")} == {
+        "opencode-go/deepseek-v4.1-flash": (Decimal("0.15"), Decimal("0.60"), Decimal("0.003")),
+        "opencode-go/deepseek-v4-pro": (Decimal("0.66"), Decimal("1.98"), Decimal("0.022")),
+        "opencode-go/glm-5.3": (Decimal("1.40"), Decimal("4.40"), Decimal("0.26"))}
+    assert all(v["checked"] == "2026-11-04" and "Off-Peak" in v["source"] for k, v in models.items() if k.startswith("opencode-go/"))
     gpt = models["gpt-6.1-sol"]
     assert (gpt["input"], gpt["output"], gpt["cache_read"]) == (2, 10, Decimal("0.10")) and gpt["checked"] == "2026-11-03"
     assert gpt["long_context"] == {"threshold_input_tokens": 272000, "input": 4, "output": 15, "cache_read": Decimal("0.20")}
