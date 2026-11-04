@@ -2,6 +2,20 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.22.0] - 2026-11-04
+
+### Added
+
+- `plumb-ledger records --since <day> --until <day> [--out <file>]`: every request of the period as one
+  JSON line, oldest first, for a warehouse table keyed by `id`. A line holds the allowlisted fields
+  and three more: `cost_usd` (the list-price cost as an exact nine-place decimal string, `null` when it
+  cannot be known, never 0), `price_version` (the price version that priced it) and `conflict` (the
+  id has copies that disagree). It reads the local records and the store as `report` does, writes
+  nothing in the ledger directory, keeps the store's cache in a temporary directory unless
+  `--store-cache` names one, and exits 2 with nothing written when a set store cannot be read.
+- `assets/bigquery/requests.schema.json`: the BigQuery schema of those lines (tested against them).
+- `docs/ledger.md`: "Records for a warehouse", with a staging load and a `MERGE` on `id` for BigQuery.
+
 ## [0.21.1] - 2026-11-03
 
 ### Changed

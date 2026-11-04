@@ -35,6 +35,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP, localcontext
@@ -2300,12 +2301,81 @@ def cmd_views(argv: list[str]) -> int:
     return ledger_views.cmd_views(argv)
 
 
-COMMANDS = {"capture": cmd_capture, "export": cmd_export, "prs": cmd_prs, "report": cmd_report, "views": cmd_views}
+# ---------------------------------------------------------------- records (for a warehouse)
+
+COST_PLACES = Decimal("0.000000001")   # nine decimals: BigQuery NUMERIC keeps exactly this many
+
+
+def records_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="plumb-ledger records",
+        description="Every request of a period as one JSON object per line: the allowlisted fields, its "
+                    "list-price cost and the price version used. The input for a warehouse table (BigQuery "
+                    "and the like), keyed by `id`. Reads the local records and the store's refs, as `report` "
+                    "does, and writes nothing in the ledger directory.")
+    parser.add_argument("--since", required=True, metavar="YYYY-MM-DD")
+    parser.add_argument("--until", required=True, metavar="YYYY-MM-DD", help="inclusive")
+    parser.add_argument("--timezone", metavar="ZONE", help="calendar days in this zone (default: ledger.timezone of the contract, else UTC)")
+    parser.add_argument("--ledger-dir", action="append", default=[], metavar="DIR", help="look here for local records (repeatable)")
+    parser.add_argument("--store-cache", metavar="DIR", help="keep the cache repository for the store's refs here (default: a temporary directory, removed on exit)")
+    parser.add_argument("--out", metavar="FILE", help="write the lines to this file (default: standard output)")
+    parser.add_argument("--prices", metavar="FILE", default=str(PRICES_FILE), help=argparse.SUPPRESS)
+    return parser
+
+
+def warehouse_row(record: dict[str, Any], versions: list[dict[str, Any]], conflicts: set[str]) -> dict[str, Any]:
+    """The record's allowlisted fields, then `cost_usd` (an exact decimal string, or null when the cost
+    cannot be known: never 0 for unknown), `price_version` (the id of the price version used, or null)
+    and `conflict` (the id has copies with different tokens or model; this row is the first copy)."""
+    row = {key: record.get(key) for key in FIELDS}
+    parts = price_request(record, versions)
+    moment = parse_time(record["time"])
+    version = version_in_effect(versions, moment) if parts is not None and moment is not None else None
+    with localcontext() as ctx:
+        ctx.prec = 60
+        row["cost_usd"] = (str(sum(parts.values(), Decimal(0)).quantize(COST_PLACES, rounding=ROUND_HALF_UP))
+                           if parts is not None else None)
+    row["price_version"] = version.get("id") if version else None
+    row["conflict"] = record["id"] is not None and record["id"] in conflicts
+    return row
+
+
+def cmd_records(argv: list[str]) -> int:
+    args = records_parser().parse_args(argv)
+    start, end, label = day_range(args.since, args.until, args.timezone or contract_timezone())
+    versions = load_prices(Path(args.prices))
+    with tempfile.TemporaryDirectory(prefix="plumb-ledger-records-") as scratch:
+        # Like `views`: the cache repository lives in a scratch directory unless --store-cache names one,
+        # so a job that writes the lines next to its checkout does not also commit a cache.
+        if not args.store_cache:
+            args.store_cache = str(Path(scratch) / "store-cache.git")
+        found = gather(args, start, end)
+    if found["store"] and found["store_status"] != "ok":
+        # A warehouse loaded from a partial read would look complete. Write nothing instead.
+        raise LedgerError(f"store {found['store_status']}; nothing written")
+    rows = [warehouse_row(record, versions, found["conflicts"]) for record in found["in_period"]]
+    text = "".join(json.dumps(row, separators=(",", ":"), ensure_ascii=False) + "\n" for row in rows)
+    if args.out:
+        atomic_write(Path(args.out).expanduser(), text)
+    else:
+        sys.stdout.write(text)
+    unpriced = sum(1 for row in rows if row["cost_usd"] is None)
+    conflicting = sum(1 for row in rows if row["conflict"])
+    unidentified = sum(1 for row in rows if row["id"] is None)
+    store = "unset" if not found["store"] else "ok"
+    print(f"records: {len(rows)} requests, {args.since} .. {args.until} ({label}) (unpriced={unpriced} conflicting={conflicting} "
+          f"without_id={unidentified} pending_export={found['pending_records']} store={store})"
+          + (f" -> {args.out}" if args.out else ""), file=sys.stderr)
+    return 0
+
+
+COMMANDS = {"capture": cmd_capture, "export": cmd_export, "prs": cmd_prs, "records": cmd_records,
+            "report": cmd_report, "views": cmd_views}
 
 
 def main(argv: list[str]) -> int:
     if not argv or argv[0] not in COMMANDS:
-        print("usage: plumb-ledger capture|export|prs|report|views [options]", file=sys.stderr)
+        print("usage: plumb-ledger capture|export|prs|records|report|views [options]", file=sys.stderr)
         return 2
     hook_cwd = os.getcwd()
     try:

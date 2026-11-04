@@ -416,6 +416,69 @@ of the task, is shown beside it. The timeline uses every record of the session, 
 `--repo` and just outside the period, so that scoping or the period's edge does not turn
 neighbouring work into idle time. The gap is printed with every table.
 
+### Records for a warehouse
+
+```bash
+plumb-ledger records --since <day> --until <day> [--timezone <tz>] [--out <file>] [--store-cache <dir>]
+```
+
+`views` writes the tables plumb defines; a warehouse (BigQuery and the like) wants the requests
+themselves, to query in ways the tables do not. `records` reads the same sources as `report` (local
+records and the store, merged by id) and prints the period's requests as JSON lines, oldest first:
+the allowlisted fields above, in that order, then
+
+| Field | Meaning |
+|---|---|
+| `cost_usd` | The request's list-price cost as an exact decimal string with nine places (BigQuery `NUMERIC` keeps nine), priced as `report` prices it; `null` when it cannot be known, never `0` |
+| `price_version` | The `id` of the price version that priced it, or `null` |
+| `conflict` | The id has copies with different tokens or model; the row is the first copy, as `report` counts it |
+
+Nothing else leaves the machine: the line holds the allowlist and these three. The same records give
+the same bytes. `--out` writes the file atomically; without it the lines go to standard output and the
+summary (requests, unpriced, conflicting, without an id, pending export, store) to standard error.
+Nothing is written in the ledger directory, and the store's cache repository lives in a temporary
+directory unless `--store-cache` names one. A store that is set but cannot be read is an error (exit
+2) and writes nothing, so a load never takes a partial read for the whole.
+
+Active time and the task of a request are not in the lines: they need a session's whole timeline and
+`--prs` / `--changes`, and `views` computes them. Load both when you want both: the lines for
+exploring, the `views` CSV files for the numbers plumb reports.
+
+**BigQuery.** `assets/bigquery/requests.schema.json` is the table's schema (it is tested against the
+lines). After the first load below has created the staging table, create the table once, partitioned
+by day and clustered for the common filters:
+
+```sql
+CREATE TABLE plumb_ledger.requests
+PARTITION BY DATE(time) CLUSTER BY repository, model
+AS SELECT * FROM plumb_ledger.requests_staging WHERE FALSE;
+```
+
+Then, on a schedule (in the store's CI, after the session branches are fetched as for `views`), load the
+trailing window into a staging table and merge it on `id`, so a re-run or an overlapping window never
+duplicates a request and a re-priced request is updated in place:
+
+```bash
+plumb/bin/plumb-ledger records --since "$(date -u -d '27 days ago' +%F)" --until "$(date -u +%F)" --out records.jsonl
+bq load --replace --source_format=NEWLINE_DELIMITED_JSON plumb_ledger.requests_staging records.jsonl plumb/assets/bigquery/requests.schema.json
+bq query --use_legacy_sql=false '
+MERGE plumb_ledger.requests T
+USING (SELECT * FROM plumb_ledger.requests_staging WHERE id IS NOT NULL) S
+ON T.id = S.id
+WHEN MATCHED THEN UPDATE SET
+  time = S.time, model = S.model, input = S.input, output = S.output, cache_read = S.cache_read,
+  cache_write_5m = S.cache_write_5m, cache_write_1h = S.cache_write_1h, repository = S.repository,
+  branch = S.branch, attribution_source = S.attribution_source, role = S.role, agent_type = S.agent_type,
+  agent_id = S.agent_id, session = S.session, runtime = S.runtime, remote_session = S.remote_session,
+  cost_usd = S.cost_usd, price_version = S.price_version, conflict = S.conflict
+WHEN NOT MATCHED THEN INSERT ROW'
+```
+
+A request without an id cannot be keyed, so the merge leaves it out; the summary counts them. Give the
+job's identity only what it needs (from GitHub Actions, Workload Identity Federation to a service
+account with `roles/bigquery.dataEditor` on the dataset and `roles/bigquery.jobUser` on the project).
+plumb does not install this job.
+
 ### Publishing in the store
 
 The store is the owner's private repository, and its default branch can hold generated views and

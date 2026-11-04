@@ -7,6 +7,7 @@
     plumb-ledger capture ...   per-request records from transcripts (scripts/ledger_cost.py)
     plumb-ledger export  ...   push captured records to the owner's store (scripts/ledger_cost.py)
     plumb-ledger prs     ...   pull requests by head ref, for task assignment (scripts/ledger_cost.py)
+    plumb-ledger records ...   every request with its cost, one JSON line each, for a warehouse (scripts/ledger_cost.py)
     plumb-ledger report  ...   the weekly report (scripts/ledger_cost.py)
     plumb-ledger views   ...   time, cost and model per task as tables in a directory (scripts/ledger_views.py)
 
@@ -21,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 CHANGES = {"changes", "rework"}
 FAILURES = {"failures"}
-COST = {"capture", "export", "prs", "report", "views"}
+COST = {"capture", "export", "prs", "records", "report", "views"}
 
 
 def main(argv: list[str]) -> int:

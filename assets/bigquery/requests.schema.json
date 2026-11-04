@@ -1,0 +1,22 @@
+[
+  {"name": "id", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "time", "type": "TIMESTAMP", "mode": "NULLABLE"},
+  {"name": "model", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "input", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "output", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "cache_read", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "cache_write_5m", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "cache_write_1h", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "repository", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "branch", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "attribution_source", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "role", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "agent_type", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "agent_id", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "session", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "runtime", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "remote_session", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "cost_usd", "type": "NUMERIC", "mode": "NULLABLE"},
+  {"name": "price_version", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "conflict", "type": "BOOLEAN", "mode": "NULLABLE"}
+]
