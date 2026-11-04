@@ -75,9 +75,9 @@ python3 - <<'PY'
 import json, pathlib
 path = pathlib.Path.home() / ".claude" / "settings.json"
 data = json.loads(path.read_text()) if path.exists() else {}
-command = "nohup plumb-ledger watch --interval 300 >/dev/null 2>&1 &"
+command = "setsid nohup plumb-ledger watch --interval 300 >/dev/null 2>&1 </dev/null &"
 groups = data.setdefault("hooks", {}).setdefault("SessionStart", [])
-if not any(h.get("command") == command for g in groups for h in g.get("hooks", [])):
+if not any("plumb-ledger watch" in h.get("command", "") for g in groups for h in g.get("hooks", [])):
     groups.append({"hooks": [{"type": "command", "command": command}]})
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps(data, indent=2) + "\n")
@@ -102,11 +102,12 @@ PY
 ```
 
 - The shim asks Claude Code where plumb is installed each time, so it follows plugin updates.
-- The hook starts `watch` in the background and returns at once. The hook fires again on resume,
+- The hook starts `watch` in its own session (`setsid`), so it outlives the hook, and returns at once. The hook fires again on resume,
   clear and compaction; the lock keeps one `watch` running.
 - The setup script itself must not start `watch`: it runs before the session and has no cloud
   session id to record.
-- Check it in a new session: `pgrep -f "plumb-ledger watch"` shows one process, and after a short Codex
+- Check it in a new session: `pgrep -af '[l]edger.py watch'` shows one process (`plumb-ledger` runs as
+  `python3 .../scripts/ledger.py`, so the name `plumb-ledger` is not in the process list), and after a short Codex
   or OpenCode run `plumb-ledger report --since <today> --until <today>` lists its rows.
 
 ## Keep a cached environment current
