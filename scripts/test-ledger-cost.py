@@ -2215,6 +2215,53 @@ def _():
     assert sum(ledger_cost.price_request(opus48, versions).values()) == Decimal(15)
 
 
+@case("version 2026-11-09 copies every model of 2026-10-30 unchanged and adds terra, luna and sol 5.6")
+def _():
+    data = json.loads((PLUGIN / "assets" / "prices.json").read_text(), parse_float=Decimal)
+    versions = {v["id"]: v for v in data["versions"]}
+    old, new = versions["2026-10-30"], versions["2026-11-09"]
+    assert new["effective_from"] == "2026-08-22T00:00:00Z" and new["checked"] == "2026-11-09"
+    assert new["cache_write_multiplier"] == old["cache_write_multiplier"]
+    assert {k: v for k, v in new["models"].items() if k in old["models"]} == old["models"], "a copied model changed"
+    assert set(new["models"]) - set(old["models"]) == {"gpt-6.1-terra", "gpt-5.6-luna", "gpt-5.6-sol"}
+    assert {k: (v["input"], v["output"], v["cache_read"]) for k, v in new["models"].items()
+            if k in ("gpt-6.1-terra", "gpt-5.6-luna", "gpt-5.6-sol")} == {
+        "gpt-6.1-terra": (1, 5, Decimal("0.05")), "gpt-5.6-luna": (Decimal("0.20"), Decimal("1.20"), Decimal("0.02")),
+        "gpt-5.6-sol": (4, 20, Decimal("0.40"))}
+    assert {k: v["long_context"] for k, v in new["models"].items() if k in ("gpt-6.1-terra", "gpt-5.6-luna", "gpt-5.6-sol")} == {
+        "gpt-6.1-terra": {"threshold_input_tokens": 272000, "input": 2, "output": Decimal("7.50"), "cache_read": Decimal("0.10")},
+        "gpt-5.6-luna": {"threshold_input_tokens": 272000, "input": Decimal("0.40"), "output": Decimal("1.80"), "cache_read": Decimal("0.04")},
+        "gpt-5.6-sol": {"threshold_input_tokens": 272000, "input": 8, "output": 30, "cache_read": Decimal("0.80")}}
+    assert all(new["models"][k]["checked"] == "2026-11-09" and new["models"][k]["source"] for k in
+               ("gpt-6.1-terra", "gpt-5.6-luna", "gpt-5.6-sol"))
+
+
+@case("a gpt-5.6-luna row after 2026-08-22 is priced at the cut rates, cache write at 1.25x, and the long-context tier above 272K; before it the row stays unknown")
+def _():
+    versions = ledger_cost.load_prices()
+    row = record(1, time_="2026-11-01T00:00:00.000Z", model="gpt-5.6-luna", runtime="codex",
+                 inp=100_000, out=10_000, cache_read=50_000, w5=20_000, w1=0)
+    cost = ledger_cost.price_request(row, versions)
+    assert cost is not None and sum(cost.values()) == Decimal("0.038"), cost
+    big = record(2, time_="2026-11-01T00:00:00.000Z", model="gpt-5.6-luna", runtime="codex",
+                 inp=200_000, out=10_000, cache_read=72_001, w5=0, w1=0)
+    cost = ledger_cost.price_request(big, versions)
+    assert sum(cost.values()) == Decimal("0.08") + Decimal("0.018") + Decimal("0.00288004"), cost
+    early = record(3, time_="2026-08-01T00:00:00.000Z", model="gpt-5.6-luna", runtime="codex")
+    assert ledger_cost.price_request(early, versions) is None, "a luna row before the 80% cut must stay unknown"
+
+
+@case("a gpt-6.1-terra or gpt-5.6-sol row on 2026-11-01 is priced at its standard rates")
+def _():
+    versions = ledger_cost.load_prices()
+    terra = record(1, time_="2026-11-01T00:00:00.000Z", model="gpt-6.1-terra", runtime="codex",
+                   inp=100_000, out=1_000_000, cache_read=100_000, w5=0, w1=0)
+    assert sum(ledger_cost.price_request(terra, versions).values()) == Decimal("0.1") + Decimal(5) + Decimal("0.005")
+    sol = record(2, time_="2026-11-01T00:00:00.000Z", model="gpt-5.6-sol", runtime="codex",
+                 inp=100_000, out=1_000_000, cache_read=100_000, w5=0, w1=0)
+    assert sum(ledger_cost.price_request(sol, versions).values()) == Decimal("0.4") + Decimal(20) + Decimal("0.04")
+
+
 @case("every subcommand prints usage for --help and exits 0; the doctor ledger block reports capture, the store and the export mode")
 def _():
     for name in ("capture", "export", "prs", "report"):

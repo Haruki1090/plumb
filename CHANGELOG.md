@@ -2,6 +2,18 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.22.2] - 2026-11-09
+
+### Changed
+
+- `assets/prices.json`: a new version `2026-11-09` (effective 2026-08-22) copies every model of
+  `2026-10-30` unchanged and adds `gpt-6.1-terra` ($1 input, $0.05 cache read, $5 output per MTok),
+  `gpt-5.6-luna` ($0.20, $0.02, $1.20) and `gpt-5.6-sol` ($4, $0.40, $20), each at the OpenAI API's
+  standard tier with cache write at 1.25x input, a long-context tier above 272K input tokens, its own
+  `checked` and `source`. It is a new version because Luna's 2026-07-30 cut and Sol 5.6's promotional
+  price from 2026-08-21 did not hold for the whole of `2026-10-30`; Luna's and Sol 5.6's rows before
+  2026-08-22 stay unknown.
+
 ## [0.22.1] - 2026-11-04
 
 ### Changed
