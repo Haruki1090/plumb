@@ -297,7 +297,12 @@ OpenCode records for those rows. OpenCode Go's models (`opencode-go/deepseek-v4.
 tier, with its long-context tier above 272K input tokens; a Codex session on a subscription is not
 billed per token, so its cost, like a flat-rate Claude plan's, compares work rather than states a
 bill. Codex rows put cache writes in `cache_write_5m`, which the version prices at 1.25x input, the
-rate OpenAI lists for this model.
+rate OpenAI lists for this model. `gpt-6.1-terra` ($1 input, $0.05 cache read, $5 output per MTok),
+`gpt-5.6-luna` ($0.20, $0.02, $1.20) and `gpt-5.6-sol` ($4, $0.40, $20) are priced at the OpenAI
+API's standard tier in the new version 2026-11-09, effective 2026-08-22 (cache write at 1.25x input,
+long-context tiers above 272K input tokens), because Luna's 2026-07-30 cut and Sol 5.6's promotional
+price from 2026-08-21 did not hold for the whole of 2026-10-30; every model of that version is copied
+forward, and Luna's and Sol 5.6's rows before 2026-08-22 stay unknown.
 
 ### Store and export
 

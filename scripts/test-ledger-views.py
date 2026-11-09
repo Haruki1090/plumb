@@ -924,7 +924,7 @@ def _():
     assert list(rows[0]) == [*ledger_cost.FIELDS, "cost_usd", "price_version", "conflict"], list(rows[0])
     schema = json.loads((PLUGIN / "assets" / "bigquery" / "requests.schema.json").read_text())
     assert [column["name"] for column in schema] == list(rows[0]), "assets/bigquery/requests.schema.json is out of step"
-    assert (rows[0]["cost_usd"], rows[0]["price_version"], rows[0]["conflict"]) == ("0.000100000", "2026-10-30", False), rows[0]
+    assert (rows[0]["cost_usd"], rows[0]["price_version"], rows[0]["conflict"]) == ("0.000100000", "2026-11-09", False), rows[0]
     assert (rows[1]["cost_usd"], rows[1]["price_version"]) == (None, None), rows[1]
     assert "records: 2 requests" in err and "unpriced=1" in err and "store=unset" in err, err
 
