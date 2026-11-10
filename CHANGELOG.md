@@ -2,6 +2,17 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.23.1] - 2026-11-11
+
+### Fixed
+
+- `docs/cloud-setup.md` told a setup script to put `CLAUDE_CODE_SUBAGENT_MODEL` in the `env` object of
+  `~/.claude/settings.json`. That does not work: measured in a cloud session on Claude Code 2.1.322,
+  the variable does not reach the session from that object (other names do), so a subagent that names
+  no model kept running on the main session's model. The section now says to set it as a real
+  environment variable of the session, in the environment's own settings. No code changed;
+  `plumb-doctor` already reported the variable as unset in that case.
+
 ## [0.23.0] - 2026-11-10
 
 ### Added
