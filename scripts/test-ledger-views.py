@@ -678,15 +678,16 @@ def _():
 
 # ---------------------------------------------------------------- D: views
 
-FILES = ["README.md", "days.csv", "days.md", "models.csv", "models.md", "sessions.csv", "tasks.csv", "tasks.md"]
+FILES = ["README.md", "agents.csv", "agents.md", "days.csv", "days.md", "models.csv", "models.md", "sessions.csv", "tasks.csv",
+         "tasks.md"]
 
 
-@case("views writes README, tasks, days, models and sessions, and prints one summary line")
+@case("views writes README, tasks, days, models, agents and sessions, and prints one summary line")
 def _():
     sb = Sandbox("files")
     put_all(sb, [record(1, stamp(0)), record(2, stamp(5), model=OPUS, out=2000), record(3, stamp(9), role="subagent")])
     code, out, err = sb.ledger_cmd("views", *PERIOD, "--out", str(sb.out), "--prs", write_prs(sb, [pull(10, "feat/x")]))
-    assert code == 0 and out.startswith("views: 3 requests, 1 tasks, 8 files"), (out, err)
+    assert code == 0 and out.startswith("views: 3 requests, 1 tasks, 10 files"), (out, err)
     assert sorted(p.name for p in sb.out.iterdir()) == FILES
     files = {name: (sb.out / name).read_bytes().decode() for name in FILES}
     tasks = table(files["tasks.csv"])
@@ -699,6 +700,79 @@ def _():
     assert "Period 2026-10-09 .. 2026-10-11 (days in UTC)" in files["README.md"]
     for name in FILES[1:]:
         assert f"[{name}]({name})" in files["README.md"], name
+
+
+def agent_record(n, minutes, *, agent_type="implementer", agent_id=None, role="subagent", session="s1", model=HAIKU,
+                 inp=0, cache_read=0, w5=0, w1=0, out=0, branch="feat/x") -> dict:
+    row = record(n, stamp(minutes), session=session, role=role, model=model, inp=inp, out=out, branch=branch)
+    row.update({"agent_type": agent_type if role == "subagent" else None, "agent_id": agent_id,
+                "cache_read": cache_read, "cache_write_5m": w5, "cache_write_1h": w1})
+    return row
+
+
+@case("agents: one row per role, agent type and model; threads, medians of first and peak context, unpriced and share as in models")
+def _():
+    sb = Sandbox("agents")
+    rows = [
+        # main, session s1: written latest first, the first request is the earliest by time (context 1,000)
+        agent_record(2, 1, role="main", inp=3000, cache_read=2000),                      # 5,000
+        agent_record(1, 0, role="main", inp=1000),                                        # 1,000
+        agent_record(3, 0, role="main", session="s2", inp=200, w5=300),                   # 500
+        # implementer a1 of s1 used two models: it is a thread of each row
+        agent_record(4, 3, agent_id="a1", inp=100, cache_read=100),                       # 200
+        agent_record(5, 4, agent_id="a1", inp=2000, w1=1000),                             # 3,000
+        agent_record(6, 5, agent_id="a1", model=OPUS, inp=400),                           # 400
+        agent_record(7, 6, agent_id="a2", inp=600),                                       # 600
+        # reviewer without an agent id: one thread per session
+        agent_record(8, 3, agent_type="reviewer", session="s2", inp=1000),
+        agent_record(9, 4, agent_type="reviewer", session="s2", inp=4000),
+        agent_record(10, 5, agent_type="reviewer", session="s3", inp=50),
+        # a subagent with no agent type, on a model that has no price
+        agent_record(11, 6, agent_type=None, agent_id="a3", model="gpt-test", inp=700),
+        agent_record(12, 7, agent_type=None, agent_id="a3", model="gpt-test", inp=900)]
+    put_all(sb, rows)
+    files = sb.views()
+    assert files["agents.csv"].startswith("role,agent_type,model,threads,requests,unknown_cost_requests,cost_usd,share,"
+                                          "median_first_context,median_peak_context\r\n"), files["agents.csv"]
+    got = {(r["role"], r["agent_type"], r["model"]): r for r in table(files["agents.csv"])}
+    assert set(got) == {("main", "-", HAIKU), ("subagent", "implementer", HAIKU), ("subagent", "implementer", OPUS),
+                        ("subagent", "reviewer", HAIKU), ("subagent", "-", "gpt-test")}, list(got)
+    main = got[("main", "-", HAIKU)]
+    assert (main["threads"], main["requests"], main["median_first_context"], main["median_peak_context"]) == ("2", "3", "750", "2750"), main
+    both = got[("subagent", "implementer", HAIKU)]
+    assert (both["threads"], both["requests"], both["median_first_context"], both["median_peak_context"]) == ("2", "3", "400", "1800"), both
+    opus = got[("subagent", "implementer", OPUS)]
+    assert (opus["threads"], opus["requests"], opus["cost_usd"], opus["median_first_context"]) == ("1", "1", "0.001600", "400"), opus
+    reviewer = got[("subagent", "reviewer", HAIKU)]
+    assert (reviewer["threads"], reviewer["requests"], reviewer["median_first_context"], reviewer["median_peak_context"]) == ("2", "3", "525", "2025"), reviewer
+    bare = got[("subagent", "-", "gpt-test")]
+    assert (bare["threads"], bare["requests"], bare["unknown_cost_requests"], bare["cost_usd"], bare["share"]) == ("1", "2", "2", "", ""), bare
+    assert (bare["median_first_context"], bare["median_peak_context"]) == ("700", "900"), bare
+    models = table(files["models.csv"])
+    priced = sum(Decimal(r["cost_usd"]) for r in models if r["cost_usd"])
+    assert sum(Decimal(r["cost_usd"]) for r in got.values() if r["cost_usd"]) == priced
+    assert sum(Decimal(r["share"]) for r in got.values() if r["share"]) - 1 < Decimal("0.0003")
+    costs = [Decimal(r["cost_usd"]) for r in table(files["agents.csv"]) if r["cost_usd"]]
+    assert costs == sorted(costs, reverse=True) and table(files["agents.csv"])[0]["model"] == OPUS, costs
+    md = files["agents.md"]
+    assert "| Role | Agent type | Model | Threads | Requests | Cost | Share | Median first context | Median peak context |" in md, md
+    assert "| subagent | - | gpt-test | 1 | 2 | unpriced | - | 700 | 900 |" in md, md
+    assert "| main | - | claude-haiku-5-5 | 2 | 3 |" in md and "| 750 | 2,750 |" in md, md
+    assert "runs on the main thread's model" in md and "cannot show whether a model is inherited or set" in md, md
+    assert "[agents.md](agents.md), [agents.csv](agents.csv)" in files["README.md"]
+
+
+@case("agents: the median of an even number of threads rounds a half up, and a row with no thread has no median")
+def _():
+    acc = ledger_views.AgentAcc()
+    assert acc.median(1) is None
+    for number, size in enumerate((1, 2, 7, 8)):
+        acc.add_thread(("claude", "s", str(number)), agent_record(number, 0, inp=size), BASE, number)
+    assert (acc.median(1), acc.median(2)) == (5, 5), (acc.median(1), acc.median(2))   # sorted 1, 2, 7, 8: (2 + 7) / 2 = 4.5, up
+    other = ledger_views.AgentAcc()
+    for number, size in enumerate((1, 2)):
+        other.add_thread(("claude", "s", str(number)), agent_record(number, 0, inp=size), BASE, number)
+    assert other.median(1) == 2
 
 
 @case("the same records give the same bytes, whatever the hash seed and the order the files are read in")
@@ -924,7 +998,7 @@ def _():
     assert list(rows[0]) == [*ledger_cost.FIELDS, "cost_usd", "price_version", "conflict"], list(rows[0])
     schema = json.loads((PLUGIN / "assets" / "bigquery" / "requests.schema.json").read_text())
     assert [column["name"] for column in schema] == list(rows[0]), "assets/bigquery/requests.schema.json is out of step"
-    assert (rows[0]["cost_usd"], rows[0]["price_version"], rows[0]["conflict"]) == ("0.000100000", "2026-11-09", False), rows[0]
+    assert (rows[0]["cost_usd"], rows[0]["price_version"], rows[0]["conflict"]) == ("0.000100000", "2026-11-10", False), rows[0]
     assert (rows[1]["cost_usd"], rows[1]["price_version"]) == (None, None), rows[1]
     assert "records: 2 requests" in err and "unpriced=1" in err and "store=unset" in err, err
 

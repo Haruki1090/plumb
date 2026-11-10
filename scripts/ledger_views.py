@@ -4,7 +4,7 @@
                        [--gap-minutes 30] [--repo <owner/name>] [--timezone <tz>]
 
 Reads what `plumb-ledger report` reads (local records and the store's refs) and writes, under
---out only, README.md, tasks.md/.csv, days.md/.csv, models.md/.csv and sessions.csv. The Markdown
+--out only, README.md, tasks.md/.csv, days.md/.csv, models.md/.csv, agents.md/.csv and sessions.csv. The Markdown
 tables are for reading on GitHub (the 50 costliest rows); the CSV files hold every row. The same
 records give the same bytes. Nothing is pushed: publishing is the caller's job.
 
@@ -39,10 +39,19 @@ from ledger_cost import (LedgerError, TOKEN_FIELDS, add_source_arguments, canoni
 DEFAULT_GAP_MINUTES = 30
 TOP_ROWS = 50
 FAMILIES = ("fable", "mythos", "opus", "sonnet", "haiku", "other")
-GENERATED = ("README.md", "tasks.md", "tasks.csv", "days.md", "days.csv", "models.md", "models.csv", "sessions.csv")
+GENERATED = ("README.md", "tasks.md", "tasks.csv", "days.md", "days.csv", "models.md", "models.csv",
+             "agents.md", "agents.csv", "sessions.csv")
 STATE_ORDER = {"pull_request": 0, "branch": 1, "no_pull_request": 2, "ambiguous": 3, "unknown_attribution": 4}
 STATE_LABEL = {"pull_request": "", "branch": "", "no_pull_request": "none", "ambiguous": "ambiguous",
                "unknown_attribution": "unknown"}
+AGENTS_NOTE = [
+    "Sorted by cost. One row is a role (main or subagent), an agent type and a model; a thread that used two "
+    "models is counted in both rows. A thread is a session (main) or one agent of a session (subagent). "
+    "Context is input + cache read + cache writes of one request; the medians are over the row's threads.",
+    "",
+    "How to read it: an agent type without a `model` setting runs on the main thread's model. The table cannot "
+    "show whether a model is inherited or set. When a subagent row's Model equals the main row's Model for the "
+    "same period, check whether that agent type sets a model."]
 ZERO = Decimal(0)
 MICRO = timedelta(microseconds=1)
 
@@ -185,6 +194,51 @@ class Acc:
         return (self.last - self.first) if self.first and self.last else timedelta(0)
 
 
+class AgentAcc(Acc):
+    """One row of the agents table: a (role, agent type, model) group, and for each thread that ran in
+    it the context of its first request and the largest context of any of its requests."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.threads: dict[tuple, list[Any]] = {}
+
+    def add_thread(self, thread: tuple, record: dict[str, Any], moment: datetime, order: int) -> None:
+        context = sum(record[key] or 0 for key in ("input", "cache_read", "cache_write_5m", "cache_write_1h"))
+        seen = self.threads.get(thread)
+        if seen is None:
+            self.threads[thread] = [(moment, order), context, context]
+            return
+        if (moment, order) < seen[0]:
+            seen[0], seen[1] = (moment, order), context
+        seen[2] = max(seen[2], context)
+
+    def median(self, column: int) -> int | None:
+        """Median of the first (1) or peak (2) context over the threads, a half rounded up."""
+        values = sorted(row[column] for row in self.threads.values())
+        if not values:
+            return None
+        middle = len(values) // 2
+        if len(values) % 2:
+            return values[middle]
+        return (values[middle - 1] + values[middle] + 1) // 2
+
+
+def agent_key(record: dict[str, Any]) -> tuple[str, str, str]:
+    """(role, agent type, model) of a request. A main request has no agent type; neither has a
+    subagent request whose transcript did not say."""
+    if record["role"] == "main":
+        return "main", "-", record["model"] or "unknown model"
+    return "subagent", record["agent_type"] or "-", record["model"] or "unknown model"
+
+
+def thread_key(record: dict[str, Any]) -> tuple:
+    """A main thread is a session; a subagent thread is one agent of a session. Subagent requests
+    without an agent id are one thread per session."""
+    if record["role"] == "main":
+        return record["runtime"], record["session"]
+    return record["runtime"], record["session"], record["agent_id"]
+
+
 def task_key(placed: Any, repository: str | None) -> tuple[str, str, str, int]:
     """(state, repository, head ref, pull request number) of where a request goes; `repository` is
     the spelling shown for the placed repository."""
@@ -211,6 +265,7 @@ def build(found: dict[str, Any], pulls: dict | None, sessions: Any, versions: li
     models: dict[str, Acc] = {}
     per_day: dict[date, Acc] = {day: Acc() for day in days}
     per_session: dict[tuple[str, str], Acc] = {}
+    agents: dict[tuple[str, str, str], AgentAcc] = {}
     counts: Counter[str] = Counter()
     total = Acc()
     placements = {index: place_request(merged[index], parse_time(merged[index]["time"]), pulls, now, sessions)
@@ -234,6 +289,9 @@ def build(found: dict[str, Any], pulls: dict | None, sessions: Any, versions: li
         for acc in (total, tasks.setdefault(key, Acc()), models.setdefault(record["model"] or "unknown model", Acc()),
                     per_day.setdefault(day, Acc()), per_session.setdefault(session_key, Acc())):
             acc.add(record, moment, amount, credits[index])
+        agent = agents.setdefault(agent_key(record), AgentAcc())
+        agent.add(record, moment, amount, credits[index])
+        agent.add_thread(thread_key(record), record, moment, index)
         task = tasks[key]
         task.attribution[label] += 1
         if head and key[0] == "pull_request":
@@ -248,7 +306,7 @@ def build(found: dict[str, Any], pulls: dict | None, sessions: Any, versions: li
         if key[0] == "pull_request":
             session.pulls.add(f"{repository}#{placed.number}")
     return {"total": total, "tasks": tasks, "models": models, "days": per_day, "sessions": per_session,
-            "counts": counts}
+            "agents": agents, "counts": counts}
 
 
 # ---------------------------------------------------------------- tables
@@ -341,6 +399,23 @@ def days_tables(data: dict[str, Any]) -> tuple[list[str], list[list[Any]], list[
     return csv_headers, csv_rows, md_headers, md_rows
 
 
+def agents_tables(data: dict[str, Any]) -> tuple[list[str], list[list[Any]], list[str], list[list[Any]]]:
+    ordered = sorted(data["agents"].items(), key=lambda item: (-item[1].cost, item[0]))
+    whole = data["total"].cost
+    csv_rows, md_rows = [], []
+    for (role, agent_type, model), acc in ordered:
+        first, peak = acc.median(1), acc.median(2)
+        csv_rows.append([role, agent_type, model, len(acc.threads), acc.requests, acc.unknown_cost, cost_cell(acc),
+                         "" if acc.unpriced else fixed_share(acc.cost, whole), first, peak])
+        md_rows.append([role, agent_type, model, len(acc.threads), acc.requests, cost_text(acc),
+                        "-" if acc.unpriced else percent(acc.cost, whole), f"{first:,}", f"{peak:,}"])
+    csv_headers = ["role", "agent_type", "model", "threads", "requests", "unknown_cost_requests", "cost_usd", "share",
+                   "median_first_context", "median_peak_context"]
+    md_headers = ["Role", "Agent type", "Model", "Threads", "Requests", "Cost", "Share", "Median first context",
+                  "Median peak context"]
+    return csv_headers, csv_rows, md_headers, md_rows
+
+
 def sessions_csv(data: dict[str, Any]) -> str:
     rows = []
     for (runtime, session), acc in sorted(data["sessions"].items(), key=lambda item: (format_time(item[1].first), item[0])):
@@ -421,6 +496,7 @@ def readme(data: dict[str, Any], found: dict[str, Any], args: Any, label: str, g
         "- [tasks.md](tasks.md), [tasks.csv](tasks.csv): one row per task",
         "- [days.md](days.md), [days.csv](days.csv): one row per day",
         "- [models.md](models.md), [models.csv](models.csv): one row per model",
+        "- [agents.md](agents.md), [agents.csv](agents.csv): one row per role, agent type and model",
         "- [sessions.csv](sessions.csv): one row per session", ""]
     return "\n".join(lines)
 
@@ -440,6 +516,10 @@ def render(data: dict[str, Any], found: dict[str, Any], args: Any, label: str, g
     files["models.csv"] = csv_text(csv_headers, csv_rows)
     files["models.md"] = markdown_file("Models", intro + ["Sorted by cost. Tokens are summed over the requests that report them."],
                                        md_headers, md_rows, "models.csv", {1, 3, 4, 5, 6, 7, 8})
+    csv_headers, csv_rows, md_headers, md_rows = agents_tables(data)
+    files["agents.csv"] = csv_text(csv_headers, csv_rows)
+    files["agents.md"] = markdown_file("Agents", intro + AGENTS_NOTE, md_headers, md_rows, "agents.csv",
+                                       {3, 4, 6, 7, 8})
     files["sessions.csv"] = sessions_csv(data)
     return files
 
@@ -471,7 +551,7 @@ def views_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="plumb-ledger views",
         description="Write time, cost and model per task as Markdown and CSV tables under --out: README.md, "
-                    "tasks, days and models (.md and .csv) and sessions.csv. Reads the local records and the "
+                    "tasks, days, models and agents (.md and .csv) and sessions.csv. Reads the local records and the "
                     "store like `report`. Writes nothing outside --out and never pushes.")
     add_source_arguments(parser)
     for action in parser._actions:   # views has its own default for the cache (below)

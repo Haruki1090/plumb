@@ -284,7 +284,9 @@ exported. `export` does nothing without `ledger.store`. `capture --sweep` does n
 `assets/prices.json` holds versions, each with `effective_from` (UTC), the day it was `checked`
 against the provider's published list, and per-model rates in USD per million tokens, including a
 long-context tier decided per request on input + cache read + cache write. Each request is priced
-with the version in effect at its time. Add a version for a price change; never edit an old one.
+with the version in effect at its time; two versions with the same `effective_from` are ordered by
+their place in the file, so the later one is in effect (version 2026-11-10 corrects 2026-11-09 this
+way, and adds `claude-fable-5-2`). Add a version for a price change; never edit an old one.
 A model may carry its own `checked` and `source`, which override the version's for that model, and
 its name is looked up as written (`opencode/deepseek-v4.1-flash-free` has a provider prefix). A model
 that a version was missing may be added to it when its price held for the whole version (that turns
@@ -415,6 +417,7 @@ under `--out` would be committed with the tables); `--store-cache <dir>` names o
 | `tasks.md`, `tasks.csv` | One row per task: repository, head ref, pull request, attribution mix, sessions, requests, active time, span, cost, cost by model family, main / subagent cost |
 | `days.md`, `days.csv` | One row per day of the period in the time zone, empty days included: requests, active time, cost, cost by model family |
 | `models.md`, `models.csv` | One row per model: requests, cost, share, tokens by kind |
+| `agents.md`, `agents.csv` | One row per role (main or subagent), agent type and model: threads, requests, cost, share, median context of a thread's first request and of its largest. A thread is a session (main) or one agent of a session (subagent); one that used two models counts in both rows. `agents.md` says how to read it: an agent type with no model setting runs on the main model, and the table cannot show whether a model was inherited |
 | `sessions.csv` | One row per session: runtime, session, remote session, repositories, branches, first and last request, active time, cost, assigned pull requests |
 
 The Markdown tables are for reading: the 50 costliest rows (a day table lists its 50 latest days, oldest

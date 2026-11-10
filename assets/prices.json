@@ -213,6 +213,140 @@
           }
         }
       }
+    },
+    {
+      "id": "2026-11-10",
+      "effective_from": "2026-08-22T00:00:00Z",
+      "checked": "2026-11-10",
+      "source": "Copies every model of version 2026-11-09 and corrects claude-sonnet-5-5's cache_read (0.20 to 0.10, an error, not a price change) and adds claude-fable-5-2. It has the same effective_from as 2026-11-09, so it is the version in effect for every moment 2026-11-09 was (a tie goes to the later version in this file).",
+      "cache_write_multiplier": {
+        "5m": 1.25,
+        "1h": 2
+      },
+      "models": {
+        "claude-fable-5-1": {
+          "input": 10,
+          "output": 50,
+          "cache_read": 0.25
+        },
+        "claude-fable-5-2": {
+          "input": 8,
+          "output": 40,
+          "cache_read": 0.20,
+          "checked": "2026-11-10",
+          "source": "Claude API pricing page (https://platform.claude.com/docs/en/about-claude/pricing, read 2026-11-10): Claude Fable 5.2 $8 input, $10 5m write, $16 1h write, $0.20 cache hit, $40 output per MTok; the writes are the version's 1.25x and 2x."
+        },
+        "claude-opus-5-5": {
+          "input": 4,
+          "output": 20,
+          "cache_read": 0.20
+        },
+        "claude-sonnet-5-5": {
+          "input": 2,
+          "output": 10,
+          "cache_read": 0.10,
+          "checked": "2026-11-10",
+          "source": "Correction of an error, not a price change: versions 2026-10-30 and 2026-11-09 list cache_read 0.20, but the Claude API pricing page (https://platform.claude.com/docs/en/about-claude/pricing, read 2026-11-10) lists Sonnet 5.5 cache hits at $0.10 per MTok, its footnote 0.05x base input; input $2 and output $10 were right and are unchanged."
+        },
+        "claude-haiku-5-5": {
+          "input": 0.10,
+          "output": 0.50,
+          "cache_read": 0.01,
+          "long_context": {
+            "threshold_input_tokens": 100000,
+            "input": 0.50,
+            "output": 2.50,
+            "cache_read": 0.05
+          }
+        },
+        "claude-opus-4-8": {
+          "input": 5,
+          "output": 25,
+          "cache_read": 0.50,
+          "checked": "2026-11-03",
+          "source": "Claude API pricing page (platform.claude.com/docs/en/about-claude/pricing): $5 input, $6.25 5m write, $10 1h write, $0.50 cache hit, $25 output per MTok; the writes are the version's 1.25x and 2x."
+        },
+        "gpt-6.1-sol": {
+          "input": 2,
+          "output": 10,
+          "cache_read": 0.10,
+          "checked": "2026-11-03",
+          "source": "OpenAI API standard tier as OpenAI's model and pricing pages state it (developers.openai.com/api/docs/models/gpt-6.1-sol, /api/docs/pricing), read through a search restricted to OpenAI's domains: $2 input, $0.10 cached input, $2.50 cache write (1.25x, the version's 5m multiplier; Codex rows put cache writes in cache_write_5m), $10 output per MTok; above 272K input tokens the whole request is 2x input and cache and 1.5x output. Batch, Flex, fast and ultrafast tiers are not modelled.",
+          "long_context": {
+            "threshold_input_tokens": 272000,
+            "input": 4,
+            "output": 15,
+            "cache_read": 0.20
+          }
+        },
+        "opencode/deepseek-v4.1-flash-free": {
+          "input": 0,
+          "output": 0,
+          "cache_read": 0,
+          "checked": "2026-11-02",
+          "source": "OpenCode free tier; OpenCode itself records cost 0 for these rows."
+        },
+        "opencode-go/deepseek-v4.1-flash": {
+          "input": 0.15,
+          "output": 0.60,
+          "cache_read": 0.003,
+          "checked": "2026-11-04",
+          "source": "OpenCode Go list price at Off-Peak, USD per MTok, from OpenCode's own model catalog models.dev (github.com/sst/models.dev, providers/opencode-go/models/deepseek-v4.1-flash.toml at commit 065c9d1), which transcribes opencode.ai/v2/docs/console/go/ (accessed 2026-10-21); opencode.ai itself could not be opened from the session. Peak (01:00-04:00 and 06:00-10:00 UTC, Monday to Friday) is 2x and is not modelled. Go lists no cache-write price; a cache write is priced at the version's 1.25x input. On the Go subscription this is not the bill; it compares work."
+        },
+        "opencode-go/deepseek-v4-pro": {
+          "input": 0.66,
+          "output": 1.98,
+          "cache_read": 0.022,
+          "checked": "2026-11-04",
+          "source": "OpenCode Go list price at Off-Peak, USD per MTok, from OpenCode's own model catalog models.dev (github.com/sst/models.dev, providers/opencode-go/models/deepseek-v4-pro.toml at commit 065c9d1), which transcribes opencode.ai/v2/docs/console/go/ (accessed 2026-10-21); opencode.ai itself could not be opened from the session. Peak (01:00-04:00 and 06:00-10:00 UTC, Monday to Friday) is 2x and is not modelled. Go lists no cache-write price; a cache write is priced at the version's 1.25x input. On the Go subscription this is not the bill; it compares work."
+        },
+        "opencode-go/glm-5.3": {
+          "input": 1.40,
+          "output": 4.40,
+          "cache_read": 0.26,
+          "checked": "2026-11-04",
+          "source": "OpenCode Go list price at Off-Peak, USD per MTok, from OpenCode's own model catalog models.dev (github.com/sst/models.dev, providers/opencode-go/models/glm-5.3.toml at commit 065c9d1), which transcribes opencode.ai/v2/docs/console/go/ (accessed 2026-10-21); opencode.ai itself could not be opened from the session. Peak (01:00-04:00 and 06:00-10:00 UTC, Monday to Friday) is 2x and is not modelled. Go lists no cache-write price; a cache write is priced at the version's 1.25x input. On the Go subscription this is not the bill; it compares work."
+        },
+        "gpt-6.1-terra": {
+          "input": 1,
+          "output": 5,
+          "cache_read": 0.05,
+          "checked": "2026-11-09",
+          "source": "OpenAI API standard tier as OpenAI's model and pricing pages state it (developers.openai.com/api/docs/models/gpt-6.1-terra, /api/docs/pricing), read through a search restricted to OpenAI's domains: $1 input, $0.05 cached input, $1.25 cache write (1.25x, the version's 5m multiplier; Codex rows put cache writes in cache_write_5m), $5 output per MTok; above 272K input tokens the whole request is 2x input and cache and 1.5x output. Batch, Flex, fast, ultrafast and regional tiers are not modelled.",
+          "long_context": {
+            "threshold_input_tokens": 272000,
+            "input": 2,
+            "output": 7.50,
+            "cache_read": 0.10
+          }
+        },
+        "gpt-5.6-luna": {
+          "input": 0.20,
+          "output": 1.20,
+          "cache_read": 0.02,
+          "checked": "2026-11-09",
+          "source": "OpenAI API standard tier as OpenAI's model and changelog pages state it (developers.openai.com/api/docs/models/gpt-5.6-luna, /api/docs/changelog), read through a search restricted to OpenAI's domains: since the 2026-07-30 price cut, $0.20 input, $0.02 cached input, $0.25 cache write (1.25x, the version's 5m multiplier; Codex rows put cache writes in cache_write_5m), $1.20 output per MTok; above 272K input tokens the whole request is 2x input and cache and 1.5x output. Batch, Flex, fast, ultrafast and regional tiers are not modelled.",
+          "long_context": {
+            "threshold_input_tokens": 272000,
+            "input": 0.40,
+            "output": 1.80,
+            "cache_read": 0.04
+          }
+        },
+        "gpt-5.6-sol": {
+          "input": 4,
+          "output": 20,
+          "cache_read": 0.40,
+          "checked": "2026-11-09",
+          "source": "OpenAI API standard tier as OpenAI's model and changelog pages state it (developers.openai.com/api/docs/models/gpt-5.6-sol, /api/docs/changelog), read through a search restricted to OpenAI's domains: promotional pricing from 2026-08-21, at least through 2026-11-21, of $4 input, $0.40 cached input, $5 cache write (1.25x, the version's 5m multiplier; Codex rows put cache writes in cache_write_5m), $20 output per MTok; above 272K input tokens the whole request is 2x input and cache and 1.5x output. Batch, Flex, fast, ultrafast and regional tiers are not modelled; when the promotion ends a new version is needed.",
+          "long_context": {
+            "threshold_input_tokens": 272000,
+            "input": 8,
+            "output": 30,
+            "cache_read": 0.80
+          }
+        }
+      }
     }
   ]
 }
