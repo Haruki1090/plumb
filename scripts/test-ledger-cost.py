@@ -2168,12 +2168,16 @@ def _():
         assert out.returncode == 0 and out.stdout == (folder / expected).read_text(), f"{expected} differs"
 
 
-@case("hooks.json registers one Stop hook in the plugin hook format")
+@case("hooks.json registers the Stop capture hook and the Agent PreToolUse routing hook, and no other event")
 def _():
     data = json.loads((PLUGIN / "hooks" / "hooks.json").read_text())
-    assert data == {"hooks": {"Stop": [{"hooks": [{"type": "command",
-                    "command": 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/ledger-capture.sh"'}]}]}}, data
-    assert os.access(PLUGIN / "scripts" / "ledger-capture.sh", os.X_OK)
+    assert list(data) == ["hooks"] and sorted(data["hooks"]) == ["PreToolUse", "Stop"], data
+    assert data["hooks"]["Stop"] == [{"hooks": [{"type": "command",
+                                      "command": 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/ledger-capture.sh"'}]}], data["hooks"]["Stop"]
+    assert data["hooks"]["PreToolUse"] == [{"matcher": "Agent", "hooks": [{"type": "command",
+                                            "command": 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agent-route.py"'}]}], data["hooks"]["PreToolUse"]
+    for script in ("ledger-capture.sh", "agent-route.py"):
+        assert os.access(PLUGIN / "scripts" / script, os.X_OK), f"{script} is not executable"
 
 
 @case("prices.json carries the checked list prices and every model the plan names")

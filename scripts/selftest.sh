@@ -1439,6 +1439,9 @@ elif command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-bootstrap.py" >/dev/null \
     && ok "cloud bootstrap: managed config block (create, replace, idempotent, block wins), install/judge/store checks, exit codes" \
     || ng "cloud bootstrap (run scripts/test-bootstrap.py)"
+  python3 -B "$root/scripts/test-agent-route.py" >/dev/null \
+    && ok "agent routing hook: Explore without a model gets role.explorer.model; every other call is left alone, never blocked" \
+    || ng "agent routing hook (run scripts/test-agent-route.py)"
   if [ -f "$root/scripts/test-verify.py" ]; then
     python3 -B "$root/scripts/test-verify.py" >/dev/null \
       && ok "verification: comparator outcomes and incomplete causes, every rule, legacy rows, malformed input, plan outcomes" \

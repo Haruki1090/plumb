@@ -20,7 +20,7 @@
 #                                        none. A value that is not an alias is ignored. It lives
 #                                        here so that no document has to carry a model name
 #                                        (docs/role-map.md)
-#   role.implementer.model  = <model>   the same, for the implementer's Task fallback
+#   role.implementer.model  = <model>   the model name for the implementer's Task fallback (docs/role-map.md)
 #   cost.session_budget_usd = <usd>     expected spend for one session; plumb-statusline-cost
 #                                        colours the running cost at 50 / 80 / 100 % of it
 #   cost.jpy_per_usd        = <rate>    adds a yen figure beside the dollar one

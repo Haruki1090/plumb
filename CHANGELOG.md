@@ -2,6 +2,34 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.23.0] - 2026-11-10
+
+### Added
+
+- `plumb-ledger views`: an agents table (`agents.md`, `agents.csv`), one row per role, agent type and
+  model, with threads, requests, cost, share, and the median context of a thread's first request and of
+  its largest. `plumb:retro` reads it to find subagent types that run on the main thread's model.
+- A `PreToolUse` hook on the `Agent` tool (`scripts/agent-route.py`): a call to the built-in Explore
+  subagent that names no `model` gets the alias in `role.explorer.model`. Any other call is left as it
+  was, and no permission decision is written. The environment variable `CLAUDE_CODE_SUBAGENT_MODEL`
+  reaches other subagents that name no model but not the built-in Explore (measured on Claude Code
+  2.1.322).
+- `plumb-bootstrap --explorer-model`, `--implementer-model` and `--bulk` write the role keys, and
+  `plumb-doctor` reports `role.explorer.model`, `role.implementer.model` and
+  `CLAUDE_CODE_SUBAGENT_MODEL`.
+- `docs/role-map.md`: "How a subagent's model is decided", "The design role", and the rule not to switch
+  the main model in the middle of a session.
+
+### Changed
+
+- `assets/prices.json`: a new version `2026-11-10` (same `effective_from` as `2026-11-09`, listed after
+  it, so it wins) adds `claude-fable-5-2` ($8 input, $0.20 cache read, $40 output per MTok) and corrects
+  `claude-sonnet-5-5`'s cache read from $0.20 to $0.10. **This changes the cost of rows that were
+  already priced**: Sonnet 5.5 rows from 2026-08-22 on cost less by their cache-read share, and every
+  row from that day on now carries `price_version` `2026-11-10` (a warehouse that merges on `id` replaces
+  them). Sonnet 5.5 rows before 2026-08-22 keep their version. Prices checked 2026-11-10 against the
+  Claude API pricing page.
+
 ## [0.22.2] - 2026-11-09
 
 ### Changed
