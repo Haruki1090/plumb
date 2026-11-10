@@ -41,8 +41,8 @@ plumb-ledger views    --repo <owner/name> --since "$SINCE" --until "$UNTIL" --pr
 plumb-ledger failures --repo <owner/name> --since "$SINCE" --until "$UNTIL" --json > "$OUT/failures.json"
 ```
 
-`views` writes the same period as tables (`README.md`, `tasks`, `days` and `models` as `.md` and
-`.csv`, `sessions.csv`): active time and cost per task, and what was not attributed. `--changes`
+`views` writes the same period as tables (`README.md`, `tasks`, `days`, `models` and `agents` as
+`.md` and `.csv`, `sessions.csv`): active time and cost per task, and what was not attributed. `--changes`
 lets it move a request made on the base branch, or before the branch existed, to the one landed
 pull request its cloud session produced; the README says how many it moved and how many it left.
 Read the tables rather than reprinting them: the review cites a task by its pull request number.
@@ -75,6 +75,10 @@ Look for, in this order:
 - **Cost.** The most expensive tasks, the frontier share, which roles and agent types spend most,
   and which token kind dominates (an hour-long cache write that dominates is fixed by splitting
   sessions, not by changing models).
+- **Agents.** In `agents.md`, the subagent types whose model is the same as the main thread's for
+  the period: an agent type runs on the main model when neither the call, its definition nor
+  `CLAUDE_CODE_SUBAGENT_MODEL` decides its model, and the table cannot show which it is. Pick the types that cost most, and check whether they set a model. The fix is
+  the owner's configuration (`docs/role-map.md`), so a proposal names it and the owner decides.
 - **Time.** Active hours per task beside its cost (`tasks.md`): a task that cost little but took a
   long stretch of active time, or the reverse, and the spans that are far longer than the active
   time. Active time counts a stretch of requests with no gap over 30 minutes; it is effort, not the

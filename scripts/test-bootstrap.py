@@ -120,6 +120,48 @@ def _():
         "/srv/ledger.git", "on", "on-stop", "codex exec"]
 
 
+@case("the role keys: --bulk, --explorer-model and --implementer-model are written, read back, and dropped when not given")
+def _():
+    sb = Sandbox("roles")
+    args = ("--judge", "codex exec", "--bulk", "opencode run", "--explorer-model", "sonnet", "--implementer-model", "some-model-1")
+    code, out, err = sb.run(*args)
+    assert code == 0, (code, out, err)
+    body = [l for l in sb.read().splitlines() if l and not l.startswith("#")]
+    assert body == ["role.judge = codex exec", "role.bulk = opencode run", "role.explorer.model = sonnet",
+                    "role.implementer.model = some-model-1"], body
+    assert [sb.value(k) for k in ("role.bulk", "role.explorer.model", "role.implementer.model", "role.implementer")] == [
+        "opencode run", "sonnet", "some-model-1", ""]
+    first = sb.read().encode()
+    code, out, _ = sb.run(*args)
+    assert code == 0 and sb.read().encode() == first and "unchanged" in out, "the second run changed the file"
+    code, out, _ = sb.run("--explorer-model=haiku", "--bulk=x y")
+    assert code == 0, out
+    assert [sb.value(k) for k in ("role.explorer.model", "role.bulk", "role.implementer.model", "role.judge")] == [
+        "haiku", "x y", "", ""], "keys not given this time must leave the block"
+    for alias in ("sonnet", "opus", "haiku", "fable"):
+        assert sb.run("--explorer-model", alias)[0] == 0 and sb.value("role.explorer.model") == alias
+
+
+@case("--explorer-model takes only an alias; anything else is a usage error that writes nothing")
+def _():
+    sb = Sandbox("explorer-alias")
+    for args in (["--explorer-model", "claude-sonnet-5-5"], ["--explorer-model=gpt"], ["--explorer-model", "Sonnet"],
+                 ["--explorer-model"], ["--explorer-model", ""], ["--implementer-model"], ["--bulk", ""]):
+        code, out, err = sb.run(*args)
+        assert code == 2 and err, (args, code, out, err)
+        assert not sb.config.exists(), f"{args} wrote the config"
+
+
+@case("a role.implementer line outside the block is not mistaken for role.implementer.model")
+def _():
+    sb = Sandbox("implementer-prefix")
+    sb.config.parent.mkdir(parents=True)
+    sb.config.write_text("role.implementer = herdr agent\n")
+    code, out, _ = sb.run("--implementer-model", "m1")
+    assert code == 0 and not any("outside" in l for l in lines_of(out, "--")), out
+    assert sb.value("role.implementer") == "herdr agent" and sb.value("role.implementer.model") == "m1"
+
+
 @case("a second run with the same arguments leaves the file byte-identical, with and without other lines")
 def _():
     args = ("--capture", "on", "--export", "on-stop", "--judge", "codex exec")

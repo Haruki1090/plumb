@@ -2168,12 +2168,16 @@ def _():
         assert out.returncode == 0 and out.stdout == (folder / expected).read_text(), f"{expected} differs"
 
 
-@case("hooks.json registers one Stop hook in the plugin hook format")
+@case("hooks.json registers the Stop capture hook and the Agent PreToolUse routing hook, and no other event")
 def _():
     data = json.loads((PLUGIN / "hooks" / "hooks.json").read_text())
-    assert data == {"hooks": {"Stop": [{"hooks": [{"type": "command",
-                    "command": 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/ledger-capture.sh"'}]}]}}, data
-    assert os.access(PLUGIN / "scripts" / "ledger-capture.sh", os.X_OK)
+    assert list(data) == ["hooks"] and sorted(data["hooks"]) == ["PreToolUse", "Stop"], data
+    assert data["hooks"]["Stop"] == [{"hooks": [{"type": "command",
+                                      "command": 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/ledger-capture.sh"'}]}], data["hooks"]["Stop"]
+    assert data["hooks"]["PreToolUse"] == [{"matcher": "Agent", "hooks": [{"type": "command",
+                                            "command": 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agent-route.py" || true'}]}], data["hooks"]["PreToolUse"]
+    for script in ("ledger-capture.sh", "agent-route.py"):
+        assert os.access(PLUGIN / "scripts" / script, os.X_OK), f"{script} is not executable"
 
 
 @case("prices.json carries the checked list prices and every model the plan names")
@@ -2260,6 +2264,51 @@ def _():
     sol = record(2, time_="2026-11-01T00:00:00.000Z", model="gpt-5.6-sol", runtime="codex",
                  inp=100_000, out=1_000_000, cache_read=100_000, w5=0, w1=0)
     assert sum(ledger_cost.price_request(sol, versions).values()) == Decimal("0.4") + Decimal(20) + Decimal("0.04")
+
+
+@case("version 2026-11-10 copies every model of 2026-11-09 except sonnet's cache_read, adds claude-fable-5-2, and wins the tie on effective_from")
+def _():
+    data = json.loads((PLUGIN / "assets" / "prices.json").read_text(), parse_float=Decimal)
+    versions = {v["id"]: v for v in data["versions"]}
+    old, new = versions["2026-11-09"], versions["2026-11-10"]
+    assert new["effective_from"] == old["effective_from"] and new["checked"] == "2026-11-10"
+    assert new["cache_write_multiplier"] == old["cache_write_multiplier"]
+    assert set(new["models"]) - set(old["models"]) == {"claude-fable-5-2"}
+    assert set(old["models"]) <= set(new["models"]), "a model of the previous version is missing"
+    fixed = {k: v for k, v in new["models"].items() if k in old["models"]}
+    assert fixed["claude-sonnet-5-5"]["cache_read"] == Decimal("0.10") and old["models"]["claude-sonnet-5-5"]["cache_read"] == Decimal("0.20")
+    assert "error" in fixed["claude-sonnet-5-5"]["source"] and fixed["claude-sonnet-5-5"]["checked"] == "2026-11-10"
+    for model in old["models"]:
+        left = {k: v for k, v in fixed[model].items() if k not in ("cache_read", "checked", "source")} if model == "claude-sonnet-5-5" else fixed[model]
+        right = {k: v for k, v in old["models"][model].items() if k not in ("cache_read", "checked", "source")} if model == "claude-sonnet-5-5" else old["models"][model]
+        assert left == right, f"{model} changed"
+    fable = new["models"]["claude-fable-5-2"]
+    assert (fable["input"], fable["output"], fable["cache_read"]) == (8, 40, Decimal("0.20"))
+    assert fable["checked"] == "2026-11-10" and "platform.claude.com/docs/en/about-claude/pricing" in fable["source"]
+    # the tie: with equal effective_from the version listed later in the file is in effect
+    versions = ledger_cost.load_prices()
+    assert ledger_cost.version_in_effect(versions, ledger_cost.parse_time("2026-11-01T00:00:00Z"))["id"] == "2026-11-10"
+    assert ledger_cost.version_in_effect(versions, ledger_cost.parse_time("2026-08-22T00:00:00Z"))["id"] == "2026-11-10"
+    assert ledger_cost.version_in_effect(versions, ledger_cost.parse_time("2026-08-21T23:59:59Z"))["id"] == "2026-10-30"
+
+
+@case("a claude-fable-5-2 row on 2026-11-01 is priced at $8, $40, $0.20, $10 and $16 per MTok")
+def _():
+    versions = ledger_cost.load_prices()
+    row = record(1, time_="2026-11-01T00:00:00.000Z", model="claude-fable-5-2",
+                 inp=1_000_000, out=1_000_000, cache_read=1_000_000, w5=1_000_000, w1=1_000_000)
+    cost = ledger_cost.price_request(row, versions)
+    assert cost == {"input": Decimal(8), "output": Decimal(40), "cache_read": Decimal("0.2"),
+                    "cache_write_5m": Decimal(10), "cache_write_1h": Decimal(16)}, cost
+
+
+@case("a claude-sonnet-5-5 row on 2026-11-01 prices its cache read at $0.10 per MTok; input and output stay $2 and $10")
+def _():
+    versions = ledger_cost.load_prices()
+    row = record(1, time_="2026-11-01T00:00:00.000Z", model="claude-sonnet-5-5",
+                 inp=1_000_000, out=1_000_000, cache_read=1_000_000, w5=0, w1=0)
+    cost = ledger_cost.price_request(row, versions)
+    assert (cost["input"], cost["output"], cost["cache_read"]) == (Decimal(2), Decimal(10), Decimal("0.1")), cost
 
 
 @case("every subcommand prints usage for --help and exits 0; the doctor ledger block reports capture, the store and the export mode")

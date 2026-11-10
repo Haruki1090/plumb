@@ -2,7 +2,9 @@
 # plumb-bootstrap — set plumb up inside a cloud environment's setup script, then say what is missing.
 #
 #   plumb-bootstrap [--store <git URL>] [--capture on|off] [--export manual|on-stop]
-#                   [--judge "<command>"] [--strict]
+#                   [--judge "<command>"] [--bulk "<command>"]
+#                   [--explorer-model sonnet|opus|haiku|fable] [--implementer-model <model>]
+#                   [--strict]
 #
 # A cloud setup script runs before the session, as root, and cannot read the environment's saved
 # variables or secrets. So every value comes from the command line as a literal, non-secret string
@@ -25,18 +27,25 @@ set -uo pipefail
 usage() {
   cat <<'EOF'
 usage: plumb-bootstrap [--store <git URL>] [--capture on|off] [--export manual|on-stop]
-                       [--judge "<command>"] [--strict]
+                       [--judge "<command>"] [--bulk "<command>"]
+                       [--explorer-model sonnet|opus|haiku|fable] [--implementer-model <model>]
+                       [--strict]
 
 Run it from a cloud environment's setup script, after the plugin is installed:
   claude plugin marketplace add Haruki1090/plumb
   claude plugin install plumb@plumb
   plumb-bootstrap --store <git URL> --capture on --export on-stop --judge "codex exec"
 
-Writes the given keys (ledger.store, ledger.capture, ledger.export, role.judge) into
+Writes the given keys (ledger.store, ledger.capture, ledger.export, role.judge, role.bulk,
+role.explorer.model, role.implementer.model) into
 ${PLUMB_CONFIG:-~/.claude/plumb/config} between `# >>> plumb-bootstrap` and `# <<< plumb-bootstrap`.
 Only that block is replaced; the rest of the file is kept and a second run is a no-op. Values are
 literals from the command line: nothing is read from environment variables or secrets, so do not
 put a token in --store (use the git credential for that URL).
+
+--explorer-model takes an alias (sonnet, opus, haiku or fable): a PreToolUse hook gives it to an
+Explore call that names no model (docs/role-map.md). --implementer-model is the model the
+implementer's Task fallback is given.
 
 Then checks, one line each (ok present, -- unset or cannot check, NG broken): plumb is installed,
 the judge resolves (codex: logged in), the store answers, plumb-doctor's overall line.
@@ -46,15 +55,15 @@ EOF
 
 die_usage() { printf 'plumb-bootstrap: %s\n' "$1" >&2; printf 'try: plumb-bootstrap --help\n' >&2; exit 2; }
 
-store="" capture="" export_mode="" judge=""
-have_store=0 have_capture=0 have_export=0 have_judge=0 strict=0
+store="" capture="" export_mode="" judge="" bulk="" explorer_model="" implementer_model=""
+have_store=0 have_capture=0 have_export=0 have_judge=0 have_bulk=0 have_explorer_model=0 have_implementer_model=0 strict=0
 while [ $# -gt 0 ]; do
   arg=$1
   case "$arg" in
     -h|--help) usage; exit 0 ;;
     --strict) strict=1; shift; continue ;;
-    --store=*|--capture=*|--export=*|--judge=*) name=${arg%%=*}; val=${arg#*=}; shift ;;
-    --store|--capture|--export|--judge)
+    --store=*|--capture=*|--export=*|--judge=*|--bulk=*|--explorer-model=*|--implementer-model=*) name=${arg%%=*}; val=${arg#*=}; shift ;;
+    --store|--capture|--export|--judge|--bulk|--explorer-model|--implementer-model)
       [ $# -ge 2 ] || die_usage "$arg needs a value"
       name=$arg; val=$2; shift 2 ;;
     *) die_usage "unknown argument: $arg" ;;
@@ -68,6 +77,9 @@ while [ $# -gt 0 ]; do
     --capture) case "$val" in on|off) capture=$val; have_capture=1 ;; *) die_usage "--capture takes on or off" ;; esac ;;
     --export)  case "$val" in manual|on-stop) export_mode=$val; have_export=1 ;; *) die_usage "--export takes manual or on-stop" ;; esac ;;
     --judge)   judge=$val; have_judge=1 ;;
+    --bulk)    bulk=$val; have_bulk=1 ;;
+    --explorer-model) case "$val" in sonnet|opus|haiku|fable) explorer_model=$val; have_explorer_model=1 ;; *) die_usage "--explorer-model takes sonnet, opus, haiku or fable" ;; esac ;;
+    --implementer-model) implementer_model=$val; have_implementer_model=1 ;;
   esac
 done
 
@@ -118,6 +130,9 @@ add_key() { # <key> <value>
 [ "$have_capture" -eq 1 ] && add_key ledger.capture "$capture"
 [ "$have_export" -eq 1 ]  && add_key ledger.export "$export_mode"
 [ "$have_judge" -eq 1 ]   && add_key role.judge "$judge"
+[ "$have_bulk" -eq 1 ]    && add_key role.bulk "$bulk"
+[ "$have_explorer_model" -eq 1 ]    && add_key role.explorer.model "$explorer_model"
+[ "$have_implementer_model" -eq 1 ] && add_key role.implementer.model "$implementer_model"
 
 if [ "${#keys_given[@]}" -eq 0 ]; then
   note "--" "config: no keys given, $cfgfile is left as it is"
