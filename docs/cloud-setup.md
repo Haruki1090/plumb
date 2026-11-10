@@ -69,20 +69,15 @@ run):
 
 A subagent that names no model and is not `Explore` takes its model from the environment variable
 `CLAUDE_CODE_SUBAGENT_MODEL`, and the bootstrap cannot set it (it never reads or writes environment
-variables). Set it where the container gets its environment: the `env` object of
-`~/.claude/settings.json`, written by the setup script, or the environment's own variables in its
-settings. Its value is a non-secret model name, so either place is fine:
+variables). **Set it as a real environment variable of the session**: the environment's own
+variables in its settings. Its value is a non-secret model name.
 
-```bash
-python3 - <<'PY'
-import json, pathlib
-path = pathlib.Path.home() / ".claude" / "settings.json"
-data = json.loads(path.read_text()) if path.exists() else {}
-data.setdefault("env", {})["CLAUDE_CODE_SUBAGENT_MODEL"] = "sonnet"
-path.parent.mkdir(parents=True, exist_ok=True)
-path.write_text(json.dumps(data, indent=2) + "\n")
-PY
-```
+The `env` object of `~/.claude/settings.json` does not work for this variable. Measured in a cloud
+session on Claude Code 2.1.322: other names in that object reach the session, this one does not
+(neither the shell nor the subagent's model changes, from the user settings file or from
+`--settings`), while the same value passed in the process environment does. A cloud session cannot
+add it to its own environment either (the name is reserved there), so the owner adds it in the
+environment's settings.
 
 `plumb-doctor` shows the three keys and the variable under "routing targets".
 
