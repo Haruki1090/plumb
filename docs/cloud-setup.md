@@ -53,6 +53,39 @@ What each line does:
   login cannot be done by a setup script: if `plumb-bootstrap` reports it missing, log in from the
   session (for Codex, `codex login --device-auth`).
 
+## Route the subagents
+
+`plumb-bootstrap` takes three more flags, each written into the same managed block. Add the ones you
+want to the `plumb-bootstrap` command above (leave one out and its key leaves the block on the next
+run):
+
+- **`--explorer-model <alias>`** writes `role.explorer.model`. The alias is `sonnet`, `opus`, `haiku`
+  or `fable`; anything else is a usage error (exit 2). A PreToolUse hook gives it to an `Explore`
+  call that names no model, which nothing else can do: the built-in `Explore` ignores
+  `CLAUDE_CODE_SUBAGENT_MODEL` and otherwise runs on the main session's model (`docs/role-map.md`).
+- **`--implementer-model <model>`** writes `role.implementer.model`, the model of the implementer's
+  `Task` fallback.
+- **`--bulk "<command>"`** writes `role.bulk`, the command the bulk role runs.
+
+A subagent that names no model and is not `Explore` takes its model from the environment variable
+`CLAUDE_CODE_SUBAGENT_MODEL`, and the bootstrap cannot set it (it never reads or writes environment
+variables). Set it where the container gets its environment: the `env` object of
+`~/.claude/settings.json`, written by the setup script, or the environment's own variables in its
+settings. Its value is a non-secret model name, so either place is fine:
+
+```bash
+python3 - <<'PY'
+import json, pathlib
+path = pathlib.Path.home() / ".claude" / "settings.json"
+data = json.loads(path.read_text()) if path.exists() else {}
+data.setdefault("env", {})["CLAUDE_CODE_SUBAGENT_MODEL"] = "sonnet"
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(data, indent=2) + "\n")
+PY
+```
+
+`plumb-doctor` shows the three keys and the variable under "routing targets".
+
 ## Codex and OpenCode in a cloud session
 
 The Stop hook captures Codex and OpenCode at the end of each Claude turn. A run that is still going

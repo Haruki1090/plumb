@@ -8,7 +8,8 @@ who does not have that tool.
 |---|---|---|
 | Main session | — (the Claude Code you are running in) | — |
 | Implementer role | `role.implementer` (a command, started in a pane through `pane.driver`); `role.implementer.model` (the `Task` fallback's `model`) | A `Task` that inherits the main session's model |
-| Explorer role | `role.explorer.model` (`Task`. Produces no diff; the key sets its `model`) | Inherits the main session's model |
+| Explorer role | `role.explorer.model` (an alias: `sonnet`, `opus`, `haiku` or `fable`). Produces no diff. When an `Explore` call names no `model`, the PreToolUse hook (`scripts/agent-route.py`) gives it this value | Inherits the main session's model |
+| Design role (`architect`) | — (no key). An agent named `architect` in the owner's agents, if there is one; its model is written in that definition | **The main session stands in** |
 | Judge role | `role.judge` | **The main session stands in.** Say out loud that no other family's eyes are on it, and go on |
 | Bulk role | `role.bulk` | The main session works through it in order |
 | Driving a pane | `pane.driver` | Run it in the foreground |
@@ -17,6 +18,30 @@ who does not have that tool.
 How to ask:
 
     plumb-config role.judge ""
+
+## How a subagent's model is decided
+
+A subagent runs on the first of these that is set:
+
+1. The `model` of the call that starts it.
+2. The `model` in the agent's definition.
+3. The environment variable `CLAUDE_CODE_SUBAGENT_MODEL`.
+4. The main session's model.
+
+The built-in `Explore` agent skips step 3: the variable does not change it, so a setup that sets only
+the variable still runs `Explore` on the main session's model. That is why `role.explorer.model` is
+enforced by a hook rather than by a sentence here. The hook (`scripts/agent-route.py`, a PreToolUse
+hook on the `Agent` tool) adds `model` to the input of an `Explore` call that has none and does
+nothing else: other agent types, a call that already names a model, an unset key, a value that is
+not an alias, or any error leave the call as it was. It writes no permission decision, so it never
+changes whether the call is allowed. The `Agent` tool accepts only aliases for `model`, which is why
+the key does too.
+
+To see which kind of agent ran on which model, read the agents table of `plumb-ledger views`.
+
+**Do not switch the main session's model in the middle of a session.** The prompt cache is kept per
+model, so a switch rewrites the whole context at the uncached rate. Choose the model when the
+session starts, and route the work that should run on another model through the roles above.
 
 **Unset is not a fault.** It returns empty and exits 0.
 Even with the judge role unset, **the todo line for the judge role does not disappear**
@@ -72,6 +97,19 @@ In every route:
   step 1 for the shared-write inventory).
 - A configured key chooses where the implementer runs. It does not authorize starting one: the
   playbook that calls for the implementer role does, as it did for a `Task`.
+
+## The design role
+
+The design role takes a design question the main session has already framed. It does not explore
+the codebase on its own.
+
+- **Hand it** a summary of the facts and the `path:line` each one rests on. It may read whatever it
+  needs to refute that summary, and no more: widening the search is the explorer's job.
+- **It returns** the option it recommends and the alternatives, then the premises it checked and the
+  premises it did not. The main session decides and integrates; an unchecked premise is verified
+  there before the design relies on it.
+- Where it runs: an agent named `architect` in the owner's agents when there is one (its model is set
+  in that definition, not in this repository), otherwise the main session does it, and says so.
 
 ## Observable terminal execution
 

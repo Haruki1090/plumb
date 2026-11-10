@@ -108,6 +108,28 @@ for k in $keys; do
   fi
 done
 
+# The model keys and the environment variable that route subagents (docs/role-map.md). Claude
+# Code only: Codex neither reads these keys nor has the Agent tool, so it does not see these lines.
+if [ "$runtime" = claude ]; then
+  em=$(cfg role.explorer.model)
+  case "$em" in
+    "") note "--" "role.explorer.model: unset (an Explore call without a model runs on the main session's model)" ;;
+    sonnet|opus|haiku|fable) note "ok" "role.explorer.model = $em (the PreToolUse hook gives it to an Explore call without a model)" ;;
+    *) bad "role.explorer.model = $em is not an alias (sonnet, opus, haiku or fable); the hook ignores it" ;;
+  esac
+  im=$(cfg role.implementer.model)
+  if [ -z "$im" ]; then
+    note "--" "role.implementer.model: unset (the implementer's Task inherits the main session's model)"
+  else
+    note "ok" "role.implementer.model = $im"
+  fi
+  if [ -n "${CLAUDE_CODE_SUBAGENT_MODEL:-}" ]; then
+    note "ok" "CLAUDE_CODE_SUBAGENT_MODEL = $CLAUDE_CODE_SUBAGENT_MODEL (a subagent without a model uses it; Explore is not changed by it)"
+  else
+    note "--" "CLAUDE_CODE_SUBAGENT_MODEL: unset (a subagent without a model runs on the main session's model)"
+  fi
+fi
+
 st=$(cfg stack.tool)
 if [ -z "$st" ]; then
   note "--" "stack.tool: unset (landing-a-stack falls back to plain gh pr merge)"
