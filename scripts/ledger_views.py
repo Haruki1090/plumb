@@ -47,9 +47,13 @@ STATE_LABEL = {"pull_request": "", "branch": "", "no_pull_request": "none", "amb
 AGENTS_NOTE = [
     "Sorted by cost. One row is a role (main or subagent), an agent type and a model; a thread that used two "
     "models is counted in both rows. A thread is a session (main) or one agent of a session (subagent). "
-    "Context is input + cache read + cache writes of one request; the medians are over the row's threads.",
+    "Context is input + cache read + cache writes of one request; the medians are over the row's threads. "
+    "A request with a missing part has an unknown context, not 0: it is left out of the medians (a thread "
+    "whose first request is unknown has no first, and one with any unknown request has no peak), and a median "
+    "with no thread left is `-`.",
     "",
-    "How to read it: an agent type without a `model` setting runs on the main thread's model. The table cannot "
+    "How to read it: an agent type runs on the main thread's model when neither the call, the agent's "
+    "definition nor `CLAUDE_CODE_SUBAGENT_MODEL` decides its model. The table cannot "
     "show whether a model is inherited or set. When a subagent row's Model equals the main row's Model for the "
     "same period, check whether that agent type sets a model."]
 ZERO = Decimal(0)
@@ -203,18 +207,23 @@ class AgentAcc(Acc):
         self.threads: dict[tuple, list[Any]] = {}
 
     def add_thread(self, thread: tuple, record: dict[str, Any], moment: datetime, order: int) -> None:
-        context = sum(record[key] or 0 for key in ("input", "cache_read", "cache_write_5m", "cache_write_1h"))
+        """A request whose context is not fully known (a part is None) has an unknown context, not 0:
+        the thread's first is unknown when its first request is unknown, and its peak is unknown when
+        any of its requests is."""
+        parts = [record[key] for key in ("input", "cache_read", "cache_write_5m", "cache_write_1h")]
+        context = None if any(part is None for part in parts) else sum(parts)
         seen = self.threads.get(thread)
         if seen is None:
             self.threads[thread] = [(moment, order), context, context]
             return
         if (moment, order) < seen[0]:
             seen[0], seen[1] = (moment, order), context
-        seen[2] = max(seen[2], context)
+        seen[2] = None if context is None or seen[2] is None else max(seen[2], context)
 
     def median(self, column: int) -> int | None:
-        """Median of the first (1) or peak (2) context over the threads, a half rounded up."""
-        values = sorted(row[column] for row in self.threads.values())
+        """Median of the first (1) or peak (2) context over the threads where it is known, a half
+        rounded up; None when no thread has it known."""
+        values = sorted(row[column] for row in self.threads.values() if row[column] is not None)
         if not values:
             return None
         middle = len(values) // 2
@@ -408,7 +417,8 @@ def agents_tables(data: dict[str, Any]) -> tuple[list[str], list[list[Any]], lis
         csv_rows.append([role, agent_type, model, len(acc.threads), acc.requests, acc.unknown_cost, cost_cell(acc),
                          "" if acc.unpriced else fixed_share(acc.cost, whole), first, peak])
         md_rows.append([role, agent_type, model, len(acc.threads), acc.requests, cost_text(acc),
-                        "-" if acc.unpriced else percent(acc.cost, whole), f"{first:,}", f"{peak:,}"])
+                        "-" if acc.unpriced else percent(acc.cost, whole), "-" if first is None else f"{first:,}",
+                        "-" if peak is None else f"{peak:,}"])
     csv_headers = ["role", "agent_type", "model", "threads", "requests", "unknown_cost_requests", "cost_usd", "share",
                    "median_first_context", "median_peak_context"]
     md_headers = ["Role", "Agent type", "Model", "Threads", "Requests", "Cost", "Share", "Median first context",

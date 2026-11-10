@@ -131,12 +131,31 @@ def _():
     assert_silent(*run("", SONNET))
 
 
+HOOK_COMMAND = 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agent-route.py" || true'
+
+
 @case("hooks.json points the PreToolUse matcher Agent at this script, which is executable")
 def _():
     data = json.loads((HERE.parent / "hooks" / "hooks.json").read_text())
     entry = data["hooks"]["PreToolUse"][0]
-    assert entry["matcher"] == "Agent" and "scripts/agent-route.py" in entry["hooks"][0]["command"], entry
+    assert entry["matcher"] == "Agent" and entry["hooks"] == [{"type": "command", "command": HOOK_COMMAND}], entry
     assert os.access(HOOK, os.X_OK)
+
+
+@case("the hooks.json command exits 0 and prints nothing when the script does not exist (a PreToolUse exit 2 would stop the call)")
+def _():
+    data = json.loads((HERE.parent / "hooks" / "hooks.json").read_text())
+    command = data["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    missing = ROOT / "no-such-plugin-root"
+    assert not missing.exists()
+    event = json.dumps({"tool_name": "Agent", "tool_input": EXPLORE})
+    out = subprocess.run(["bash", "-c", command.replace("${CLAUDE_PLUGIN_ROOT}", str(missing))], input=event,
+                         capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0 and out.stdout == "", (out.returncode, out.stdout, out.stderr)
+    # Control: the same command with the real plugin root does route the call.
+    real = subprocess.run(["bash", "-c", command.replace("${CLAUDE_PLUGIN_ROOT}", str(HERE.parent))], input=event,
+                          capture_output=True, text=True, timeout=30, env={**os.environ, "PLUMB_CONFIG": str(SONNET)})
+    assert json.loads(real.stdout)["hookSpecificOutput"]["updatedInput"]["model"] == "sonnet", real
 
 
 subprocess.run(["rm", "-rf", str(ROOT)])

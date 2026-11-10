@@ -751,7 +751,7 @@ def _():
     models = table(files["models.csv"])
     priced = sum(Decimal(r["cost_usd"]) for r in models if r["cost_usd"])
     assert sum(Decimal(r["cost_usd"]) for r in got.values() if r["cost_usd"]) == priced
-    assert sum(Decimal(r["share"]) for r in got.values() if r["share"]) - 1 < Decimal("0.0003")
+    assert abs(sum(Decimal(r["share"]) for r in got.values() if r["share"]) - 1) < Decimal("0.0003")
     costs = [Decimal(r["cost_usd"]) for r in table(files["agents.csv"]) if r["cost_usd"]]
     assert costs == sorted(costs, reverse=True) and table(files["agents.csv"])[0]["model"] == OPUS, costs
     md = files["agents.md"]
@@ -773,6 +773,45 @@ def _():
     for number, size in enumerate((1, 2)):
         other.add_thread(("claude", "s", str(number)), agent_record(number, 0, inp=size), BASE, number)
     assert other.median(1) == 2
+
+
+@case("agents: a request with a missing context part has an unknown context; it is left out of the medians, not counted as 0")
+def _():
+    # Direct: first unknown, peak unknown once any request is unknown, the median over the known threads only.
+    acc = ledger_views.AgentAcc()
+    gap = agent_record(1, 0, inp=100)
+    gap["cache_read"] = None
+    acc.add_thread(("claude", "s", "a"), gap, BASE, 1)                                   # first unknown, peak unknown
+    acc.add_thread(("claude", "s", "b"), agent_record(2, 0, inp=300), BASE, 2)            # first 300
+    later = agent_record(3, 1, inp=900)
+    later["cache_write_1h"] = None
+    acc.add_thread(("claude", "s", "b"), later, BASE + timedelta(minutes=1), 3)           # peak becomes unknown
+    acc.add_thread(("claude", "s", "c"), agent_record(4, 0, inp=500), BASE, 4)
+    acc.add_thread(("claude", "s", "c"), agent_record(5, 1, inp=700), BASE + timedelta(minutes=1), 5)   # first 500, peak 700
+    assert (acc.median(1), acc.median(2)) == (400, 700), (acc.median(1), acc.median(2))   # first: 300, 500; peak: c only
+    none = ledger_views.AgentAcc()
+    none.add_thread(("claude", "s", "a"), gap, BASE, 1)
+    assert none.median(1) is None and none.median(2) is None
+    # Through the command: a row whose every thread has a gap is empty in the CSV and `-` in the Markdown;
+    # a row with one thread that has a gap takes its medians from the others.
+    sb = Sandbox("agents-gaps")
+    rows = [agent_record(1, 0, agent_type="holey", agent_id="a1", inp=100),
+            agent_record(2, 1, agent_type="holey", agent_id="a2", inp=200),
+            agent_record(3, 0, agent_type="mixed", agent_id="b1", inp=100),
+            agent_record(4, 0, agent_type="mixed", agent_id="b2", inp=800),
+            agent_record(5, 1, agent_type="mixed", agent_id="b2", inp=900)]
+    for row in rows[:2]:
+        row["cache_read"] = None
+    rows[2]["cache_write_5m"] = None
+    put_all(sb, rows)
+    files = sb.views()
+    got = {r["agent_type"]: r for r in table(files["agents.csv"])}
+    holey, mixed = got["holey"], got["mixed"]
+    assert (holey["threads"], holey["median_first_context"], holey["median_peak_context"]) == ("2", "", ""), holey
+    assert (mixed["threads"], mixed["median_first_context"], mixed["median_peak_context"]) == ("2", "800", "900"), mixed
+    assert "| subagent | holey | claude-haiku-5-5 | 2 | 2 |" in files["agents.md"] and "| - | - |" in files["agents.md"], files["agents.md"]
+    assert "| 800 | 900 |" in files["agents.md"], files["agents.md"]
+    assert "unknown context, not 0" in files["agents.md"]
 
 
 @case("the same records give the same bytes, whatever the hash seed and the order the files are read in")

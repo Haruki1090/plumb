@@ -76,8 +76,8 @@ Look for, in this order:
   and which token kind dominates (an hour-long cache write that dominates is fixed by splitting
   sessions, not by changing models).
 - **Agents.** In `agents.md`, the subagent types whose model is the same as the main thread's for
-  the period: an agent type with no `model` setting runs on the main model, and the table cannot
-  show which it is. Pick the types that cost most, and check whether they set a model. The fix is
+  the period: an agent type runs on the main model when neither the call, its definition nor
+  `CLAUDE_CODE_SUBAGENT_MODEL` decides its model, and the table cannot show which it is. Pick the types that cost most, and check whether they set a model. The fix is
   the owner's configuration (`docs/role-map.md`), so a proposal names it and the owner decides.
 - **Time.** Active hours per task beside its cost (`tasks.md`): a task that cost little but took a
   long stretch of active time, or the reverse, and the spans that are far longer than the active

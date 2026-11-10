@@ -2175,7 +2175,7 @@ def _():
     assert data["hooks"]["Stop"] == [{"hooks": [{"type": "command",
                                       "command": 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/ledger-capture.sh"'}]}], data["hooks"]["Stop"]
     assert data["hooks"]["PreToolUse"] == [{"matcher": "Agent", "hooks": [{"type": "command",
-                                            "command": 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agent-route.py"'}]}], data["hooks"]["PreToolUse"]
+                                            "command": 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agent-route.py" || true'}]}], data["hooks"]["PreToolUse"]
     for script in ("ledger-capture.sh", "agent-route.py"):
         assert os.access(PLUGIN / "scripts" / script, os.X_OK), f"{script} is not executable"
 
