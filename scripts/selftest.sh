@@ -18,6 +18,12 @@ echo "plumb selftest: $root"
 cfg=$(mktemp)
 sandbox_root=$(mktemp -d)
 trap 'rm -f "$cfg"; rm -rf "$sandbox_root"' EXIT
+# Run from the sandbox, outside any git repository. doctor and the other scripts read the contract
+# (.plumb/project.toml) of the repository they are called from, and the cases below narrow PATH on
+# purpose: a contract whose verify.up/down names `node` then fails with "node does not resolve".
+# A case that needs a repository or another directory makes one and does a cd of its own.
+root=$(cd "$root" && pwd)
+cd "$sandbox_root"
 printf 'role.judge = codex\nrole.bulk   =  cursor-agent  \nrole.explorer.model = tier-x\nrole.implementer = worker-cli --tier y\nrole.implementer.model = tier-y\n' > "$cfg"
 eq "plumb-config resolves role.explorer.model" "$(PLUMB_CONFIG=$cfg "$root/bin/plumb-config" role.explorer.model)" "tier-x"
 eq "plumb-config resolves role.implementer" "$(PLUMB_CONFIG=$cfg "$root/bin/plumb-config" role.implementer)" "worker-cli --tier y"
