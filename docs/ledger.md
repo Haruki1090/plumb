@@ -237,9 +237,13 @@ plumb-ledger watch [--interval <seconds>]      # default 300
   sweep.
 - `watch` sweeps every interval for as long as it lives. One `watch` holds `watch.lock` in the
   ledger directory; a second one exits 0 at once, so a hook that fires again (resume, clear,
-  compaction) starts nothing new. Start it in the background from a session-start hook, never from
-  the environment's setup script: the setup script runs before the session, so the cloud session id
-  that `remote_session` needs is not yet in its environment (`docs/cloud-setup.md` has the lines).
+  compaction) starts nothing new. The holder writes its pid and plumb version into the lock, and a
+  newer plumb that finds an older version there stops it with SIGTERM and takes the lock, so an
+  upgrade does not leave the old `watch` recording with its old price table. A `watch` of 0.23.1 or
+  earlier writes nothing, so it is never replaced: stop it once by hand. Start it in the background
+  from a session-start hook, never from the environment's setup script: the setup script runs before
+  the session, so the cloud session id that `remote_session` needs is not yet in its environment
+  (`docs/cloud-setup.md` has the lines).
 
 **A machine with no Claude session running.** plumb does not install a scheduled job. On a laptop,
 run the sweep and the export every 15 minutes, for example with a macOS LaunchAgent

@@ -2424,6 +2424,61 @@ def _():
     assert code == 2 and "at least 1" in err, (code, err)
 
 
+def start_watch(sb: Sandbox, *args: str) -> subprocess.Popen:
+    """A long-running watch in the sandbox, started as `ledger_cmd` starts one."""
+    return subprocess.Popen([str(LEDGER), "watch", *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, cwd=sb.cwd, env=sb.env)
+
+
+def wait_for_lock_pid(sb: Sandbox, proc: subprocess.Popen) -> dict:
+    lock = sb.ledger / "watch.lock"
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        assert proc.poll() is None, f"the first watch ended: {proc.communicate()[1]}"
+        try:
+            held = json.loads(lock.read_text())
+        except (OSError, ValueError):
+            held = None
+        if held:
+            return held
+        time.sleep(0.1)
+    raise AssertionError("the first watch never wrote its pid into watch.lock")
+
+
+@case("watch: a newer plumb replaces an older watch that holds the lock, and writes its own pid and version")
+def _():
+    sb = Sandbox("watch-takeover")
+    old = start_watch(sb, "--as-version", "0.0.1", "--interval", "60")
+    try:
+        held = wait_for_lock_pid(sb, old)
+        assert held == {"pid": old.pid, "version": "0.0.1"}, held
+        code, out, err = sb.ledger_cmd("watch", "--interval", "1", "--iterations", "1")
+        assert code == 0 and "replaced 0.0.1" in err and f"pid {old.pid}" in err, (code, err)
+        assert old.wait(timeout=30) is not None, "the old watch is still running"
+    finally:
+        if old.poll() is None:
+            old.kill()
+        old.communicate()
+    written = json.loads((sb.ledger / "watch.lock").read_text())
+    assert written["pid"] != old.pid and written["version"] == ledger_cost.plumb_version(), written
+
+
+@case("watch: a watch of the same version is left running, and the second one exits 0")
+def _():
+    sb = Sandbox("watch-same-version")
+    version = ledger_cost.plumb_version()
+    assert version, "plugin.json has no version"
+    first = start_watch(sb, "--as-version", version, "--interval", "60")
+    try:
+        wait_for_lock_pid(sb, first)
+        code, out, err = sb.ledger_cmd("watch", "--as-version", version, "--interval", "60")
+        assert code == 0 and "already running" in err and "replaced" not in err, (code, err)
+        assert first.poll() is None, "the first watch was stopped"
+    finally:
+        first.terminate()
+        first.communicate(timeout=30)
+
+
 shutil.rmtree(ROOT, ignore_errors=True)
 print()
 if FAILED:
