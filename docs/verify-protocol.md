@@ -18,7 +18,7 @@ scenarios that were not compared.
 
 ## Observation row
 
-JSON Lines, one object per scenario, role, side and run. The first consumer (SAKUJI) already writes
+JSON Lines, one object per scenario, role, side and run. The first consumer already writes
 this shape as `verify-metrics/1`.
 
 | Field | Meaning |

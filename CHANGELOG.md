@@ -218,7 +218,7 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
   1, 3, 0; 2 for unusable input). It needs the run's manifest, so anything selected but not
   measured, an unmapped path or a scenario not run makes the result `incomplete`; a scenario that
   fails on either side is `incomplete`, never a pass and never a guessed regression. Ported from
-  SAKUJI's `compare.mjs`, whose recorded runs it reproduces.
+  the first consumer's `compare.mjs`, whose recorded runs it reproduces.
 - `plumb-verify plan`: the preflight (`runnable`, `invalid`, `unavailable`, `absent`, `partial`,
   `unresolved`, `untrusted_head`, `untrusted_base`). The base commit's contract is the trusted one,
   and its paths are resolved in the base commit's tree; the base is chosen without reading the head,

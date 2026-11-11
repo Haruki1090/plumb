@@ -7,10 +7,10 @@ One `ok` / `NG` line per case; exit 1 when any case is NG. Everything runs offli
 tempfile.mkdtemp(): rows, thresholds and manifests are generated here, and `plan` runs in throwaway
 git repositories. No Node is needed.
 
-Parity. The comparator is a port of SAKUJI's compare.mjs. The parity cases pin the semantics that the
-port did not change to this revision of SAKUJI feat/feature-verify:
+Parity. The comparator is a port of the first consumer's compare.mjs. The parity cases pin the semantics
+that the port did not change to this revision of the consumer's feat/feature-verify:
 
-    SAKUJI_REVISION = 675139921c809c7f142f758ba4f455be8d86b48e
+    CONSUMER_REVISION = 675139921c809c7f142f758ba4f455be8d86b48e
     (scripts/feature-map/verify/compare.mjs, metrics.mjs, thresholds.json)
 
 The expected regressions in the parity case were derived by hand from compare.mjs at that revision.
@@ -34,7 +34,7 @@ sys.path.insert(0, str(HERE))
 import verify_compare  # noqa: E402
 
 VERIFY = PLUGIN / "bin" / "plumb-verify"
-SAKUJI_REVISION = "675139921c809c7f142f758ba4f455be8d86b48e"
+CONSUMER_REVISION = "675139921c809c7f142f758ba4f455be8d86b48e"
 EXPECT_SCHEMA = "verify-expect/1"
 COMPARE_SCHEMA = "verify-compare/1"
 ROOT = Path(tempfile.mkdtemp(prefix="plumb-verify-test-"))
@@ -78,7 +78,7 @@ def as_json(value) -> str:
     return value if isinstance(value, str) else json.dumps(value)
 
 
-# The thresholds file of the first consumer (SAKUJI thresholds.json at SAKUJI_REVISION), with the
+# The thresholds file of the first consumer (the consumer's thresholds.json at CONSUMER_REVISION), with the
 # prose fields left out.
 THRESHOLDS = {
     "version": "provisional-1",
@@ -774,9 +774,9 @@ def _():
 
 # ---------------------------------------------------------------- parity with compare.mjs
 
-# Two rows in the shape of SAKUJI's selftest run (docs/agents/feature-map/runs/2026-10-29-71858bad7-selftest/
-# metrics.jsonl at SAKUJI_REVISION), trimmed of series and screenshots. They are legacy rows: `ok`, no `status`.
-SAKUJI_BASE = {
+# Two rows in the shape of the consumer's selftest run (its metrics.jsonl at CONSUMER_REVISION), trimmed of
+# series and screenshots. They are legacy rows: `ok`, no `status`.
+CONSUMER_BASE = {
     "schema": "verify-metrics/1", "feature": "project.list", "scenario": "S1", "role": "COMPANY_ADMIN", "side": "base",
     "ok": True, "error": None, "repeat": 3, "console_errors": 0, "console_warnings": 0, "pageerrors": 0,
     "pageerrors_known": {}, "pageerrors_unknown": 0, "http_4xx": [], "http_5xx": [], "failed_requests": [],
@@ -787,25 +787,25 @@ SAKUJI_BASE = {
     "growth_per_iter": {"heap_mb": 0.38, "dom_nodes": 0.5, "listeners": 0, "workers": 0},
     "workers_created": 0, "workers_closed": 0, "dialogs": [], "server_role": "COMPANY_ADMIN", "restore_check": None,
 }
-SAKUJI_PR = {**SAKUJI_BASE, "side": "pr", "longtasks": 8, "longtask_ms": 1245, "longtask_ms_per_iter": 415,
+CONSUMER_PR = {**CONSUMER_BASE, "side": "pr", "longtasks": 8, "longtask_ms": 1245, "longtask_ms_per_iter": 415,
              "growth_per_iter": {"heap_mb": 0.36, "dom_nodes": 0.5, "listeners": 0, "workers": 0}}
 PKEY = "project.list/S1/COMPANY_ADMIN"
 
 
-@case("parity: SAKUJI's own selftest rows give no_diff, as compare.mjs did")
+@case("parity: the consumer's own selftest rows give no_diff, as compare.mjs did")
 def _():
-    res = compare([SAKUJI_BASE], [SAKUJI_PR], manifest={"schema": EXPECT_SCHEMA, "expected": [PKEY]})
+    res = compare([CONSUMER_BASE], [CONSUMER_PR], manifest={"schema": EXPECT_SCHEMA, "expected": [PKEY]})
     want_clean(res)
     assert res.out["compared"] == [PKEY]
 
 
 @case("parity: the regressions compare.mjs reports for these rows, in threshold order, with its deltas")
 def _():
-    pr = {**SAKUJI_PR, "console_errors": 2, "pageerrors": 5, "pageerrors_unknown": 1,
+    pr = {**CONSUMER_PR, "console_errors": 2, "pageerrors": 5, "pageerrors_unknown": 1,
           "pageerrors_known": {"F-015": 36}, "http_5xx": ["500 GET /api/x"],
           "requests_per_iter": 12, "longtask_ms_per_iter": 900,
           "growth_per_iter": {"heap_mb": 1.0, "dom_nodes": 0.5, "listeners": 8, "workers": 0}}
-    base = {**SAKUJI_BASE, "pageerrors_known": {"F-015": 20}, "pageerrors": 4}
+    base = {**CONSUMER_BASE, "pageerrors_known": {"F-015": 20}, "pageerrors": 4}
     res = compare([base], [pr], manifest={"schema": EXPECT_SCHEMA, "expected": [PKEY]})
     want_result(res, "regressed", 1)
     got = [(r["metric"], r["base"], r["pr"], r["delta"]) for r in res.out["regressions"]]
@@ -823,32 +823,32 @@ def _():
 
 @case("parity: the limits compare.mjs used for these rows hold (nothing regresses at them)")
 def _():
-    pr = {**SAKUJI_PR, "pageerrors_known": {"F-015": 3}, "requests_per_iter": 10.33, "longtask_ms_per_iter": 783,
+    pr = {**CONSUMER_PR, "pageerrors_known": {"F-015": 3}, "requests_per_iter": 10.33, "longtask_ms_per_iter": 783,
           "growth_per_iter": {"heap_mb": 0.88, "dom_nodes": 50.5, "listeners": 5, "workers": 0.2}}
-    base = {**SAKUJI_BASE, "pageerrors_known": {"F-015": 0}}
+    base = {**CONSUMER_BASE, "pageerrors_known": {"F-015": 0}}
     want_clean(compare([base], [pr], manifest={"schema": EXPECT_SCHEMA, "expected": [PKEY]}))
 
 
 @case("parity: legacy harness: errors were environment problems in compare.mjs and stay so")
 def _():
-    pr = {**SAKUJI_PR, "ok": False, "error": "harness: role mismatch"}
-    res = compare([SAKUJI_BASE], [pr], manifest={"schema": EXPECT_SCHEMA, "expected": [PKEY]})
+    pr = {**CONSUMER_PR, "ok": False, "error": "harness: role mismatch"}
+    res = compare([CONSUMER_BASE], [pr], manifest={"schema": EXPECT_SCHEMA, "expected": [PKEY]})
     want_incomplete(res, "harness_error")
 
 
 @case("changed from compare.mjs: a candidate-only scenario failure was a regression there and is incomplete here")
 def _():
-    pr = {**SAKUJI_PR, "ok": False, "error": "timeout"}
-    res = compare([SAKUJI_BASE], [pr], manifest={"schema": EXPECT_SCHEMA, "expected": [PKEY]})
+    pr = {**CONSUMER_PR, "ok": False, "error": "timeout"}
+    res = compare([CONSUMER_BASE], [pr], manifest={"schema": EXPECT_SCHEMA, "expected": [PKEY]})
     want_incomplete(res, "pr_failed")
     assert "scenario_error" not in res.stdout
 
 
 @case("parity: a failure on the base side is incomplete (base_failed), both sides both_failed")
 def _():
-    base = {**SAKUJI_BASE, "ok": False, "error": "boom"}
-    want_incomplete(compare([base], [SAKUJI_PR], manifest={"schema": EXPECT_SCHEMA, "expected": [PKEY]}), "base_failed")
-    pr = {**SAKUJI_PR, "ok": False, "error": "boom"}
+    base = {**CONSUMER_BASE, "ok": False, "error": "boom"}
+    want_incomplete(compare([base], [CONSUMER_PR], manifest={"schema": EXPECT_SCHEMA, "expected": [PKEY]}), "base_failed")
+    pr = {**CONSUMER_PR, "ok": False, "error": "boom"}
     want_incomplete(compare([base], [pr], manifest={"schema": EXPECT_SCHEMA, "expected": [PKEY]}), "both_failed")
 
 
