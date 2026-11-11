@@ -2,6 +2,23 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.23.2] - 2026-11-11
+
+### Fixed
+
+- `plumb-ledger watch` kept running on the plumb version that started it. After an upgrade the old
+  process still held `watch.lock`, so the new version, started by the session-start hook, exited with
+  "already running" and the old one went on recording with its old price table (seen on a laptop: 0.22.1
+  still running three days after 0.23.1 was installed). The watch now writes its pid and plumb version
+  into `watch.lock`. A newer plumb that finds an older version there sends it SIGTERM, takes the lock
+  within 10 seconds and prints `watch: replaced <old> (pid <pid>) with <new>`. The same or a newer
+  version, or a lock with nothing in it, is left alone as before.
+- `plumb-doctor` run inside a repository that has a project contract (`.plumb/project.toml`) reported
+  "selftest is failing". The selftest cases that narrow `PATH` also read the contract of the directory
+  they were started from, so a contract whose `verify.up` or `verify.down` names `node` failed with
+  "node does not resolve". `scripts/selftest.sh` now runs from inside its own sandbox, outside any
+  repository.
+
 ## [0.23.1] - 2026-11-11
 
 ### Fixed

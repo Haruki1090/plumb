@@ -2374,7 +2374,42 @@ def watch_parser() -> argparse.ArgumentParser:
     parser.add_argument("--interval", type=int, default=WATCH_DEFAULT_SECONDS, metavar="SECONDS",
                         help=f"seconds between sweeps (default {WATCH_DEFAULT_SECONDS})")
     parser.add_argument("--iterations", type=int, default=0, help=argparse.SUPPRESS)   # tests: stop after N sweeps
+    parser.add_argument("--as-version", metavar="VERSION", help=argparse.SUPPRESS)   # tests: act as this plumb version
     return parser
+
+
+def plumb_version() -> str | None:
+    """This plumb's version from .claude-plugin/plugin.json; None when it cannot be read."""
+    manifest = Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.json"
+    try:
+        version = json.loads(manifest.read_text()).get("version")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return version if isinstance(version, str) else None
+
+
+def version_tuple(version: Any) -> tuple[int, ...] | None:
+    try:
+        return tuple(int(part) for part in version.split("."))
+    except (AttributeError, ValueError):
+        return None
+
+
+def older_watch(lock: Path, mine: str | None) -> tuple[int, str] | None:
+    """(pid, version) of the watch holding `lock` when it wrote its version and that version is older
+    than `mine`; None otherwise (an empty lock from 0.23.1 or earlier, the same or a newer version, or
+    a version that cannot be compared)."""
+    try:
+        held = json.loads(lock.read_text())
+        pid, theirs = held["pid"], held["version"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return None
+    ours_t, theirs_t = version_tuple(mine), version_tuple(theirs)
+    if ours_t is None or theirs_t is None or not theirs_t < ours_t:
+        return None
+    return pid, theirs
 
 
 def cmd_watch(argv: list[str]) -> int:
@@ -2384,13 +2419,46 @@ def cmd_watch(argv: list[str]) -> int:
         raise LedgerError("--interval must be at least 1 second")
     cwd = os.getcwd()
     directory = ledger_dir(cwd, True)
-    handle = open(directory / "watch.lock", "a")
+    import signal
+    lock = directory / "watch.lock"
+    mine = args.as_version or plumb_version()
+    handle = open(lock, "a")
     try:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
-        handle.close()
-        print("watch: already running for this ledger directory", file=sys.stderr)
-        return 0
+        # A watch of an older plumb keeps the lock after an upgrade, and the new version would exit here
+        # for good. It wrote its pid and version into the lock: replace it. An empty lock (0.23.1 and
+        # earlier write nothing), the same or a newer version, or a version that cannot be compared stays
+        # "already running".
+        older = older_watch(lock, mine)
+        took = False
+        if older is not None:
+            pid, theirs = older
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass   # it ended since the lock was read; the lock below is free or about to be
+            except PermissionError:
+                print(f"watch: cannot stop {theirs} (pid {pid}): not permitted", file=sys.stderr)
+            else:
+                for _ in range(50):
+                    time.sleep(0.2)
+                    try:
+                        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except OSError:
+                        continue
+                    took = True
+                    break
+                if took:
+                    print(f"watch: replaced {theirs} (pid {pid}) with {mine}", file=sys.stderr)
+        if not took:
+            handle.close()
+            print("watch: already running for this ledger directory", file=sys.stderr)
+            return 0
+    handle.seek(0)
+    handle.truncate()
+    handle.write(json.dumps({"pid": os.getpid(), "version": mine}) + "\n")
+    handle.flush()
     try:
         done = 0
         while not args.iterations or done < args.iterations:
