@@ -5,7 +5,7 @@
                          [--shot-diffs <rows>] [--out <file>]
     plumb-verify plan [--base <sha>] [--head <sha>] [--allow-untrusted-head] [--json]
 
-`compare` is a port of SAKUJI's compare.mjs (scripts/feature-map/verify/compare.mjs, branch
+`compare` is a port of the first consumer's compare.mjs (scripts/feature-map/verify/compare.mjs, branch
 feat/feature-verify) with the changes docs/verify-protocol.md lists: a `status` on every row, a
 manifest of what the run committed to, a candidate-only scenario failure that is `incomplete` and not a
 regression, and the output schema `verify-compare/1`. It decides from numbers and thresholds only.

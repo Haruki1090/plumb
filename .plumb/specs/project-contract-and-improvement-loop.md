@@ -1,6 +1,6 @@
 # Project contract, verification, work ledger and the improvement loop
 
-Source: the SAKUJI-Platform agent-native work of 2026-10-28/29 (design
+Source: the first consumer's agent-native work of 2026-10-28/29 (design
 `docs/superpowers/specs/2026-10-24-agent-friendly-automerge-design.md` on that repository's branch
 `chore/agent-friendly-automerge-design`). That work built a Feature Map, a verifier, a work ledger,
 per-task cost records and a weekly improvement loop inside one product repository. About half of it
@@ -8,8 +8,8 @@ is not about that product. This spec moves the generic half into plumb and defin
 hands plumb the facts plumb cannot know.
 
 Owner decisions of 2026-10-30: the three-layer split below is accepted; plumb is the source of truth
-for the generic half; the SAKUJI pull requests that carried generic tooling (#1644, #1645 and the
-unopened cost and loop branches) are not merged there.
+for the generic half; the consumer's pull requests that carried generic tooling, and its
+unopened cost and loop branches, are not merged there.
 
 Revision 3 (2026-10-30) answers the second judge pass: the CI must fail on an invalid or unreadable contract (`--enforce`), the pull-request number is required for self-reference, capture is opt-in and budgeted, export failures are defined, request-to-task assignment is unique, attribution uses the transcript's per-request branch where it is valid, and the 250-commit limit is reconciled.
 
@@ -174,7 +174,7 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
   lookup, start and scenarios; the Codex adapter gets the matching native agent, and the
   check-harness agent-count invariant is updated deliberately.
 - The scenarios, start command, fixtures, thresholds and traps stay in the project. The browser
-  measuring scripts start in the first consumer (SAKUJI) and move into plumb only when a second
+  measuring scripts start in the first consumer and move into plumb only when a second
   repository needs them.
 
 ### G. Cloud bootstrap
@@ -187,7 +187,7 @@ enforce it. A product rule is not promoted into plumb because plumb could check 
 
 ## What is merged
 
-- The SAKUJI cost and ledger prototypes (`usage.mjs`, `week.mjs`, `prices.json`, `collect.mjs`,
+- The first consumer's cost and ledger prototypes (`usage.mjs`, `week.mjs`, `prices.json`, `collect.mjs`,
   `summarize.mjs`) are rewritten in Python as `plumb-ledger` on the transcript reader of
   `scripts/session-audit.py`. Their tests become selftest fixtures.
 - The claude.ai-synced `graph-engineering` skill duplicates `plumb:graph`; `plumb:graph` stays and the
@@ -227,7 +227,7 @@ reader meets first.
 
 | # | Decision | Why | Rejected |
 |---|---|---|---|
-| 1 | Cost records are captured per request at turn end with their attribution, and pushed to an owner-named private repository, one ref per session | Exact identity; no shared push target; product repository untouched; contributors who do not use plumb are unaffected; attribution is a fact recorded once | An orphan branch in the product repository (shared push target, rulesets and product hooks apply, clone growth for everyone, metadata exposure in a public repository); aggregated rows in the PR body (identity lost; the SAKUJI prototype needed five rounds of reconciliation and each fix exposed the next double count); `.plumb/run/` only (gone with the cloud container) |
+| 1 | Cost records are captured per request at turn end with their attribution, and pushed to an owner-named private repository, one ref per session | Exact identity; no shared push target; product repository untouched; contributors who do not use plumb are unaffected; attribution is a fact recorded once | An orphan branch in the product repository (shared push target, rulesets and product hooks apply, clone growth for everyone, metadata exposure in a public repository); aggregated rows in the PR body (identity lost; the consumer's prototype needed five rounds of reconciliation and each fix exposed the next double count); `.plumb/run/` only (gone with the cloud container) |
 | 2 | Agent frontmatter pins no model (rule 12); the explorer tier is `role.explorer.model`; a personal model-pinned override of the built-in `Explore` is the owner's file, not a plumb asset | One place for model placement | Shipping a pinned `Explore` override |
 | 3 | The contract is one TOML file at the worktree's top level, resolved only by `plumb-path project`, read only by `plumb-project` | One resolver, one parser, one schema version | Following `PLUMB_ROOT` (the contract would stop being the repository's); YAML (no parser shipped); several files |
 | 4 | Comparator, observation protocol and run schema are plumb's; browser scripts start in the first consumer | The first consumer defines the shape; moving it earlier freezes one product's assumptions | Moving the browser harness now |
@@ -266,7 +266,7 @@ reader meets first.
   measurement — and both skills stop with a visible reason when a dependency is missing.
 - **F:** on fixtures the comparator returns `regressed` for an injected metric regression,
   `incomplete` for each incomplete cause, `no_diff` otherwise, and never a pass; one live run against
-  SAKUJI's contract detects a deliberately introduced regression through the whole path, and one
+  the first consumer's contract detects a deliberately introduced regression through the whole path, and one
   live run with a failed start reports `incomplete`.
 - **G:** a fresh cloud session whose setup script holds only the documented lines has plumb loaded,
   `plumb-doctor` reports the routed judge, and the session's records reach the store at the end of a
@@ -284,7 +284,7 @@ Each lap is one pull request that leaves the harness working.
 1. A + B — contract and rework link.
 2. C + D — ledger and cost per task (needs A for classification and authors).
 3. E — the loop (needs C and D; review and CI already supply failures, so it does not wait for F).
-4. F — verification (needs A; SAKUJI is the first consumer).
+4. F — verification (needs A; the first consumer is the reference).
 5. G — cloud bootstrap.
 
 ## Human gates and boundaries
@@ -295,11 +295,11 @@ Each lap is one pull request that leaves the harness working.
 - No credential, transcript body or tool output leaves the machine.
 - Prices are re-checked against the provider's published list on the day a version is added.
 
-## Inputs carried over from SAKUJI (closed here, not there)
+## Inputs carried over from the first consumer (closed here, not there)
 
 - Cost reconciliation double counts found by review — closed by decision 1, not by more heuristics.
 - Failures created in the period but updated after it — criterion E.
 - The main session writing in another worktree with `git -C` is attributed to the main checkout
-  (SAKUJI U12). Capture does not fix this: such a request really runs in the main checkout's
+  (reported by the first consumer). Capture does not fix this: such a request really runs in the main checkout's
   directory. The playbooks route writes for another task through a worktree subagent, or `cd` into
   the worktree first, so the request's own directory is the task's.
