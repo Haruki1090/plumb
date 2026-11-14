@@ -86,7 +86,8 @@ the whole machine run one at a time.
 started through the driver under `lane-<item>`, and the brief written as a file from
 [references/lane-brief.md](references/lane-brief.md). Record each lane's starting commit.
 
-**5 Loop.** Wait on the driver's agent state, never a sleep loop.
+**5 Loop.** Wait on the driver's agent state, never a sleep loop. Every ledger line for a lane
+also goes on that lane's pane label when the driver has one (`docs/role-map.md`, labels and alerts).
 - *blocked*: read the prompt first. Relay an approval only inside the brief's range and
   reversible; anything else goes up
 - *done*: read the report file, diff from the starting commit
@@ -107,6 +108,7 @@ Then the ledger path. **A report without the ledger path is not complete.**
 ## What goes up
 
 Only: an irreversible or outward-facing action, a product call no check settles, an approval
-outside a lane's range, a real dead end. Decide the rest and log it
+outside a lane's range, a real dead end. Raise the driver's alert with it when the driver has
+one, never for a lane that only finished. Decide the rest and log it
 (**principle-never-block-on-the-human**). Known failure shapes:
 [references/failure-modes.md](references/failure-modes.md).

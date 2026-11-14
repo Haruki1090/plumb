@@ -123,3 +123,16 @@ If the driver requires a managed-session marker, check it before controlling pan
 session, use foreground execution and record the visibility limitation. Do not attach to whichever
 unrelated session happens to be focused. Routing configuration selects a driver; it does not authorize
 starting extra agents, publication, or other external actions.
+
+### Labels and alerts, when the driver has them
+
+A driver's installed instructions may offer two more things. Use each one only where the
+instructions describe it; a driver without them changes nothing in any playbook.
+
+- **A label on a pane**: short text shown beside the pane's agent that changes neither its state nor
+  any wait. When a playbook writes a ledger row for work running in a pane, put the same state on
+  that pane's label each time the row changes, so the owner can read where it stands without opening
+  the ledger. A label is display, never evidence: the ledger and the report file are the record.
+- **An alert to the owner**: when something goes up to the owner, raise it as well as writing it in
+  the reply. Only for what the owner must decide or do, never for a finished step. An alert the
+  driver says was not shown is not retried; the reply is still the record.
