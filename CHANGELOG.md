@@ -2,6 +2,18 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.24.0] - 2026-11-14
+
+### Added
+
+- `docs/role-map.md` names two optional things a `pane.driver` may offer: a label on a pane (display
+  text that changes neither the agent's state nor any wait) and an alert to the owner. A playbook uses
+  each only where the driver's installed instructions describe it; a driver without them changes
+  nothing.
+- `plumb:lead` puts every ledger line for a lane on that lane's pane label, so the owner can read a
+  lane's state (review round, PR) from the pane list without opening the ledger, and raises the
+  driver's alert with anything that goes up to the owner, never for a lane that only finished.
+
 ## [0.23.2] - 2026-11-11
 
 ### Fixed
