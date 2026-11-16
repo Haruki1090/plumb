@@ -2,7 +2,7 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
-## [0.24.1] - 2026-11-16
+## [0.25.0] - 2026-11-16
 
 ### Fixed
 

@@ -522,7 +522,7 @@ def where_section(data: dict[str, Any], pulls: dict | None) -> list[str]:
     count = data["merged_pulls"]
     if count is None:
         merged_line = ("Cost per merged pull request: not known (it needs `--prs` written by `plumb-ledger prs` of "
-                       "0.24.1 or later, which keeps `merged_at`).")
+                       "0.25.0 or later, which keeps `merged_at`).")
     elif count == 0 or total.unpriced:
         merged_line = f"Pull requests merged in the period: {count}. Cost per merged pull request: n/a."
     else:

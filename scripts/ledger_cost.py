@@ -910,7 +910,7 @@ def load_sweep_index(path: Path) -> dict[str, dict[str, Any]]:
                 and integer(entry.get("mtime_ns")) is not None and entry.get("status") in ("ok", "failed")):
             index[key] = {"size": entry["size"], "mtime_ns": entry["mtime_ns"], "status": entry["status"]}
             if entry["status"] == "failed":
-                # The plumb version that refused it. One written before 0.24.1 has none.
+                # The plumb version that refused it. One written before 0.25.0 has none.
                 index[key]["by"] = entry["by"] if isinstance(entry.get("by"), str) else None
     return index
 
@@ -1739,7 +1739,7 @@ def load_prs(paths: list[str]) -> dict[tuple[str, str], list[dict[str, Any]]]:
                     continue
                 pulls.setdefault((repo_key(entry.get("repository") if isinstance(entry.get("repository"), str) else ""), pull["head_ref"]), []).append({
                     "number": pull["number"], "created": created, "closed": parse_time(pull.get("closed_at")),
-                    # `merged` is None for one that did not land; a file written before 0.24.1 has no
+                    # `merged` is None for one that did not land; a file written before 0.25.0 has no
                     # merged_at at all (`merged_known` False), which is not the same as "not merged".
                     "merged": parse_time(pull.get("merged_at")), "merged_known": "merged_at" in pull,
                     "base": clean(pull.get("base_ref"))})
