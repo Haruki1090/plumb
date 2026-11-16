@@ -49,10 +49,12 @@ owner. PRs: requesting the owner's review or authored by the owner (then read
 [references/pr-queue.md](references/pr-queue.md)). Open the ledger before anything else:
 
     log="$(plumb-path run --mkdir)/lead-<issues|prs>-$(date +%Y%m%d-%H%M%S)-$$.tsv"
-    plumb-decision-log "$log" --header item state lane evidence next
+    plumb-decision-log "$log" --header item state lane evidence next ref
 
 Use that name exactly: another coordinator may be running, and a shared ledger mixes two queues.
 Write one line per item, and one line each time an item changes state.
+`ref` is the lane's branch as `branch:<name>` from the row that starts the lane, and `pr:<number>` from the
+row that opens or names its pull request; `-` when there is none. It is a pointer for `plumb-run-view`, not a state.
 
 **2 Triage.** An open issue is a claim that work is missing; check it first.
 **Keep the bodies out of your context.** Pull the queue, merged PRs and open PRs once, as JSON
@@ -86,8 +88,10 @@ the whole machine run one at a time.
 started through the driver under `lane-<item>`, and the brief written as a file from
 [references/lane-brief.md](references/lane-brief.md). Record each lane's starting commit.
 
-**5 Loop.** Wait on the driver's agent state, never a sleep loop. Every ledger line for a lane
-also goes on that lane's pane label when the driver has one (`docs/role-map.md`, labels and alerts).
+**5 Loop.** Wait on the driver's agent state, never a sleep loop. After compaction or on resume,
+`plumb-run-view` gives the lanes, what is done by fact, and what remains, from the ledger and the tracker.
+Every ledger line for a lane also goes on that lane's pane label when the driver has one
+(`docs/role-map.md`, labels and alerts).
 - *blocked*: read the prompt first. Relay an approval only inside the brief's range and
   reversible; anything else goes up
 - *done*: read the report file, diff from the starting commit

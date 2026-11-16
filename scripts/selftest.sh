@@ -1439,6 +1439,9 @@ elif command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-ledger-views.py" >/dev/null \
     && ok "ledger views: remote_session, session attribution, active time, tables (escaping, determinism, writes only under --out)" \
     || ng "ledger views (run scripts/test-ledger-views.py)"
+  python3 -B "$root/scripts/test-run-view.py" >/dev/null \
+    && ok "run view: link rules (no number read from prose), checks, done by fact, since, late, events order, unknown headers, no-remote, unreachable forge, determinism" \
+    || ng "run view (run scripts/test-run-view.py)"
   python3 -B "$root/scripts/test-ledger-failures.py" >/dev/null \
     && ok "failure records: created in the period, blocks in bodies and comments, problems kept, findings" \
     || ng "failure records (run scripts/test-ledger-failures.py)"

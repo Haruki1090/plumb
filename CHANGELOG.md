@@ -2,6 +2,21 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.26.0] - 2026-11-16
+
+### Added
+
+- `plumb-run-view`: turns the `plumb:lead` ledgers in `plumb-path run` and the pull request facts from
+  the forge into one JSON document: per ledger the lanes (state, since when, the linked pull request
+  with its checks), what is done by fact, the events in time order, and what remains. It calls no model,
+  keeps no state and caches nothing; a forge that is unreachable gives `remote: "unavailable"` and exit 0.
+  An item is linked to a pull request only by its `ref` cell (`pr:<number>`, `branch:<name>`) or by an
+  item that is wholly `#<number>` of a pull request, never by a number read out of prose. The
+  `evidence` cell is never printed.
+- `plumb:lead` writes a `ref` column on its ledger (the lane's branch, then its pull request) and
+  names `plumb-run-view` as the way to see the queue again after compaction or on resume. A ledger
+  without the column still reads and still grades.
+
 ## [0.25.0] - 2026-11-16
 
 ### Fixed

@@ -156,6 +156,21 @@ with tempfile.TemporaryDirectory() as d:
     assert "at most 2 live lanes on the ledger" in by["S2-lane-cap"]["detail"], by["S2-lane-cap"]
     assert by["R1-report-names-ledger"]["pass"], by["R1-report-names-ledger"]
 
+    # A ledger with the seventh column (ref) grades like one without it.
+    ledger.write_text("ts\titem\tstate\tlane\tevidence\tnext\tref\n"
+                      "t\t#12\tin-progress\tlane-12\t-\t-\tbranch:fix-12\n"
+                      "t\t#12\tready-pr\tlane-12\tabc1234 exit 0\t-\tpr:40\n")
+    withref = transcript("withref.jsonl", [
+        tool("Skill", skill="plumb:lead"),
+        tool("Bash", command='plumb-decision-log "$log" --header item state lane evidence next ref'),
+        tool("Bash", command="gh pr list --state merged --search 12"),
+        tool("Bash", command="git worktree add -b fix/12 ../w12 origin/develop"),
+        tool("Write", file_path="/tmp/lane-12-brief.md", content=brief),
+    ], f"done. ledger: {ledger}")
+    r = grade(str(withref))
+    assert all(c["pass"] for c in r["checks"]), r["checks"]
+    assert r["ledger_items"] == 1, r
+
     # trigger-eval: no claude on PATH is a clear message and a nonzero exit, not a traceback.
     cases = d / "cases.csv"
     cases.write_text("id,prompt,expect\nc1,review the PRs,plumb:lead\n")
