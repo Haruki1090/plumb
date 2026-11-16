@@ -72,7 +72,10 @@ Look for, in this order:
 - **Rework.** The changes fixed within the look-ahead window, and the failure codes
   (`docs/failure-taxonomy.md`) that recur. Failures with no code or no layer are a finding too:
   classify them with `plumb:failure-to-rule`, not here.
-- **Cost.** The most expensive tasks, the frontier share, which roles and agent types spend most,
+- **Cost.** First the two figures in the views' README under "Where the cost was spent": the cost of
+  the whole period per merged pull request, and the share spent on base branches. Compare weeks by
+  these, not by the cost of a pull request's branch: that one falls when work moves to the base
+  branch and nothing got cheaper. A base-branch share that grows is a coverage finding. Then the most expensive tasks, the frontier share, which roles and agent types spend most,
   and which token kind dominates (an hour-long cache write that dominates is fixed by splitting
   sessions, not by changing models).
 - **Agents.** In `agents.md`, the subagent types whose model is the same as the main thread's for

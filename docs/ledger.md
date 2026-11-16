@@ -536,8 +536,19 @@ notes on it would be lost). The weekly retro checks this and stops.
 **Daily, in the store's own CI.** Check out the store, bring the session branches into the checkout,
 point `ledger.store` at the checkout itself, write the trailing 28 days into `views/latest/`, and
 commit it to the default branch when it changed. The job has no access to product repositories, so
-there is no `--changes` and no session attribution; the README of the views says so. Pin plumb to a
-release tag or a commit SHA, so the views change only when you move the pin.
+there is no `--changes` and no session attribution; the README of the views says so. Without `--prs`
+it also cannot know which branches are base branches: name them with `--base-branch` (repeatable), and
+the README's "Where the cost was spent" shows the cost spent on them apart from the cost on other
+branches. Pin plumb to a release tag or a commit SHA, so the views change only when you move the pin.
+
+**Where the cost was spent.** The README splits the period's cost into requests on a pull request's
+branch, on a base branch, on another branch, ambiguous and unknown, with each share. A base branch is
+one named with `--base-branch`, or, with `--prs`, a branch the repository's pull requests target. With
+a `--prs` file that keeps `merged_at` (`plumb-ledger prs` of 0.24.1 or later) it also gives the cost of
+the whole period divided by the pull requests merged in it. Read these two before the cost of a single
+pull request's branch: when a coordinator or a session that opens several pull requests works on the
+base branch, that cost leaves every pull request's row, and the per-branch figures fall without
+anything getting cheaper.
 
 ```yaml
 name: ledger-views

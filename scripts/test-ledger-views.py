@@ -1087,6 +1087,46 @@ def _():
     assert code == 2 and rows == [] and not target.exists() and "nothing written" in err, (code, err)
 
 
+def where_rows(readme: str) -> dict[str, tuple[str, str]]:
+    """label -> (requests, share) of the README's "Where the cost was spent" table."""
+    section = readme.split("## Where the cost was spent")[1].split("## ")[0]
+    rows = {}
+    for line in section.splitlines():
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if line.startswith("| ") and len(cells) == 4 and cells[1].replace(",", "").isdigit():
+            rows[cells[0]] = (cells[1], cells[3])
+    return rows
+
+
+@case("README: the cost on base branches is shown apart, and the whole period's cost is divided by the merged pull requests")
+def _():
+    sb = Sandbox("where")
+    put_all(sb, [record(1, stamp(0)), record(2, stamp(1), branch="main"), record(3, stamp(2), branch="develop"),
+                 record(4, stamp(3), branch="spike/y"), record(5, stamp(4), branch=None, repo=None)])
+    # No --prs and no name: nothing is a base branch, and the merged count is not known.
+    plain = sb.views()["README.md"]
+    assert where_rows(plain) == {"On another branch": ("4", "80.0%"), "Unknown (repository or branch unknown)": ("1", "20.0%")}, where_rows(plain)
+    assert "Base branches: none named" in plain and "Cost per merged pull request: not known" in plain, plain
+    # A named base branch, still without --prs (the daily run in the store's CI).
+    named = sb.views("--base-branch", "develop")["README.md"]
+    assert where_rows(named)["On a base branch"] == ("1", "20.0%") and where_rows(named)["On another branch"] == ("3", "60.0%"), where_rows(named)
+    # --prs: the branch the pull requests target is a base branch of that repository; two merged in the period, one not.
+    prs = write_prs(sb, [{**pull(1, "feat/x"), "merged_at": "2026-10-10T05:00:00Z"},
+                         {**pull(2, "feat/z"), "merged_at": "2026-10-11T05:00:00Z"},
+                         {**pull(3, "feat/late"), "merged_at": "2026-10-20T00:00:00Z"},
+                         {**pull(4, "feat/closed"), "merged_at": None}])
+    full = sb.views("--prs", prs, "--base-branch", "develop")["README.md"]
+    rows = where_rows(full)
+    assert rows["On a pull request's branch (or moved to one through its session)"] == ("1", "20.0%"), rows
+    assert rows["On a base branch"] == ("2", "40.0%") and rows["On another branch"] == ("1", "20.0%"), rows
+    assert "Base branches: `develop`, `main`." in full, full
+    total = Decimal(full.split("| Cost | $")[1].split(" ")[0].replace(",", ""))
+    assert f"Pull requests merged in the period: 2. Cost per merged pull request: {ledger_cost.money(total / 2)} " in full, full
+    # A --prs file from before merged_at was kept: unknown, never zero.
+    old = write_prs(sb, [pull(1, "feat/x")], name="old-prs.json")
+    assert "Cost per merged pull request: not known" in sb.views("--prs", old)["README.md"]
+
+
 shutil.rmtree(ROOT, ignore_errors=True)
 print()
 if FAILED:

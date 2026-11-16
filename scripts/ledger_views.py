@@ -1,7 +1,7 @@
 """Views of the ledger: time, cost and model per task, as tables in a directory.
 
     plumb-ledger views --since <day> --until <day> --out <dir> [--changes <jsonl>]... [--prs <json>]...
-                       [--gap-minutes 30] [--repo <owner/name>] [--timezone <tz>]
+                       [--gap-minutes 30] [--repo <owner/name>] [--timezone <tz>] [--base-branch <name>]...
 
 Reads what `plumb-ledger report` reads (local records and the store's refs) and writes, under
 --out only, README.md, tasks.md/.csv, days.md/.csv, models.md/.csv, agents.md/.csv and sessions.csv. The Markdown
@@ -260,10 +260,60 @@ def task_key(placed: Any, repository: str | None) -> tuple[str, str, str, int]:
     return ("ambiguous" if placed.kind == "ambiguous" else "no_pull_request"), repository, placed.branch, 0
 
 
+WHERE_ORDER = ("pull_request", "base_branch", "branch", "ambiguous", "unknown_attribution")
+WHERE_LABEL = {"pull_request": "On a pull request's branch (or moved to one through its session)",
+               "base_branch": "On a base branch", "branch": "On another branch",
+               "ambiguous": "Ambiguous (two open pull requests for the head ref)",
+               "unknown_attribution": "Unknown (repository or branch unknown)"}
+
+
+def base_branches(pulls: dict | None, named: list[str]) -> tuple[set[str], dict[str, set[str]]]:
+    """(names that are a base branch in every repository, repo_key -> the branches its pull requests
+    target). The first is what the caller named (`--base-branch`); the second is read from `--prs`."""
+    per_repo: dict[str, set[str]] = {}
+    for (repository, _head), rows in (pulls or {}).items():
+        for pull in rows:
+            if pull.get("base"):
+                per_repo.setdefault(repository, set()).add(pull["base"])
+    return set(named), per_repo
+
+
+def where_of(state: str, record: dict[str, Any], bases: tuple[set[str], dict[str, set[str]]]) -> str:
+    """Where a request's cost was spent. A request that reached a pull request is that pull request's;
+    of the rest, one whose branch is a base branch is told apart from one on any other branch, because
+    work done on the base branch (a coordinator, a session that opens several pull requests) is cost no
+    per-pull-request figure contains."""
+    if state in ("pull_request", "ambiguous", "unknown_attribution"):
+        return state
+    everywhere, per_repo = bases
+    branch = record["branch"]
+    if branch in everywhere or branch in per_repo.get(repo_key(record["repository"]), ()):
+        return "base_branch"
+    return "branch"
+
+
+def merged_in_period(pulls: dict | None, zone: Any, days: list[date], repository: str | None) -> int | None:
+    """How many pull requests of `--prs` were merged on a day of the period (those of `repository`
+    when the views are scoped); None when it cannot be known (no `--prs`, or a file without merged_at)."""
+    if pulls is None or not days:
+        return None
+    count, known = 0, False
+    for (name, _head), rows in pulls.items():
+        if repository and name != repo_key(repository):
+            continue
+        for pull in rows:
+            known = known or pull.get("merged_known", False)
+            if pull.get("merged") and days[0] <= pull["merged"].astimezone(zone).date() <= days[-1]:
+                count += 1
+    return count if known else None
+
+
 def build(found: dict[str, Any], pulls: dict | None, sessions: Any, versions: list[dict[str, Any]], now: datetime,
-          gap: timedelta, zone: Any, days: list[date]) -> dict[str, Any]:
+          gap: timedelta, zone: Any, days: list[date], base_names: list[str] | None = None) -> dict[str, Any]:
     """Pure: the gathered records in, the rows of every table and the counts out."""
     merged = found["merged"]
+    bases = base_branches(pulls, base_names or [])
+    where: dict[str, Acc] = {}
     credits = active_credits(merged, gap)
     heads: dict[tuple[str, int], str] = {}
     for (repository, head), rows in (pulls or {}).items():
@@ -296,7 +346,8 @@ def build(found: dict[str, Any], pulls: dict | None, sessions: Any, versions: li
         day = moment.astimezone(zone).date()
         session_key = (record["runtime"], record["session"])
         for acc in (total, tasks.setdefault(key, Acc()), models.setdefault(record["model"] or "unknown model", Acc()),
-                    per_day.setdefault(day, Acc()), per_session.setdefault(session_key, Acc())):
+                    per_day.setdefault(day, Acc()), per_session.setdefault(session_key, Acc()),
+                    where.setdefault(where_of(key[0], record, bases), Acc())):
             acc.add(record, moment, amount, credits[index])
         agent = agents.setdefault(agent_key(record), AgentAcc())
         agent.add(record, moment, amount, credits[index])
@@ -315,7 +366,9 @@ def build(found: dict[str, Any], pulls: dict | None, sessions: Any, versions: li
         if key[0] == "pull_request":
             session.pulls.add(f"{repository}#{placed.number}")
     return {"total": total, "tasks": tasks, "models": models, "days": per_day, "sessions": per_session,
-            "agents": agents, "counts": counts}
+            "agents": agents, "counts": counts, "where": where,
+            "base_names": sorted(bases[0] | set().union(*bases[1].values())),
+            "merged_pulls": merged_in_period(pulls, zone, days, (found["scope"] or {}).get("repository"))}
 
 
 # ---------------------------------------------------------------- tables
@@ -452,6 +505,35 @@ def markdown_file(title: str, intro: list[str], headers: list[str], rows: list[l
     return "\n".join([f"# {title}", "", *intro, "", *md_table(headers, shown, right), "", note, ""])
 
 
+def where_section(data: dict[str, Any], pulls: dict | None) -> list[str]:
+    """Where the cost was spent, and the cost of the whole period per merged pull request. The median
+    cost of a pull request's branch falls when work moves to the base branch; these two do not."""
+    total, where = data["total"], data["where"]
+    rows = [[WHERE_LABEL[name], f"{where[name].requests:,}", cost_text(where[name]), percent(where[name].cost, total.cost)]
+            for name in WHERE_ORDER if name in where]
+    names = data["base_names"]
+    if names:
+        base_line = "Base branches: " + ", ".join(f"`{name}`" for name in names) + "."
+    else:
+        base_line = ("Base branches: none named, so no request counts as on a base branch "
+                     "(give `--base-branch NAME`, or `--prs`, whose pull requests name the branches they target).")
+    if pulls is None:
+        base_line += " Without `--prs` no pull request is looked up: every known branch is a base branch or another branch."
+    count = data["merged_pulls"]
+    if count is None:
+        merged_line = ("Cost per merged pull request: not known (it needs `--prs` written by `plumb-ledger prs` of "
+                       "0.24.1 or later, which keeps `merged_at`).")
+    elif count == 0 or total.unpriced:
+        merged_line = f"Pull requests merged in the period: {count}. Cost per merged pull request: n/a."
+    else:
+        merged_line = (f"Pull requests merged in the period: {count}. Cost per merged pull request: "
+                       f"{money(total.cost / count)} (the cost of the whole period, not only of their branches, "
+                       f"divided by {count}).")
+    return ["## Where the cost was spent", "",
+            *md_table(["", "Requests", "Cost", "Share of the cost"], rows, {1, 2, 3}), "",
+            base_line, "", merged_line, ""]
+
+
 def readme(data: dict[str, Any], found: dict[str, Any], args: Any, label: str, gap_minutes: int,
            pulls: dict | None, sessions: Any) -> str:
     total, counts = data["total"], data["counts"]
@@ -483,6 +565,7 @@ def readme(data: dict[str, Any], found: dict[str, Any], args: Any, label: str, g
             ["Cost", cost_text(total)],
             ["Requests with unknown cost (not in the cost)", f"{unknown_cost:,}"],
         ], {1}), "",
+        *where_section(data, pulls),
         "## Not attributed, not known", "",
         *md_table(["", "Requests"], [
             ["Unknown attribution (repository or branch unknown)", counts["unknown_attribution"]],
@@ -569,6 +652,10 @@ def views_parser() -> argparse.ArgumentParser:
             action.help = ("the cache repository for the store's refs (default: a temporary directory, removed "
                            "when the command ends; nothing is written beside the local records)")
     parser.add_argument("--out", required=True, metavar="DIR", help="the directory the tables are written to (created if missing); only the generated files in it are replaced")
+    parser.add_argument("--base-branch", action="append", default=[], metavar="NAME",
+                        help="a branch that is a base branch in every repository (repeatable). The README shows the cost "
+                             "spent on base branches apart from the cost on other branches; with --prs the branches the "
+                             "pull requests target are base branches of their repository without being named")
     parser.add_argument("--gap-minutes", type=int, default=DEFAULT_GAP_MINUTES, metavar="N",
                         help=f"two requests of one session at most this far apart are one stretch of work (default {DEFAULT_GAP_MINUTES})")
     return parser
@@ -595,7 +682,8 @@ def cmd_views(argv: list[str]) -> int:
     scope_period(found, args.repo, pulls, sessions, now)
     first, last = parse_day(args.since), parse_day(args.until)
     days = [first + timedelta(days=n) for n in range((last - first).days + 1)]
-    data = build(found, pulls, sessions, versions, now, timedelta(minutes=args.gap_minutes), zone, days)
+    data = build(found, pulls, sessions, versions, now, timedelta(minutes=args.gap_minutes), zone, days,
+                 args.base_branch)
     files = render(data, found, args, label, args.gap_minutes, pulls, sessions)
     write_files(Path(args.out).expanduser(), files)
     print(f"views: {data['total'].requests} requests, {len(data['tasks'])} tasks, {len(files)} files -> {args.out}")

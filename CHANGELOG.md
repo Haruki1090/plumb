@@ -21,6 +21,11 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
 
 - `state/last-sweep.json` (time and failures of the last sweep by `run` or `watch`), and a
   `plumb-doctor` line that is NG while the last sweep failed and counts the refused Codex rollouts.
+- `plumb-ledger views`: the README has "Where the cost was spent" (pull request branches, base
+  branches, other branches, ambiguous, unknown, with shares) and, with `--prs`, the cost of the whole
+  period per merged pull request. `--base-branch NAME` names base branches for a run without `--prs`.
+  `plumb-ledger prs` keeps `merged_at`.
+- `plumb:retro` reads those two before the per-task costs.
 
 ## [0.24.0] - 2026-11-14
 

@@ -1681,7 +1681,8 @@ def cmd_prs(argv: list[str]) -> int:
         if closed is not None and closed < since:
             continue
         pulls.append({"number": row["number"], "head_ref": clean(head.get("ref")), "base_ref": clean(base.get("ref")),
-                      "created_at": row.get("created_at"), "closed_at": row.get("closed_at")})
+                      "created_at": row.get("created_at"), "closed_at": row.get("closed_at"),
+                      "merged_at": row.get("merged_at")})
     pulls.sort(key=lambda p: (p["created_at"] or "", p["number"]))
     text = json.dumps({"repository": args.repo, "since": args.since, "pull_requests": pulls}, indent=2) + "\n"
     if args.out:
@@ -1737,7 +1738,11 @@ def load_prs(paths: list[str]) -> dict[tuple[str, str], list[dict[str, Any]]]:
                 if created is None or not isinstance(pull.get("number"), int) or not pull.get("head_ref"):
                     continue
                 pulls.setdefault((repo_key(entry.get("repository") if isinstance(entry.get("repository"), str) else ""), pull["head_ref"]), []).append({
-                    "number": pull["number"], "created": created, "closed": parse_time(pull.get("closed_at"))})
+                    "number": pull["number"], "created": created, "closed": parse_time(pull.get("closed_at")),
+                    # `merged` is None for one that did not land; a file written before 0.24.1 has no
+                    # merged_at at all (`merged_known` False), which is not the same as "not merged".
+                    "merged": parse_time(pull.get("merged_at")), "merged_known": "merged_at" in pull,
+                    "base": clean(pull.get("base_ref"))})
     for rows in pulls.values():
         rows.sort(key=lambda p: (p["created"], p["number"]))
     return pulls
