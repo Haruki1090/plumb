@@ -2,6 +2,31 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.25.0] - 2026-11-16
+
+### Fixed
+
+- `plumb-ledger watch` stopped recording for good once the directory it was started in was removed (a
+  worktree, for example): every sweep's child process failed to start, and `capture.log` said only
+  "exited without an answer". `watch` now changes into the ledger directory, `run` and `watch` start
+  the sweep in the ledger directory when the caller's is gone, and the log names the error type.
+- A Codex subagent's rollout was refused with "multiple native sessions in one transcript", because it
+  repeats its parent's `session_meta` after its own, and its usage was never recorded. That header is
+  now accepted and the thread is recorded as `role = subagent` with Codex's `agent_role` as
+  `agent_type`. Any other second identity is still refused.
+- A rollout refused by one plumb version was never read again unless the file changed. The sweep index
+  keeps the version that refused it, and another version reads it once more.
+
+### Added
+
+- `state/last-sweep.json` (time and failures of the last sweep by `run` or `watch`), and a
+  `plumb-doctor` line that is NG while the last sweep failed and counts the refused Codex rollouts.
+- `plumb-ledger views`: the README has "Where the cost was spent" (pull request branches, base
+  branches, other branches, ambiguous, unknown, with shares) and, with `--prs`, the cost of the whole
+  period per merged pull request. `--base-branch NAME` names base branches for a run without `--prs`.
+  `plumb-ledger prs` keeps `merged_at`.
+- `plumb:retro` reads those two before the per-task costs.
+
 ## [0.24.0] - 2026-11-14
 
 ### Added

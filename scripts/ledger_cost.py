@@ -704,6 +704,14 @@ def codex_cwd(rec: dict[str, Any]) -> str | None:
     return None
 
 
+def codex_parent_header(rec: dict[str, Any], session_id: str | None) -> bool:
+    """A session_meta of another thread: the parent's header a subagent's rollout repeats. Its cwd is
+    the parent's, not this thread's."""
+    payload = rec.get("payload")
+    return (rec.get("type") == "session_meta" and isinstance(payload, dict)
+            and session_id is not None and payload.get("id") != session_id)
+
+
 def capture_codex_file(path: Path, entry: dict[str, Any], offset: int, capture: Capture,
                        checkouts: Checkouts) -> tuple[int, int]:
     """Codex keeps cumulative snapshots: the normalizer's state is saved with the offset."""
@@ -714,6 +722,9 @@ def capture_codex_file(path: Path, entry: dict[str, Any], offset: int, capture: 
     normalizer.sequence = saved.get("sequence", 0)
     normalizer.model = saved.get("model")
     normalizer.session_id = saved.get("session_id")
+    normalizer.parents = [item for item in saved.get("parents") or [] if isinstance(item, str)]
+    normalizer.thread_source = saved.get("thread_source")
+    normalizer.agent_role = saved.get("agent_role")
     cwd = saved.get("cwd")
     end = offset
     for end, line in read_complete_lines(path, offset):
@@ -721,8 +732,9 @@ def capture_codex_file(path: Path, entry: dict[str, Any], offset: int, capture: 
             rec = json.loads(line)
             if not isinstance(rec, dict):
                 continue
-            cwd = codex_cwd(rec) or cwd
             out = normalizer.accept(rec)
+            if not codex_parent_header(rec, normalizer.session_id):
+                cwd = codex_cwd(rec) or cwd
         except ValueError as error:
             raise LedgerError(f"{path.name}: {redact(str(error))}") from error
         if out is None or out.get("type") != "assistant":
@@ -743,9 +755,17 @@ def capture_codex_file(path: Path, entry: dict[str, Any], offset: int, capture: 
         if identity is not None and identity in capture.known:
             capture.counts["duplicates"] += 1
             continue
-        capture.add(request, "main", None, None, cwd_attribution(checkouts, cwd, request["time"]), identity)
+        # A thread another thread spawned is a subagent: its own session (the parent's totals do not
+        # include it), with the role Codex gave it as the agent type.
+        if normalizer.thread_source == "subagent":
+            capture.add(request, "subagent", clean(normalizer.agent_role, 100), clean(capture.session, 100),
+                        cwd_attribution(checkouts, cwd, request["time"]), identity)
+        else:
+            capture.add(request, "main", None, None, cwd_attribution(checkouts, cwd, request["time"]), identity)
     entry["codex"] = {"previous": normalizer.previous, "sequence": normalizer.sequence,
-                      "model": normalizer.model, "session_id": normalizer.session_id, "cwd": cwd}
+                      "model": normalizer.model, "session_id": normalizer.session_id, "cwd": cwd,
+                      "parents": normalizer.parents, "thread_source": clean(normalizer.thread_source, 100),
+                      "agent_role": clean(normalizer.agent_role, 100)}
     if normalizer.session_id:
         capture.session = safe_session(normalizer.session_id)
     return end, end - offset
@@ -889,6 +909,9 @@ def load_sweep_index(path: Path) -> dict[str, dict[str, Any]]:
         if (isinstance(entry, dict) and integer(entry.get("size")) is not None
                 and integer(entry.get("mtime_ns")) is not None and entry.get("status") in ("ok", "failed")):
             index[key] = {"size": entry["size"], "mtime_ns": entry["mtime_ns"], "status": entry["status"]}
+            if entry["status"] == "failed":
+                # The plumb version that refused it. One written before 0.25.0 has none.
+                index[key]["by"] = entry["by"] if isinstance(entry.get("by"), str) else None
     return index
 
 
@@ -898,11 +921,13 @@ def sweep_codex(directory: Path, checkouts: Checkouts, sessions: list[dict[str, 
     state/codex/sweep.json holds, per rollout path, the size and mtime the file had when it was last
     looked at and whether it was `ok` or `failed` (refused by the normalizer, for example a rollout
     that starts with a usage total it never observed). A file whose size and mtime are unchanged is
-    not opened; a failed one is counted and not retried until it changes. The error type and a short
+    not opened; a failed one is counted and not retried until it changes or a different plumb version
+    looks at it (a later normalizer may accept what an earlier one refused). The error type and a short
     masked message go to capture.log once per change of the file, never the file's content. The
     per-file state (offset, head hash, normalizer state) is the one `capture_one` keeps."""
     index_path = directory / "state" / "codex" / "sweep.json"
     index = load_sweep_index(index_path)
+    version = plumb_version()
     summary: dict[str, Any] = {"runtime": "codex", "kind": "sweep", "files": 0, "unchanged": 0, "failed": 0, "missing": []}
     seen: dict[str, dict[str, Any]] = {}
     missing_roots: list[str] = []
@@ -920,7 +945,8 @@ def sweep_codex(directory: Path, checkouts: Checkouts, sessions: list[dict[str, 
                     continue
                 summary["files"] += 1
                 previous = index.get(key)
-                if previous and previous["size"] == stat.st_size and previous["mtime_ns"] == stat.st_mtime_ns:
+                if (previous and previous["size"] == stat.st_size and previous["mtime_ns"] == stat.st_mtime_ns
+                        and not (previous["status"] == "failed" and version and previous.get("by") != version)):
                     seen[key] = previous
                     summary["unchanged"] += 1
                     summary["failed"] += previous["status"] == "failed"
@@ -948,6 +974,8 @@ def sweep_codex(directory: Path, checkouts: Checkouts, sessions: list[dict[str, 
                     log_line(cwd, f"sweep codex: file refused: {type(error).__name__}: {redact(str(error))[:200]}")
                 # The size and mtime read before the capture: a file that grows meanwhile differs next time.
                 seen[key] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "status": status}
+                if status == "failed":
+                    seen[key]["by"] = version
     finally:
         # Paths no longer listed (a rollout moved to archived_sessions/) leave the index; those below a
         # location that was not there are kept.
@@ -1653,7 +1681,8 @@ def cmd_prs(argv: list[str]) -> int:
         if closed is not None and closed < since:
             continue
         pulls.append({"number": row["number"], "head_ref": clean(head.get("ref")), "base_ref": clean(base.get("ref")),
-                      "created_at": row.get("created_at"), "closed_at": row.get("closed_at")})
+                      "created_at": row.get("created_at"), "closed_at": row.get("closed_at"),
+                      "merged_at": row.get("merged_at")})
     pulls.sort(key=lambda p: (p["created_at"] or "", p["number"]))
     text = json.dumps({"repository": args.repo, "since": args.since, "pull_requests": pulls}, indent=2) + "\n"
     if args.out:
@@ -1709,7 +1738,11 @@ def load_prs(paths: list[str]) -> dict[tuple[str, str], list[dict[str, Any]]]:
                 if created is None or not isinstance(pull.get("number"), int) or not pull.get("head_ref"):
                     continue
                 pulls.setdefault((repo_key(entry.get("repository") if isinstance(entry.get("repository"), str) else ""), pull["head_ref"]), []).append({
-                    "number": pull["number"], "created": created, "closed": parse_time(pull.get("closed_at"))})
+                    "number": pull["number"], "created": created, "closed": parse_time(pull.get("closed_at")),
+                    # `merged` is None for one that did not land; a file written before 0.25.0 has no
+                    # merged_at at all (`merged_known` False), which is not the same as "not merged".
+                    "merged": parse_time(pull.get("merged_at")), "merged_known": "merged_at" in pull,
+                    "base": clean(pull.get("base_ref"))})
     for rows in pulls.values():
         rows.sort(key=lambda p: (p["created"], p["number"]))
     return pulls
@@ -2314,13 +2347,33 @@ def sweep_now(cwd: str | None) -> str | None:
     steps = [["capture", "--sweep"]]
     if config("ledger.export") == "on-stop":
         steps.append(["export"])
+    # The children run where they can start. The caller's directory may be gone by now (a worktree
+    # removed while a watch or a wrapped command was running), and a child given a directory that
+    # does not exist never starts. Neither step reads its directory: the sweep reads Codex's and
+    # OpenCode's own stores and each record's own cwd.
+    where = cwd if cwd and os.path.isdir(cwd) else str(ledger_dir(cwd, True))
     failed = []
     for step in steps:
-        out = run([sys.executable, str(SCRIPTS / "ledger.py"), *step], cwd=cwd, timeout=GIT_TIMEOUT * 5)
-        if out is None or out.returncode != 0:
-            failed.append(f"{' '.join(step)} exited {out.returncode if out else 'without an answer'}")
+        try:
+            out = subprocess.run([sys.executable, str(SCRIPTS / "ledger.py"), *step], cwd=where,
+                                 capture_output=True, text=True, errors="replace", timeout=GIT_TIMEOUT * 5)
+            problem = f"exited {out.returncode}" if out.returncode else None
+        except (OSError, subprocess.SubprocessError) as error:
+            problem = f"did not run: {type(error).__name__}"
+        if problem:
+            failed.append(f"{' '.join(step)} {problem}")
             log_line(cwd, f"sweep failed: {failed[-1]}")
+    note_sweep(cwd, failed)
     return "; ".join(failed) or None
+
+
+def note_sweep(cwd: str | None, failed: list[str]) -> None:
+    """state/last-sweep.json: when `run` or `watch` last swept and what failed. capture.log holds
+    failures only, so without this a quiet log cannot be told from a watch that is not running;
+    doctor reads it."""
+    with contextlib.suppress(Exception):
+        atomic_write(ledger_dir(cwd, True) / "state" / "last-sweep.json", json.dumps(
+            {"time": format_time(datetime.now(timezone.utc)), "failed": failed}, sort_keys=True))
 
 
 def run_parser() -> argparse.ArgumentParser:
@@ -2340,7 +2393,10 @@ def cmd_run(argv: list[str]) -> int:
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         raise LedgerError("no command given (plumb-ledger run -- COMMAND [ARGS...])")
-    cwd = os.getcwd()
+    try:
+        cwd: str | None = os.getcwd()
+    except OSError:
+        cwd = None   # started in a directory that is already gone: the command decides what that means
     try:
         child = subprocess.Popen(command)
     except OSError as error:
@@ -2417,8 +2473,11 @@ def cmd_watch(argv: list[str]) -> int:
     args = watch_parser().parse_args(argv)
     if args.interval < 1:
         raise LedgerError("--interval must be at least 1 second")
-    cwd = os.getcwd()
-    directory = ledger_dir(cwd, True)
+    directory = ledger_dir(None, True)
+    # A watch outlives the session that started it. It moves to the ledger directory so that it does
+    # not hold the session's directory (a worktree that is removed later) as its own.
+    os.chdir(directory)
+    cwd = str(directory)
     import signal
     lock = directory / "watch.lock"
     mine = args.as_version or plumb_version()

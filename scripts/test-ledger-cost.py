@@ -2479,6 +2479,103 @@ def _():
         first.communicate(timeout=30)
 
 
+# ---------------------------------------------------------------- Codex subagent threads, a vanished directory
+
+def child_rollout(sb: Sandbox, name: str, child: str, second: str, role: str = "plumb_test_role") -> Path:
+    """A subagent's rollout as Codex writes it: its own session_meta (naming the thread it was forked
+    from), then the header of thread `second` again, then the child's own snapshots."""
+    path = sb.codex / "sessions" / "2026" / "10" / "10" / f"{name}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    first = {"input_tokens": 100, "cached_input_tokens": 40, "output_tokens": 10}
+    path.write_text("\n".join([
+        json.dumps({"type": "session_meta", "payload": {
+            "id": child, "session_id": "sess-parent", "forked_from_id": "sess-parent", "parent_thread_id": "sess-parent",
+            "thread_source": "subagent", "agent_role": role, "cwd": str(sb.cwd)}}),
+        json.dumps({"type": "session_meta", "payload": {"id": second, "thread_source": "user", "cwd": "/nowhere/parent"}}),
+        json.dumps({"type": "turn_context", "payload": {"model": "gpt-test"}}),
+        json.dumps({"type": "event_msg", "timestamp": "2026-10-10T00:00:05Z", "payload": {
+            "type": "token_count", "info": {"total_token_usage": first, "last_token_usage": first}}})]) + "\n")
+    return path
+
+
+def codex_extend_from(path: Path, total: dict) -> None:
+    last = {"input_tokens": 50, "cached_input_tokens": 10, "output_tokens": 5}
+    with open(path, "a") as handle:
+        handle.write(json.dumps({"type": "event_msg", "timestamp": "2026-10-10T00:00:09Z", "payload": {
+            "type": "token_count", "info": {"total_token_usage": total, "last_token_usage": last}}}) + "\n")
+
+
+@case("codex: a subagent's rollout (its header, then its parent's) is captured as a subagent of its own session; another identity is still refused")
+def _():
+    sb = Sandbox("codex-child")
+    rollout(sb, "rollout-parent", "sess-parent")
+    path = child_rollout(sb, "rollout-child", "sess-child", "sess-parent")
+    child_rollout(sb, "rollout-mixed", "sess-mixed", "sess-stranger")
+    sessions, runtimes, err = sweep_json(sb)
+    assert sorted(s["session"] for s in sessions) == ["sess-child", "sess-parent"] and runtimes[0]["failed"] == 1, (sessions, runtimes)
+    assert len([l for l in log_text(sb).splitlines() if "multiple native sessions" in l]) == 1, log_text(sb)
+    rows = {r["id"]: r for r in sb.pending()}
+    assert sorted(rows) == ["codex:sess-child:1", "codex:sess-parent:1", "codex:sess-parent:2"], sorted(rows)
+    child = rows["codex:sess-child:1"]
+    assert (child["role"], child["agent_type"], child["agent_id"], child["session"]) == \
+        ("subagent", "plumb_test_role", "sess-child", "sess-child"), child
+    assert rows["codex:sess-parent:1"]["role"] == "main" and rows["codex:sess-parent:1"]["agent_type"] is None
+    codex_extend_from(path, {"input_tokens": 150, "cached_input_tokens": 50, "output_tokens": 15})
+    sweep_json(sb)
+    later = {r["id"]: r for r in sb.pending()}["codex:sess-child:2"]
+    assert (later["role"], later["agent_type"]) == ("subagent", "plumb_test_role"), later   # kept across a resumed read
+
+
+@case("sweep: a rollout refused by another plumb version is read again once, then waits as before")
+def _():
+    sb = Sandbox("sweep-codex-version")
+    bad_rollout(sb, "rollout-bad")
+    sweep_json(sb)
+    index_path = sb.ledger / "state" / "codex" / "sweep.json"
+    index = json.loads(index_path.read_text())
+    (key, entry), = index.items()
+    assert entry["status"] == "failed" and entry["by"] == ledger_cost.plumb_version(), entry
+    sweep_json(sb)
+    assert len([l for l in log_text(sb).splitlines() if "file refused" in l]) == 1, "the same version read it again"
+    for by in ("0.0.1", None):   # an older version refused it, or one from before the version was kept
+        stale = dict(entry)
+        stale.pop("by")
+        if by:
+            stale["by"] = by
+        index_path.write_text(json.dumps({key: stale}))
+        before = len([l for l in log_text(sb).splitlines() if "file refused" in l])
+        sweep_json(sb)
+        assert len([l for l in log_text(sb).splitlines() if "file refused" in l]) == before + 1, by
+        assert json.loads(index_path.read_text())[key]["by"] == ledger_cost.plumb_version()
+
+
+@case("run and watch: the sweep still runs when the directory they were started in is gone, and state/last-sweep.json says how it went")
+def _():
+    sb = Sandbox("watch-cwd-gone")
+    rollout(sb, "rollout-g", "sess-gone")
+    doomed = sb.root / "doomed"
+    doomed.mkdir()
+    proc = subprocess.Popen([str(LEDGER), "watch", "--interval", "2", "--iterations", "1"], stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, cwd=doomed, env=sb.env)
+    try:
+        wait_for_lock_pid(sb, proc)
+        doomed.rmdir()
+        out, err = proc.communicate(timeout=120)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    assert proc.returncode == 0 and len(sb.pending()) == 2 and "sweep failed" not in log_text(sb), (err, log_text(sb))
+    last = json.loads((sb.ledger / "state" / "last-sweep.json").read_text())
+    assert last["failed"] == [] and last["time"], last
+    # `run`: the wrapped command removes the directory it was started in.
+    doomed.mkdir()
+    rollout(sb, "rollout-h", "sess-gone-run")
+    code, out, err = sb.ledger_cmd("run", "--", sys.executable, "-c", "import os; os.rmdir(os.getcwd())", cwd=doomed)
+    assert code == 0 and err == "" and len(sb.pending()) == 4, (code, err, sb.pending())
+    with sandbox_environ(sb, None):
+        assert ledger_cost.sweep_now(str(sb.root / "never-there")) is None
+
+
 shutil.rmtree(ROOT, ignore_errors=True)
 print()
 if FAILED:
