@@ -164,12 +164,20 @@ rollouts. `state/codex/sweep.json` keeps, per rollout path, its size, its mtime 
 `failed`). A file whose size and mtime are unchanged since the last sweep is not opened; a changed
 one is read from its saved offset. `failed` is a rollout the normalizer refused (for example one that
 starts with a usage total it never observed) or one that could not be read (permissions): it is counted in `failed=`, not retried until its size
-or mtime changes, and leaves one line (the error type and a short masked message, never the file's
+or mtime changes or another plumb version sweeps (the entry keeps the version that refused it, so an
+upgrade reads each refused file once more), and leaves one line (the error type and a short masked message, never the file's
 content) in `capture.log` per change. Rows already captured from it stay, and the sweep goes on
 with the other files; a refused file does not change the exit status. A rollout that Codex moves to
 `archived_sessions/` is read again once under its new path, and its ids, already held, absorb it. A
 missing or unreadable index means every file is checked again (the per-file offsets still prevent
 reading a file twice).
+
+A thread that another Codex thread spawned has a rollout of its own. Its first `session_meta` is its
+own (`thread_source = subagent`, with `forked_from_id` and `parent_thread_id`), and the header of the
+thread it came from follows. That one extra header is accepted; any other second identity is still
+refused. Its rows are `role = subagent`, `agent_type` = the `agent_role` Codex gave it, `agent_id` and
+`session` = its own thread id (the parent's totals do not include the child's requests, so nothing is
+counted twice), and the parent header's `cwd` is not taken as the child's.
 
 **OpenCode** (2.x) keeps its sessions in a SQLite database. The adapter opens it read-only
 (`mode=ro`, then `PRAGMA query_only = ON`) and queries two tables, selecting only these columns:
@@ -224,7 +232,10 @@ session; it runs in the background and is resumable (pending rows stay until pus
 OpenCode started from a Claude session can still be running then: rows written after the last turn
 are captured only by a later turn, and are lost when the container is reclaimed first. Two commands
 close that gap; both run `capture --sweep` and then, with `ledger.export = on-stop`, `export`, each as
-a child process (a failure leaves a line in `capture.log` and never stops the caller).
+a child process (a failure leaves a line in `capture.log` and never stops the caller). The children
+run in the caller's directory, or in the ledger directory when that one no longer exists (a worktree
+removed meanwhile). After each sweep `state/last-sweep.json` holds its time and what failed, and
+`plumb-doctor` reports a last sweep that failed as NG.
 
 ```bash
 plumb-ledger run -- COMMAND [ARGS...]          # e.g. plumb-ledger run -- codex exec "..."
@@ -240,7 +251,8 @@ plumb-ledger watch [--interval <seconds>]      # default 300
   compaction) starts nothing new. The holder writes its pid and plumb version into the lock, and a
   newer plumb that finds an older version there stops it with SIGTERM and takes the lock, so an
   upgrade does not leave the old `watch` recording with its old price table. A `watch` of 0.23.1 or
-  earlier writes nothing, so it is never replaced: stop it once by hand. Start it in the background
+  earlier writes nothing, so it is never replaced: stop it once by hand. It changes into the ledger
+  directory when it starts, so it never holds the directory of the session that started it. Start it in the background
   from a session-start hook, never from the environment's setup script: the setup script runs before
   the session, so the cloud session id that `remote_session` needs is not yet in its environment
   (`docs/cloud-setup.md` has the lines).

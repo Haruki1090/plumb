@@ -265,6 +265,45 @@ case "$lexp" in
   *) bad "ledger.export = $lexp (expected manual or on-stop; export stays manual)" ;;
 esac
 
+# The sweeps of `plumb-ledger run` and `watch` (the other runtimes). capture.log holds failures only,
+# so the state of the last sweep is read from state/last-sweep.json: a sweep that failed is NG until
+# one succeeds, and a refused Codex rollout is a count, not a failure (capture.log names the reason).
+if [ "$lcap" = on ] && command -v python3 >/dev/null 2>&1; then
+  ldir="${PLUMB_LEDGER_DIR:-$HOME/.claude/plumb/ledger}"
+  lsweep=$(python3 - "$ldir" <<'PY' 2>/dev/null
+import json, sys
+from datetime import datetime, timezone
+from pathlib import Path
+directory = Path(sys.argv[1])
+try:
+    last = json.loads((directory / "state" / "last-sweep.json").read_text())
+    moment = datetime.fromisoformat(str(last["time"]).replace("Z", "+00:00"))
+    failed = [str(item)[:120] for item in last["failed"]]
+except (OSError, ValueError, KeyError, TypeError):
+    print("none")
+else:
+    hours = (datetime.now(timezone.utc) - moment).total_seconds() / 3600
+    age = f"{hours * 60:.0f} min ago" if hours < 2 else f"{hours:.0f} h ago"
+    print(("failed\t" + age + "\t" + "; ".join(failed)) if failed else ("ok\t" + age))
+try:
+    index = json.loads((directory / "state" / "codex" / "sweep.json").read_text())
+    print(sum(1 for entry in index.values() if isinstance(entry, dict) and entry.get("status") == "failed"))
+except (OSError, ValueError, AttributeError):
+    print(0)
+PY
+)
+  lstate=$(printf '%s\n' "$lsweep" | sed -n 1p); lrefused=$(printf '%s\n' "$lsweep" | sed -n 2p)
+  case "$lstate" in
+    ok*)     note "ok" "ledger sweep (run, watch): the last one, $(printf '%s' "$lstate" | cut -f2), had no failure" ;;
+    failed*) bad "ledger sweep (run, watch): the last one, $(printf '%s' "$lstate" | cut -f2), failed: $(printf '%s' "$lstate" | cut -f3) (see capture.log in $ldir)" ;;
+    *)       note "--" "ledger sweep (run, watch): none recorded yet (plumb-ledger watch writes state/last-sweep.json after each sweep)" ;;
+  esac
+  case "$lrefused" in
+    ""|0) ;;
+    *) note "--" "ledger sweep: $lrefused Codex rollout(s) refused and not recorded (capture.log names why; each is read again when it changes or plumb is upgraded)" ;;
+  esac
+fi
+
 # 3. There is no dependency on an outside plugin.
 #    Until 2026-08-30, plumb's router forwarded "fix a bug" and "run a plan task by task" to
 #    superpowers, and doctor checked whether that existed.

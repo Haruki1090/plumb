@@ -10,6 +10,11 @@ class CodexNormalizer:
         self.sequence = 0
         self.model = None
         self.session_id = None
+        # A subagent's rollout opens with its own session_meta and then repeats its parent's: the
+        # ids the first one names as its origin, and what the first one says the thread is.
+        self.parents = []
+        self.thread_source = None
+        self.agent_role = None
 
     def counters(self, raw):
         if not isinstance(raw, dict):
@@ -40,9 +45,16 @@ class CodexNormalizer:
             session_id = payload.get('id')
             if not isinstance(session_id, str) or not session_id:
                 raise ValueError('missing native session identity')
-            if self.session_id is not None and self.session_id != session_id:
+            if self.session_id is None:
+                self.session_id = session_id
+                self.parents = sorted({value for value in (payload.get('forked_from_id'), payload.get('parent_thread_id'))
+                                       if isinstance(value, str) and value and value != session_id})
+                self.thread_source = payload.get('thread_source')
+                self.agent_role = payload.get('agent_role')
+            elif session_id != self.session_id and session_id not in self.parents:
+                # The header of the thread this one was forked from is expected; any other identity
+                # means two sessions share the file, and their totals cannot be told apart.
                 raise ValueError('multiple native sessions in one transcript')
-            self.session_id = session_id
             return None
         if kind == 'turn_context':
             self.model = payload.get('model')
