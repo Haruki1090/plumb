@@ -1122,6 +1122,7 @@ def _():
     assert "Base branches: `develop`, `main`." in full, full
     total = Decimal(full.split("| Cost | $")[1].split(" ")[0].replace(",", ""))
     assert f"Pull requests merged in the period: 2. Cost per merged pull request: {ledger_cost.money(total / 2)} " in full, full
+    assert "whoever wrote it and whichever branch it targets" in full, full
     # A --prs file from before merged_at was kept: unknown, never zero.
     old = write_prs(sb, [pull(1, "feat/x")], name="old-prs.json")
     assert "Cost per merged pull request: not known" in sb.views("--prs", old)["README.md"]

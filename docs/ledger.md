@@ -545,7 +545,9 @@ branches. Pin plumb to a release tag or a commit SHA, so the views change only w
 branch, on a base branch, on another branch, ambiguous and unknown, with each share. A base branch is
 one named with `--base-branch`, or, with `--prs`, a branch the repository's pull requests target. With
 a `--prs` file that keeps `merged_at` (`plumb-ledger prs` of 0.24.1 or later) it also gives the cost of
-the whole period divided by the pull requests merged in it. Read these two before the cost of a single
+the whole period divided by the pull requests merged in it. That count is every merged pull request
+of the file, whoever wrote it and whichever branch it targets, while the cost is only what the ledger
+recorded: in a repository where others merge too, divide by the `rework` cohort instead. Read these two before the cost of a single
 pull request's branch: when a coordinator or a session that opens several pull requests works on the
 base branch, that cost leaves every pull request's row, and the per-branch figures fall without
 anything getting cheaper.

@@ -528,7 +528,9 @@ def where_section(data: dict[str, Any], pulls: dict | None) -> list[str]:
     else:
         merged_line = (f"Pull requests merged in the period: {count}. Cost per merged pull request: "
                        f"{money(total.cost / count)} (the cost of the whole period, not only of their branches, "
-                       f"divided by {count}).")
+                       f"divided by {count}). The count is every pull request of `--prs` merged in the period, "
+                       "whoever wrote it and whichever branch it targets; the cost is only what this ledger "
+                       "recorded. Where others merge too, divide by the cohort of `plumb-ledger rework` instead.")
     return ["## Where the cost was spent", "",
             *md_table(["", "Requests", "Cost", "Share of the cost"], rows, {1, 2, 3}), "",
             base_line, "", merged_line, ""]

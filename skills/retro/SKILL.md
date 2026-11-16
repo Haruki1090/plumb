@@ -73,7 +73,9 @@ Look for, in this order:
   (`docs/failure-taxonomy.md`) that recur. Failures with no code or no layer are a finding too:
   classify them with `plumb:failure-to-rule`, not here.
 - **Cost.** First the two figures in the views' README under "Where the cost was spent": the cost of
-  the whole period per merged pull request, and the share spent on base branches. Compare weeks by
+  the whole period per merged pull request, and the share spent on base branches. The merged count is
+  the whole repository's; when others merge there too, divide the cost by the rework cohort
+  (`rework.json`, `cohort`) and say which one the review uses. Compare weeks by
   these, not by the cost of a pull request's branch: that one falls when work moves to the base
   branch and nothing got cheaper. A base-branch share that grows is a coverage finding. Then the most expensive tasks, the frontier share, which roles and agent types spend most,
   and which token kind dominates (an hour-long cache write that dominates is fixed by splitting
