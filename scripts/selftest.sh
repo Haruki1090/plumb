@@ -1442,6 +1442,9 @@ elif command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-run-view.py" >/dev/null \
     && ok "run view: link rules (no number read from prose), checks, done by fact, since, late, events order, unknown headers, no-remote, unreachable forge, determinism" \
     || ng "run view (run scripts/test-run-view.py)"
+  python3 -B "$root/scripts/test-stalled.py" >/dev/null \
+    && ok "stalled: last real commit (a base merge is not work), verified head (stale SHA, HTML comment), idle threshold, ready_at, unpromoted (ancestor, unknown), unreachable forge" \
+    || ng "stalled (run scripts/test-stalled.py)"
   python3 -B "$root/scripts/test-ledger-failures.py" >/dev/null \
     && ok "failure records: created in the period, blocks in bodies and comments, problems kept, findings" \
     || ng "failure records (run scripts/test-ledger-failures.py)"
