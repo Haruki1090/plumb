@@ -57,6 +57,9 @@ Write one line per item, and one line each time an item changes state.
 row that opens or names its pull request; `-` when there is none. It is a pointer for `plumb-run-view`, not a state.
 
 **2 Triage.** An open issue is a claim that work is missing; check it first.
+When the queue is pull requests, `plumb-stalled` first shows what already waits on the owner (ready but
+unmerged, and idle drafts) before you start new lanes. Verified-but-still-draft needs the repository's
+evidence line as `--verified-pattern`; merged-but-unpromoted needs `--promoted-ref`.
 **Keep the bodies out of your context.** Pull the queue, merged PRs and open PRs once, as JSON
 files, and match them with a script (`playbooks/batching-chatty-tools.md`). With more than ten
 items, hand each item's reading to the explorer role and take back one ledger row per item

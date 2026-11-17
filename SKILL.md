@@ -79,6 +79,7 @@ Playbooks name principles; read a named principle in full when you apply it.
 | **Check that a change works in the running app, or has not regressed against its base** ("verify this", "does it still work", "compare against base"; a dosa-kakunin request in Japanese is the same request) | `plumb:verify` (the repository's own verification through its contract; formats in `docs/verify-protocol.md`) |
 | See what a session spent its context on | `plumb-session-audit` |
 | Where a running `plumb:lead` queue stands (lanes, what landed by fact, what remains), after compaction or on resume | `plumb-run-view` |
+| What is waiting: every open pull request by how long it has waited and on whom (verified but still draft, ready but unmerged, idle draft), and what merged but was not promoted | `plumb-stalled` |
 | Read the repository's project contract (rework authors, verify commands, ledger classes) | `plumb-project`; the schema and the CI wiring are in `docs/project-contract.md` |
 | Check the `Fixes-PR:` line of a pull request body | `plumb-check-fixes` |
 | Which changes landed, which were fixed later (rework rate), and what each task cost | `plumb-ledger`; records, store and coverage are in `docs/ledger.md` |
