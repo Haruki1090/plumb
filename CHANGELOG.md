@@ -2,6 +2,20 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.27.0] - 2026-11-17
+
+### Added
+
+- `plumb-stalled`: lists every open pull request by how long it has waited and on whom. Each one gets
+  exactly one state: `verified-not-ready` (a draft whose body vouches for its current head, by
+  `--verified-pattern`), `ready-unmerged`, `draft-idle` (no real commit for `--idle-hours`, default 2)
+  or `draft-active`. A base merge is not work and does not reset the clock. With `--promoted-ref` it
+  also lists merged pull requests whose merge commit is not in that local ref; what git cannot decide
+  is `unknown`, never an empty list. It calls no model, keeps no state, fetches nothing and writes
+  nothing; a forge that is unreachable gives `remote: unavailable` and exit 0.
+- `plumb:lead` names `plumb-stalled` in triage, to see what already waits on the owner before new
+  lanes start.
+
 ## [0.26.0] - 2026-11-16
 
 ### Added
