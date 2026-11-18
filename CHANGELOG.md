@@ -2,6 +2,17 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.27.1] - 2026-11-18
+
+### Changed
+
+- `assets/prices.json`: `gpt-6.2-sol` ($2 input, $0.10 cache read, $10 output per MTok) and
+  `gpt-6.2-astra` ($8, $0.40, $40) are added to the existing version `2026-11-10`, each at the OpenAI
+  API's standard tier with cache write at 1.25x input, a long-context tier above 272K input tokens, its
+  own `checked` (2026-11-18) and `source`. They go into the existing version, not a new one, because the
+  models are new (first seen 2026-11-18) and their price has not changed since launch: no priced row
+  changes and no `price_version` changes; the Codex rows that were unknown become known.
+
 ## [0.27.0] - 2026-11-17
 
 ### Added

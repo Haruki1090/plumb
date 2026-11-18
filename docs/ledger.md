@@ -320,7 +320,10 @@ rate OpenAI lists for this model. `gpt-6.1-terra` ($1 input, $0.05 cache read, $
 API's standard tier in the new version 2026-11-09, effective 2026-08-22 (cache write at 1.25x input,
 long-context tiers above 272K input tokens), because Luna's 2026-07-30 cut and Sol 5.6's promotional
 price from 2026-08-21 did not hold for the whole of 2026-10-30; every model of that version is copied
-forward, and Luna's and Sol 5.6's rows before 2026-08-22 stay unknown.
+forward, and Luna's and Sol 5.6's rows before 2026-08-22 stay unknown. `gpt-6.2-sol` ($2 input, $0.10 cache read, $10 output per MTok) and
+`gpt-6.2-astra` ($8, $0.40, $40) are added to version 2026-11-10 (0.27.1) on the same terms (standard
+tier, cache write at 1.25x input, long-context tiers above 272K input tokens): they are new and their
+price has not changed since launch, so no priced row changes.
 
 ### Store and export
 

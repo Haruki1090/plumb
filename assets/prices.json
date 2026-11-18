@@ -345,6 +345,32 @@
             "output": 30,
             "cache_read": 0.80
           }
+        },
+        "gpt-6.2-sol": {
+          "input": 2,
+          "output": 10,
+          "cache_read": 0.10,
+          "checked": "2026-11-18",
+          "source": "OpenAI API standard tier as OpenAI's pricing and model pages state it (developers.openai.com/api/docs/pricing, /api/docs/models/gpt-6.2-sol, read directly 2026-11-18): $2 input, $0.10 cached input, $2.50 30-minute cache write (1.25x, the version's 5m multiplier; Codex rows put cache writes in cache_write_5m), $10 output per MTok; above 272K input tokens the whole request is 2x input and cache and 1.5x output. Added to this version because the model is new and its price has not changed since launch: OpenAI's launch post (openai.com/index/introducing-gpt-6-2-astra-sol) gives the same Standard rates, read through a search restricted to OpenAI's domains because the page refused a direct fetch. The 12-hour cache write ($5, 2.5x), Batch, Flex, fast, ultrafast (3x Standard through 2027-02-28, then 6x) and regional tiers are not modelled.",
+          "long_context": {
+            "threshold_input_tokens": 272000,
+            "input": 4,
+            "output": 15,
+            "cache_read": 0.20
+          }
+        },
+        "gpt-6.2-astra": {
+          "input": 8,
+          "output": 40,
+          "cache_read": 0.40,
+          "checked": "2026-11-18",
+          "source": "OpenAI API standard tier as OpenAI's pricing and model pages state it (developers.openai.com/api/docs/pricing, /api/docs/models/gpt-6.2-astra, read directly 2026-11-18): $8 input, $0.40 cached input, $10 30-minute cache write (1.25x, the version's 5m multiplier; Codex rows put cache writes in cache_write_5m), $40 output per MTok; above 272K input tokens the whole request is 2x input and cache and 1.5x output. Added to this version because the model is new and its price has not changed since launch: OpenAI's launch post (openai.com/index/introducing-gpt-6-2-astra-sol) gives the same Standard rates, read through a search restricted to OpenAI's domains because the page refused a direct fetch. The 12-hour cache write ($20, 2.5x), Batch, Flex, fast, ultrafast (3x Standard through 2027-02-28, then 6x) and regional tiers are not modelled.",
+          "long_context": {
+            "threshold_input_tokens": 272000,
+            "input": 16,
+            "output": 60,
+            "cache_read": 0.80
+          }
         }
       }
     }

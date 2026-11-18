@@ -2266,14 +2266,14 @@ def _():
     assert sum(ledger_cost.price_request(sol, versions).values()) == Decimal("0.4") + Decimal(20) + Decimal("0.04")
 
 
-@case("version 2026-11-10 copies every model of 2026-11-09 except sonnet's cache_read, adds claude-fable-5-2, and wins the tie on effective_from")
+@case("version 2026-11-10 copies every model of 2026-11-09 except sonnet's cache_read, adds claude-fable-5-2, gpt-6.2-sol and gpt-6.2-astra, and wins the tie on effective_from")
 def _():
     data = json.loads((PLUGIN / "assets" / "prices.json").read_text(), parse_float=Decimal)
     versions = {v["id"]: v for v in data["versions"]}
     old, new = versions["2026-11-09"], versions["2026-11-10"]
     assert new["effective_from"] == old["effective_from"] and new["checked"] == "2026-11-10"
     assert new["cache_write_multiplier"] == old["cache_write_multiplier"]
-    assert set(new["models"]) - set(old["models"]) == {"claude-fable-5-2"}
+    assert set(new["models"]) - set(old["models"]) == {"claude-fable-5-2", "gpt-6.2-sol", "gpt-6.2-astra"}
     assert set(old["models"]) <= set(new["models"]), "a model of the previous version is missing"
     fixed = {k: v for k, v in new["models"].items() if k in old["models"]}
     assert fixed["claude-sonnet-5-5"]["cache_read"] == Decimal("0.10") and old["models"]["claude-sonnet-5-5"]["cache_read"] == Decimal("0.20")
@@ -2309,6 +2309,42 @@ def _():
                  inp=1_000_000, out=1_000_000, cache_read=1_000_000, w5=0, w1=0)
     cost = ledger_cost.price_request(row, versions)
     assert (cost["input"], cost["output"], cost["cache_read"]) == (Decimal(2), Decimal(10), Decimal("0.1")), cost
+
+
+@case("gpt-6.2-sol and gpt-6.2-astra rows on 2026-11-18 are priced at their standard rates, cache write at 1.25x, and the long-context tier above 272K; both sit in version 2026-11-10")
+def _():
+    versions = ledger_cost.load_prices()
+    models = {v["id"]: v for v in versions}["2026-11-10"]["models"]
+    assert (models["gpt-6.2-sol"]["input"], models["gpt-6.2-sol"]["output"], models["gpt-6.2-sol"]["cache_read"]) == (2, 10, Decimal("0.10"))
+    assert models["gpt-6.2-sol"]["long_context"] == {"threshold_input_tokens": 272000, "input": 4, "output": 15, "cache_read": Decimal("0.20")}
+    assert (models["gpt-6.2-astra"]["input"], models["gpt-6.2-astra"]["output"], models["gpt-6.2-astra"]["cache_read"]) == (8, 40, Decimal("0.40"))
+    assert models["gpt-6.2-astra"]["long_context"] == {"threshold_input_tokens": 272000, "input": 16, "output": 60, "cache_read": Decimal("0.80")}
+    assert all(models[k]["checked"] == "2026-11-18" and models[k]["source"] for k in ("gpt-6.2-sol", "gpt-6.2-astra"))
+    when = "2026-11-18T06:00:00.000Z"
+    # standard: 100K input, 10K output, 50K cache read, 20K 5m cache write (context 170K)
+    sol = record(1, time_=when, model="gpt-6.2-sol", runtime="codex", inp=100_000, out=10_000, cache_read=50_000, w5=20_000, w1=0)
+    cost = ledger_cost.price_request(sol, versions)
+    assert cost == {"input": Decimal("0.2"), "output": Decimal("0.1"), "cache_read": Decimal("0.005"),
+                    "cache_write_5m": Decimal("0.05"), "cache_write_1h": Decimal(0)}, cost
+    assert sum(cost.values()) == Decimal("0.355")      # 0.1*2 + 0.01*10 + 0.05*0.10 + 0.02*2*1.25
+    astra = record(2, time_=when, model="gpt-6.2-astra", runtime="codex", inp=100_000, out=10_000, cache_read=50_000, w5=20_000, w1=0)
+    cost = ledger_cost.price_request(astra, versions)
+    assert cost == {"input": Decimal("0.8"), "output": Decimal("0.4"), "cache_read": Decimal("0.02"),
+                    "cache_write_5m": Decimal("0.2"), "cache_write_1h": Decimal(0)}, cost
+    assert sum(cost.values()) == Decimal("1.42")       # 0.1*8 + 0.01*40 + 0.05*0.40 + 0.02*8*1.25
+    # long context: 200K input + 50K cache read + 22,001 5m cache write = 272,001 > 272,000; 10K output
+    big_sol = record(3, time_=when, model="gpt-6.2-sol", runtime="codex", inp=200_000, out=10_000, cache_read=50_000, w5=22_001, w1=0)
+    cost = ledger_cost.price_request(big_sol, versions)
+    assert sum(cost.values()) == Decimal("1.070005"), cost    # 0.2*4 + 0.01*15 + 0.05*0.20 + 0.022001*4*1.25
+    big_astra = record(4, time_=when, model="gpt-6.2-astra", runtime="codex", inp=200_000, out=10_000, cache_read=50_000, w5=22_001, w1=0)
+    cost = ledger_cost.price_request(big_astra, versions)
+    assert sum(cost.values()) == Decimal("4.28002"), cost     # 0.2*16 + 0.01*60 + 0.05*0.80 + 0.022001*16*1.25
+    # the same shape at exactly 272,000 stays on the standard tier
+    edge = record(5, time_=when, model="gpt-6.2-sol", runtime="codex", inp=200_000, out=10_000, cache_read=50_000, w5=22_000, w1=0)
+    assert sum(ledger_cost.price_request(edge, versions).values()) == Decimal("0.4") + Decimal("0.1") + Decimal("0.005") + Decimal("0.055")
+    for row in (sol, astra, big_sol, big_astra):
+        version = ledger_cost.version_in_effect(versions, ledger_cost.parse_time(row["time"]))
+        assert version["id"] == "2026-11-10", (row["model"], version["id"])
 
 
 @case("every subcommand prints usage for --help and exits 0; the doctor ledger block reports capture, the store and the export mode")
