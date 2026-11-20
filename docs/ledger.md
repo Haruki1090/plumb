@@ -142,7 +142,7 @@ depends on that binding.
 | Runtime | Location |
 |---|---|
 | `codex` | `$CODEX_HOME/sessions` and `$CODEX_HOME/archived_sessions` (`CODEX_HOME` defaults to `~/.codex`), every `*.jsonl` below them, recursively |
-| `opencode` | `$OPENCODE_DATA_DIR/opencode.db`, else `${XDG_DATA_HOME:-~/.local/share}/opencode/opencode.db` |
+| `opencode` | `$OPENCODE_DATA_DIR/opencode.db`, else `${XDG_DATA_HOME:-~/.local/share}/opencode/opencode.db`; and the database of every other account, `<accounts root>/opencode/*/opencode/opencode.db` (the accounts root is `$CLAUDE_ACCOUNTS_HOME`, else `~/.claude-accounts`), each with its own watermark |
 
 `ledger.runtimes` in `~/.claude/plumb/config` picks the runtimes, separated by commas or white space
 (default `claude,codex,opencode`; `claude` is accepted and does nothing in a sweep). A name that is
@@ -179,14 +179,16 @@ refused. Its rows are `role = subagent`, `agent_type` = the `agent_role` Codex g
 `session` = its own thread id (the parent's totals do not include the child's requests, so nothing is
 counted twice), and the parent header's `cwd` is not taken as the child's.
 
-**OpenCode** (2.x) keeps its sessions in a SQLite database. The adapter opens it read-only
+**OpenCode** (2.x) keeps its sessions in a SQLite database. The adapter opens each one it finds (the
+default one, then those of other accounts) read-only
 (`mode=ro`, then `PRAGMA query_only = ON`) and queries two tables, selecting only these columns:
 `session_v2.id, parent_id, directory, model` and `session_message.id, session_id, type,
 time_updated, data`. The database also holds account and credential tables; no query names them.
 From `data` it reads the time, tokens, model and agent, and nothing else (no message text). A
 database that cannot be opened, stays locked past 5 seconds or lacks these tables or columns is a
 defined failure for OpenCode only: one stderr line, one line in `capture.log`, exit status 1, and the
-other runtimes of the sweep still run.
+other runtimes of the sweep still run. The other OpenCode databases of the sweep are read too, and
+their rows and watermarks kept; with several broken ones, the failure reported is the first.
 
 A row is an assistant message with `time.completed` set and a `tokens` object; one OpenCode step
 writes one assistant message, so a row is one model call, retries included. A message that is still

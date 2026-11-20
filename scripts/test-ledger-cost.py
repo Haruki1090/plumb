@@ -77,10 +77,12 @@ class Sandbox:
         self.codex = self.root / "codex-home"
         self.data = self.root / "data-home"
         self.opencode = self.data / "opencode" / "opencode.db"
+        self.accounts = self.root / "accounts"   # CLAUDE_ACCOUNTS_HOME: other accounts' OpenCode databases
         self.env = {**os.environ, "HOME": str(self.root / "home"), "PLUMB_CONFIG": str(self.config),
                     "PLUMB_LEDGER_DIR": str(self.ledger), "GIT_TERMINAL_PROMPT": "0",
                     "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1",
-                    "CODEX_HOME": str(self.codex), "XDG_DATA_HOME": str(self.data)}
+                    "CODEX_HOME": str(self.codex), "XDG_DATA_HOME": str(self.data),
+                    "CLAUDE_ACCOUNTS_HOME": str(self.accounts)}
         for name in ("PLUMB_LEDGER_GH_FIXTURES", "OPENCODE_DATA_DIR", "CLAUDE_CODE_REMOTE", REMOTE_VAR):
             self.env.pop(name, None)
 
@@ -1594,6 +1596,14 @@ def insert_message(sb: Sandbox, message: tuple) -> None:
     conn.close()
 
 
+def insert_message_at(path: Path, message: tuple) -> None:
+    conn = sqlite3.connect(path)
+    conn.execute("INSERT INTO session_message VALUES (?, ?, ?, ?, ?, ?, ?)",
+                 (message[0], message[1], message[2], message[3], message[4], message[4], message[5]))
+    conn.commit()
+    conn.close()
+
+
 def no_sentinels(sb: Sandbox, *outputs: str) -> None:
     for path in sb.ledger.rglob("*"):
         if path.is_file():
@@ -1938,6 +1948,91 @@ def _():
     make_opencode(other / "opencode.db", [("ses_x", None, None, None)], [omsg("m_x", "ses_x", 0)])
     sessions, runtimes, err = sweep_json(sb, {"OPENCODE_DATA_DIR": str(other)})
     assert list(opencode_rows(sb)) == ["opencode:m_x"] and runtimes[1]["missing"] == [], (sessions, runtimes)
+
+
+def account_db(sb: Sandbox, account: str) -> Path:
+    return sb.accounts / "opencode" / account / "opencode" / "opencode.db"
+
+
+@case("sweep: OpenCode databases of other accounts are read too, each with its own watermark")
+def _():
+    sb = Sandbox("sweep-opencode-accounts")
+    make_opencode(sb.opencode, [("ses_default", None, None, None)], [omsg("m_default", "ses_default", 0)])
+    work = account_db(sb, "work")
+    make_opencode(work, [("ses_work", None, None, None)], [omsg("m_work", "ses_work", 1000)])
+    make_opencode(account_db(sb, "alpha"), [("ses_alpha", None, None, None)], [omsg("m_alpha", "ses_alpha", 2000)])
+    (sb.accounts / "opencode" / "stray").mkdir()                       # an account without a database: not an error
+    (sb.accounts / "opencode" / "link").symlink_to(sb.data)           # the default database again, by another path
+    sessions, runtimes, err = sweep_json(sb)
+    assert sorted(opencode_rows(sb)) == ["opencode:m_alpha", "opencode:m_default", "opencode:m_work"], sorted(opencode_rows(sb))
+    oc = [r for r in runtimes if r["runtime"] == "opencode"][0]
+    assert oc["rows"] == 3 and oc["missing"] == [] and oc["failed"] == 0, oc
+    assert sorted(s["session"] for s in sessions if s["runtime"] == "opencode") == ["ses_alpha", "ses_default", "ses_work"], sessions
+    assert len(list((sb.ledger / "state" / "opencode").glob("*.json"))) == 3
+    before = len(sb.pending())
+    sessions, runtimes, err = sweep_json(sb)     # nothing new anywhere: no double capture
+    assert len(sb.pending()) == before == 3 and all(s["new"] == 0 for s in sessions), (sessions, sb.pending())
+    insert_message_at(work, omsg("m_work2", "ses_work", 5000))        # new only in the other account's database
+    sessions, runtimes, err = sweep_json(sb)
+    assert sorted(opencode_rows(sb)) == ["opencode:m_alpha", "opencode:m_default", "opencode:m_work", "opencode:m_work2"]
+    assert sum(s["new"] for s in sessions) == 1, sessions
+    no_sentinels(sb, "", err)
+
+
+@case("sweep: no other account's database gives the same result as before; a missing default is still reported")
+def _():
+    sb = Sandbox("sweep-opencode-no-accounts")
+    make_opencode(sb.opencode, [("ses_a", None, None, None)], [omsg("m_a", "ses_a", 0)])
+    sessions, runtimes, err = sweep_json(sb)       # CLAUDE_ACCOUNTS_HOME names a directory that is not there
+    assert list(opencode_rows(sb)) == ["opencode:m_a"] and runtimes[1]["missing"] == [] and runtimes[1]["rows"] == 1, runtimes
+    sb.accounts.mkdir()
+    (sb.accounts / "opencode").mkdir()                                  # an empty accounts root: same
+    assert len(sweep_json(sb)[0]) == 1 and len(sb.pending()) == 1
+    sb2 = Sandbox("sweep-opencode-default-missing")
+    make_opencode(account_db(sb2, "work"), [("ses_w", None, None, None)], [omsg("m_w", "ses_w", 0)])
+    sessions, runtimes, err = sweep_json(sb2)
+    assert list(opencode_rows(sb2)) == ["opencode:m_w"] and runtimes[1]["missing"] == ["opencode.db"], runtimes
+    home = Sandbox("sweep-opencode-home-fallback")                       # no CLAUDE_ACCOUNTS_HOME: ~/.claude-accounts of the sandbox HOME
+    make_opencode(home.root / "home" / ".claude-accounts" / "opencode" / "x" / "opencode" / "opencode.db",
+                  [("ses_x", None, None, None)], [omsg("m_x", "ses_x", 0)])
+    env = {k: v for k, v in home.env.items() if k != "CLAUDE_ACCOUNTS_HOME"}
+    out = subprocess.run([str(LEDGER), "capture", "--sweep", "--json"], capture_output=True, text=True, cwd=home.cwd, env=env, timeout=300)
+    assert out.returncode == 0 and list(opencode_rows(home)) == ["opencode:m_x"], (out.stdout, out.stderr)
+
+
+@case("sweep: a broken database of another account is the OpenCode failure, as a broken default is; the other databases and Codex are still read")
+def _():
+    sb = Sandbox("sweep-opencode-accounts-broken")
+    rollout(sb, "rollout-a", "sess-codex-a")
+    make_opencode(sb.opencode, [("ses_a", None, None, None)], [omsg("m_a", "ses_a", 0)])
+    bad = account_db(sb, "bad")
+    bad.parent.mkdir(parents=True)
+    bad.write_bytes(b"this is not a database" * 100)
+    make_opencode(account_db(sb, "work"), [("ses_w", None, None, None)], [omsg("m_w", "ses_w", 1000)])   # sorts after the broken one
+    code, out, err = sb.ledger_cmd("capture", "--sweep", "--json")
+    assert code == 1 and len(err.strip().splitlines()) == 1 and "opencode" in err, (code, err)
+    runtimes = [json.loads(l) for l in out.splitlines() if '"sweep"' in l]
+    assert [(r["runtime"], r["failed"]) for r in runtimes] == [("codex", 0), ("opencode", 1)], runtimes
+    assert sorted(opencode_rows(sb)) == ["opencode:m_a", "opencode:m_w"], sorted(opencode_rows(sb))
+    assert len(list((sb.ledger / "state" / "opencode").glob("*.json"))) == 2     # watermarks of the two good ones, before and after the broken one
+    code, out, err = sb.ledger_cmd("capture", "--sweep", "--json")              # still failing, nothing taken twice
+    assert code == 1 and len(sb.pending()) == 4 and len(opencode_rows(sb)) == 2, (code, len(sb.pending()))
+
+
+@case("sweep: a broken default OpenCode database is the failure, and the other accounts' databases are still captured")
+def _():
+    sb = Sandbox("sweep-opencode-default-broken")
+    sb.opencode.parent.mkdir(parents=True)
+    sb.opencode.write_bytes(b"this is not a database" * 100)
+    make_opencode(account_db(sb, "work"), [("ses_w", None, None, None)], [omsg("m_w", "ses_w", 0)])
+    code, out, err = sb.ledger_cmd("capture", "--sweep", "--json")
+    assert code == 1 and len(err.strip().splitlines()) == 1 and "opencode" in err, (code, err)
+    lines = [l for l in log_text(sb).splitlines() if "sweep opencode failed" in l]
+    assert len(lines) == 1 and "LedgerError" not in lines[0], log_text(sb)
+    runtimes = [json.loads(l) for l in out.splitlines() if '"sweep"' in l]
+    assert [(r["runtime"], r["failed"]) for r in runtimes] == [("codex", 0), ("opencode", 1)], runtimes
+    assert list(opencode_rows(sb)) == ["opencode:m_w"], opencode_rows(sb)
+    assert len(list((sb.ledger / "state" / "opencode").glob("*.json"))) == 1
 
 
 @case("sweep: a database missing a table is a defined failure for OpenCode only; Codex still runs and nothing leaks")
