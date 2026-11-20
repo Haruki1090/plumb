@@ -2,6 +2,18 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.28.0] - 2026-11-20
+
+### Added
+
+- `plumb-ledger capture --sweep` reads the OpenCode databases of other accounts too: besides the default
+  one, every `<accounts root>/opencode/*/opencode/opencode.db` (the accounts root is
+  `CLAUDE_ACCOUNTS_HOME`, else `~/.claude-accounts`), by name, a path listed twice only once. Each
+  database keeps its own watermark, so none is read again from the start or captured twice. Only a
+  missing default database is reported as `missing`. A database that cannot be read no longer stops the
+  others: every database is swept, their rows and watermarks are kept, and the sweep still fails once
+  (the first failure, exit status 1) as before. The tables and columns read, and `mode=ro`, are unchanged.
+
 ## [0.27.1] - 2026-11-18
 
 ### Changed

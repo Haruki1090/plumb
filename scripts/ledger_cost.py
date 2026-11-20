@@ -994,6 +994,32 @@ def opencode_db() -> Path:
     return base / "opencode" / "opencode.db"
 
 
+def opencode_dbs() -> list[Path]:
+    """Every OpenCode database to sweep: the default one first (whether or not it exists), then the
+    ones another account keeps, `<accounts root>/opencode/<id>/opencode/opencode.db` (`XDG_DATA_HOME`
+    of that account), by name. The accounts root is `CLAUDE_ACCOUNTS_HOME`, else `~/.claude-accounts`.
+    Only those that exist are listed; a path already listed (resolved) is not listed twice."""
+    default = opencode_db()
+    found = [default]
+    seen = {default.resolve()}
+    override = os.environ.get("CLAUDE_ACCOUNTS_HOME")
+    root = Path(override).expanduser() if override else Path.home() / ".claude-accounts"
+    try:
+        candidates = sorted(root.glob("opencode/*/opencode/opencode.db"), key=lambda path: path.parts)
+    except OSError:
+        candidates = []
+    for path in candidates:
+        try:
+            resolved = path.resolve()
+            if resolved in seen or not path.is_file():
+                continue
+        except OSError:
+            continue
+        seen.add(resolved)
+        found.append(path)
+    return found
+
+
 OPENCODE_LOOKBACK_MS = 600_000   # rows committed late: re-read this far behind the watermark
 
 
@@ -1088,7 +1114,29 @@ def opencode_failure(error: BaseException) -> LedgerError:
 
 
 def sweep_opencode(directory: Path, checkouts: Checkouts, sessions: list[dict[str, Any]], cwd: str | None) -> dict[str, Any]:
-    """Capture the completed assistant messages of OpenCode's SQLite database.
+    """Capture the completed assistant messages of OpenCode's SQLite databases: the default one and
+    the ones other accounts keep (`opencode_dbs`). Only the default one being absent is reported as
+    missing. A database that cannot be read does not stop the others: every database is swept, and
+    then the first failure is raised (several broken ones give one failure, the first)."""
+    summary: dict[str, Any] = {"runtime": "opencode", "kind": "sweep", "rows": 0, "failed": 0, "missing": []}
+    failure: LedgerError | None = None
+    for index, db in enumerate(opencode_dbs()):
+        if not db.is_file():
+            if index == 0:
+                summary["missing"].append("opencode.db")
+            continue
+        try:
+            sweep_opencode_db(db, directory, checkouts, sessions, summary)
+        except LedgerError as error:
+            failure = failure or error
+    if failure is not None:
+        raise failure
+    return summary
+
+
+def sweep_opencode_db(db: Path, directory: Path, checkouts: Checkouts, sessions: list[dict[str, Any]],
+                      summary: dict[str, Any]) -> None:
+    """Capture the completed assistant messages of one OpenCode SQLite database into `summary`.
 
     Read-only (`mode=ro`, `query_only`), and only these columns of these two tables:
     session_v2.id, parent_id, directory, model and session_message.id, session_id, type, time_updated,
@@ -1096,12 +1144,8 @@ def sweep_opencode(directory: Path, checkouts: Checkouts, sessions: list[dict[st
     credential tables; no query names them. `data` is parsed for time, tokens, model and agent and
     nothing else. The watermark (the largest time_updated seen) is advanced only after every
     session's pending rows are written; a sweep re-reads the ten minutes behind it, and the ids
-    already held absorb the repeats."""
-    summary: dict[str, Any] = {"runtime": "opencode", "kind": "sweep", "rows": 0, "failed": 0, "missing": []}
-    db = opencode_db()
-    if not db.is_file():
-        summary["missing"].append("opencode.db")
-        return summary
+    already held absorb the repeats. The state file is named by the database's path, so each database
+    has its own watermark."""
     state_path = directory / "state" / "opencode" / (hashlib.sha1(str(db).encode("utf-8", "replace")).hexdigest()[:16] + ".json")
     try:
         saved = json.loads(state_path.read_text(encoding="utf-8"))
@@ -1176,7 +1220,6 @@ def sweep_opencode(directory: Path, checkouts: Checkouts, sessions: list[dict[st
                          "bytes_read": 0, "files": []})
     if newest and newest != stored:
         atomic_write(state_path, json.dumps({"watermark": newest}))
-    return summary
 
 
 SWEEPERS = {"codex": sweep_codex, "opencode": sweep_opencode}
