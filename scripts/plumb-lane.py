@@ -228,10 +228,12 @@ def apply(args, logs, states, lanes, works, directory):
         worktree = (attempt_checkout(repo, attempt) if attempt and args.worktree is None
                     else checkout_for(repo, args.worktree))
         git_dir = str(git_path(worktree, "--absolute-git-dir"))
-        if attempt and not args.rebase_baseline:
+        if attempt:
             same_checkout = (attempt.git_dir == git_dir if attempt.git_dir else attempt.worktree == str(worktree))
-            if not same_checkout:
+            if not same_checkout and not args.rebase_baseline:
                 return hold(args, {"other-checkout": "a different checkout requires --rebase-baseline"})
+            if same_checkout and args.rebase_baseline:
+                return hold(args, {"same-checkout": "--rebase-baseline applies only to a different checkout"})
         if sparse_checkout(worktree):
             return hold(args, {"sparse-checkout": "start requires a full checkout and index"})
         for run, (other_lanes, _) in states.items():
@@ -251,7 +253,8 @@ def apply(args, logs, states, lanes, works, directory):
             "attempt": attempt_number + 1, "role": route["role"], "command": route["command"],
             "worktree": str(worktree), "git_dir": git_dir, "base": base,
         }
-        new_baseline = not attempt or args.rebase_baseline
+        # A lane first started before snapshots has no baseline tree; its retry records one.
+        new_baseline = not attempt or args.rebase_baseline or not lane.baseline.baseline_tree
         if new_baseline:
             tree, protected = snapshot(worktree, store, protected=tuple(do_not_touch_paths(brief)))
             if revision(worktree, "HEAD") != head:

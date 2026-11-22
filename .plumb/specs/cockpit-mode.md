@@ -138,7 +138,7 @@ without mode bits, then `assume-unchanged` and moved worktrees). Replace it with
   ref on close or abandon. A missing baseline tree makes collection refuse with `missing-baseline`.
 - A retry without `--worktree` finds the last checkout by its recorded Git directory, including
   after a move. An explicit replacement checkout of the same repository requires
-  `--rebase-baseline`. Without the flag, `start` holds with `other-checkout`. The flag captures
+  `--rebase-baseline`. Without the flag, `start` holds with `other-checkout`; with the flag on the recorded checkout it holds with `same-checkout`. The flag captures
   a new first-start tree and protection set for this lane and its later retries. The lane keeps
   its original base commit.
 - `start` refuses a checkout with `core.sparseCheckout` enabled or a sparse index with
@@ -168,6 +168,8 @@ without mode bits, then `assume-unchanged` and moved worktrees). Replace it with
   and reject other tree changes.
   The weaker **first-start-only fallback** for logs without a collection inventory rejects new
   names and other tree changes, while allowing names present at first start to disappear.
+- A lane whose first start predates snapshots has no baseline tree. Its next `start` records one
+  and that tree becomes the lane's baseline; it never holds with `missing-baseline`.
 
 ### Known limits
 

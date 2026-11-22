@@ -1022,7 +1022,11 @@ def legacy_presence(fixture):
         fixture.file(fixture.repo, "checks/unknown.txt")
         assert fixture.observe(run, "manual", "pass", code=1)["reason_codes"] == ["dirty-checkout"]
         (fixture.repo / "checks/unknown.txt").unlink()
-    print("  C34 old inventory shapes supply path presence only, and new events omit them")
+    fixture.lane("abandon", run, "--attempt", 1, "--reason", "legacy attempt replaced")
+    retry = fixture.lane("start", run)["data"]["data"]
+    assert retry["attempt"] == 2 and retry.get("baseline_tree"), retry
+    assert fixture.lane("collect", run)["data"]["data"]["changed_paths"] == []
+    print("  C34 old inventory shapes supply path presence only, new events omit them, and a retry records a tree")
 
 
 def protected_collection_evidence(fixture):
@@ -1196,6 +1200,9 @@ def retry_other_checkout(fixture):
     data = fixture.lane("collect", run)["data"]["data"]
     assert data["changed_paths"] == [], data
     fixture.adjudicate(run, "hit")
+    before = fixture.events(run)
+    same = fixture.lane("start", run, "--rebase-baseline", code=1)
+    assert same["reason_codes"] == ["same-checkout"] and fixture.events(run) == before, same
     fixture.lane("start", run)
     (fixture.repo / name).write_text("changed\n")
     result = fixture.lane("collect", run, code=1)
