@@ -30,11 +30,27 @@ kind = "pattern"
 pattern = '(eslint-disable|@ts-ignore|@ts-expect-error)'
 ```
 
-Built-in kind `comment`: a line comment or block comment in C-family syntax (`//`, `/* */`, JSX
-`{/* */}`), ignoring comment markers inside string, template and regex literals as far as a
-lexer without a parser can tell. Always allowed (not reported): license headers in the first block
-of a file, `/** … */` directly above an `export`, lines that are only a tool directive listed in
-`allow_directives` (default: `prettier-ignore`). The lexer's limits are documented, not hidden.
+Built-in kind `comment`: a line-local scan of each added line. It reports the line when `//` or `/*`
+appears outside a `'…'`, `"…"` or `` `…` `` literal that opens and closes on that same line. It keeps no
+state across lines: a template literal or block comment that spans lines, a regex literal, and JSX
+text are not understood, so false positives and misses there are expected and documented. One
+allowance only: a line that is nothing but a tool directive listed in `allow_directives` (default
+`["prettier-ignore"]`; an explicit empty list turns it off). Everything else that a project wants to
+keep (license headers, doc comments above exports) goes in the exceptions file.
+
+Why line-local (amended 2026-11-23 after the first review): telling a real comment from
+comment-like text in JSX, regex and nested templates needs a real parser, and the standard library
+has none for these languages. A hand-written lexer drew eight findings in one review and would keep
+drawing them. plumb owns "rule hits x added lines x exceptions"; precise comment detection belongs
+to the project's own linter, which already parses the language. A later change may let the
+contract name a project command whose `path:line` output is intersected with the added lines.
+
+Diff plumbing (amended 2026-11-23): one `git diff -U0 --find-renames <merge-base>` against the
+worktree, with paths read NUL-delimited as bytes; hunks are consumed by their `@@` line counts so a
+content line that looks like a header is never mistaken for one; untracked files in scope are added
+whole; every path is `lstat`-ed before it is opened, only regular files are scanned, symlinks and
+gitlinks are skipped and listed; any enumeration or read failure exits 2 (fail closed), never an
+empty scan.
 
 ## Command
 
@@ -55,7 +71,8 @@ of a file, `/** … */` directly above an `export`, lines that are only a tool d
 
 1. A temp repo fixture: base with existing comments/effects; head adding one comment, one
    `useEffect(`, one `React.useEffect(`, one `// eslint-disable-next-line`, one string containing `//`,
-   a URL in a string, a moved block. Report lists exactly the added ones (the moved block counted and
+   a URL in a string, a moved block, a file whose name has a space and one whose name is non-ASCII,
+   a pure rename and a rename with one added finding. Report lists exactly the added ones (the moved block counted and
    noted), not the string/URL cases.
 2. `mode=enforce` exits 1 on findings, 0 when clean; exceptions file suppresses a row; empty reason → exit 2.
 3. No contract → exit 0 "skip"; broken contract → 2.
