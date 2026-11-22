@@ -123,6 +123,27 @@ start`, wait through `pane.driver`, `collect`, run the checks yourself, `observe
 5. `docs/role-map.md` documents the new roles and `route.*` keys; CHANGELOG and version bumped
    (minor). `docs/scope.md` records what was taken from upstream and what was not.
 
+## Worktree snapshots (amended 2026-11-23 after review round 3)
+
+Three review rounds kept finding holes in the per-path inventory (names only, then fingerprints
+without mode bits, then `assume-unchanged` and moved worktrees). Replace it with one primitive.
+
+- `snapshot(worktree)` = the tree id from `git write-tree` over a temporary index
+  (`GIT_INDEX_FILE` in the store, seeded with `git read-tree HEAD`, then
+  `git add --all --force -- .` with `core.fileMode` and `core.symlinks` taken from the repository).
+  It covers tracked and untracked files, ignored files, contents, the executable bit and symlink
+  targets, and ignores `assume-unchanged`/`skip-worktree` because the temporary index starts from
+  the commit, not from the worktree's index. Cockpit artifacts are excluded by path.
+- `start` records `snapshot` once per lane (the first start) as the baseline.
+- `collect` records the snapshot at collection. Changed paths = `git diff-tree -r --name-only
+  <baseline tree> <collected tree>`; this replaces the commit diff, the inventory and porcelain
+  status. `uncommitted` = collected tree differs from `HEAD^{tree}` after the same exclusions.
+- `observe` and `adjudicate` refuse (`dirty-checkout`) unless the current snapshot equals the
+  collected one.
+- The worktree reservation key is the worktree's git dir (`git rev-parse --absolute-git-dir`),
+  which survives `git worktree move`; the pathname stays for display only.
+- The existing inventory fields are read for old logs only (presence checks), never written.
+
 ## Later PRs
 
 - PR 2: an opt-in PreToolUse hook (`cockpit.hook = report`) that reports, never blocks, a Bash
