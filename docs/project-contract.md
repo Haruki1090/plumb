@@ -123,8 +123,8 @@ pattern = '\buse(Layout)?Effect\s*\('
 | `code_policy.mode` | string: `off`, `report` or `enforce` (default `report`) | Whether findings fail the run (`enforce` exits 1) or are reported only (`report` exits 0) |
 | `code_policy.include`, `code_policy.exclude` | arrays of strings | Globs from the repository top level (`**` spans directories); an absent `include` means every path |
 | `code_policy.exceptions` | string | A TSV file, one `rule<TAB>path<TAB>reason` row per exception; a row suppresses that rule in that path, and a row whose reason is empty is `invalid` |
-| `code_policy.allow_directives` | array of strings (default `["prettier-ignore"]`) | Comment lines that are only one of these entries are always allowed |
-| `code_policy.rule` | array of tables `{id, kind}` | `kind = "comment"` or `kind = "pattern"` with a valid regular expression in `pattern` |
+| `code_policy.allow_directives` | array of strings (default `["prettier-ignore"]`) | Standalone comments containing exactly one listed directive are allowed. An empty array disables the allowance |
+| `code_policy.rule` | array of tables `{id, kind}` | IDs must be unique. Use `kind = "comment"` or `kind = "pattern"` with a valid regular expression in `pattern` |
 
 `plumb-doctor` prints a `contract` block: `none` when the file is absent, `ok` or `--` for each key,
 one `NG` line naming the key and reason when the file is invalid, an `NG` for a verify command
@@ -261,26 +261,30 @@ empty and nobody is required. The head's contract is never read.
 ## Code policy: what a change newly introduces
 
 `[code_policy]` (optional) holds rules a repository reports on lines a change **newly
-introduces**: no new comments in application code, no new effect hooks, no new lint suppressions.
+introduces**, such as comment markers, selected effect calls, and lint suppressions.
 Prose versions of such rules drift, and a repository with hundreds of existing instances cannot
 turn one on at once, so the comparator only ever looks at the introduced lines. plumb holds the
 contract shape and the comparator; the project owns the rule set, its scope and its exceptions,
 and decides whether anything fails.
 
 ```bash
-plumb-code-policy report [--base REF] [--json] [--paths-from FILE]
+plumb-code-policy report [--base REF] [--json] [--paths-from FILE] [--worktree DIR]
 ```
 
-- The contract is read with the same rules as `plumb-project`: no file (or no `[code_policy]`
-  table) is a visible `skip: no code_policy`, exit 0; a contract that does not validate is
-  `invalid`, exit 2; a Python without `tomllib` is `unavailable`, exit 3. `mode = "off"` skips
-  the same way.
-- **Introduced** is a finding on a line that `git diff -U0 --no-renames <merge-base REF HEAD>`
-  marks as added, plus the uncommitted changes and the untracked files in scope. `--base`
-  defaults to `origin/HEAD`'s target, else `main`.
+- The checker requires Python 3.11 or later. A Python without `tomllib` exits 3 even when the
+  contract file is absent. The checker uses the same contract validation as `plumb-project`.
+  An absent file or table prints `skip: no code_policy` and exits 0. `mode = "off"` also skips.
+- **Introduced** means a line added in one `git diff -U0 --find-renames <merge-base>` against
+  the scanned worktree. Every line in an in-scope untracked file is introduced. `--base`
+  defaults to `origin/HEAD`'s target, else `main`. Git path records preserve the original
+  filename bytes. The scan uses LF line boundaries, normalizes CRLF, and decodes source as
+  UTF-8 with replacement for malformed bytes.
+- The checker scans regular files and lists skipped in-scope symlinks and gitlinks on stderr.
+  A Git enumeration or source read failure exits 2.
 - Plain output is one line per finding, `rule<TAB>path:line<TAB>excerpt` (the excerpt is at most
-  80 characters), then `summary: <rule> <count>` for every rule, then a note that moved lines
-  count as added. A clean change prints `clean`. With `--json` the answer is
+  80 characters), then `summary: <rule> <count>` for every rule. A report with findings ends
+  with a note that moved lines count as added. A clean change prints `clean` before its zero-count
+  summaries. With `--json` the answer is
   `{"schema":1,"outcome":"clean|findings|skip","findings":[…],"counts":{…}}`.
 - Exit: `mode = "report"` → 0 even with findings; `mode = "enforce"` → 1 with findings;
   `invalid` → 2; `unavailable` → 3.
@@ -288,16 +292,40 @@ plumb-code-policy report [--base REF] [--json] [--paths-from FILE]
   a move from an introduction. Report-only makes that acceptable; a repository that enforces
   owns the false positives in its exceptions file.
 
-The built-in `comment` kind is a lexer without a parser. It reports a line comment or a block
-comment in C-family syntax (`//`, `/* */`, JSX `{/* */}`) and ignores comment markers inside
-string, template and regex literals as far as token-by-token scanning can tell: a regex literal
-is told from a division by the previous significant token, an unterminated quoted literal ends at
-its line, and a template literal's `${…}` is read as literal text. Always allowed, never
-reported: license headers in the first block of a file (a shebang line may sit above one),
-`/** … */` directly above an `export`, and comment lines that are only a tool directive listed
-in `allow_directives`. Those limits are documented here, not hidden; a project that needs more
-buys a parser, not a louder lexer.
+The built-in `comment` kind reports `//` or `/*` on an added line outside a single-quoted,
+double-quoted, or backtick literal that opens and closes on that line. Each line is scanned
+independently. Expect false positives and missed comments in multiline literals, block-comment
+continuations, regex literals, and JSX text. The only allowance is a standalone comment that
+contains exactly a listed directive, including `{/* prettier-ignore */}`. Use an exception row
+for license headers and doc comments above exports.
 
-A repository that turns `mode = "enforce"` into a required job reads the contract from the base
-commit or another trusted ref, exactly as the Fixes-PR wiring above does: a branch must not be
-able to weaken the policy it is judged by in the same diff.
+A `pattern` rule searches the raw added line once per rule. The sample `no-new-effect` pattern
+checks the spellings below. Use a project linter with token or binding analysis when the policy
+needs to distinguish code from strings or resolve aliases.
+
+| Added line | Sample pattern matches |
+|---|---|
+| `useEffect(() => {})` | yes |
+| `React.useEffect(() => {})` | yes |
+| `useLayoutEffect(() => {})` | yes |
+| `useInsertionEffect(() => {})` | no |
+| `effect(() => {})` (an alias) | no |
+| `$useEffect(() => {})` | yes |
+| `"useEffect("` | yes |
+
+For a required enforcement job, keep the checker, `[code_policy]` contract, and exceptions file
+under trusted control. Set `mode = "enforce"` in the trusted contract and use a checkout-relative
+exceptions path in that checkout. With the trusted ref available in the proposed repository, run
+these commands after setting the absolute paths and the trusted ref:
+
+```bash
+checker=/absolute/path/to/trusted/plumb/bin/plumb-code-policy
+proposed=/absolute/path/to/proposed-checkout
+trusted=/absolute/path/to/new-trusted-checkout
+trusted_ref=refs/remotes/origin/main
+git -C "$proposed" worktree add --detach "$trusted" "$trusted_ref" &&
+  (cd "$trusted" && "$checker" report --base "$trusted_ref" --worktree "$proposed")
+```
+
+`--worktree` selects the checkout to scan. The current checkout supplies the contract and its
+relative exceptions file. `--base` selects the comparison ref in the scanned checkout.

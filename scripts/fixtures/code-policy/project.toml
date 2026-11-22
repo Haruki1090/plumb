@@ -2,7 +2,7 @@ schema = 1
 
 [code_policy]
 mode = "report"
-include = ["src/**/*.tsx"]
+include = ["src/**/*.ts", "src/**/*.tsx"]
 exclude = ["**/*.test.*", "**/generated/**"]
 
 [[code_policy.rule]]

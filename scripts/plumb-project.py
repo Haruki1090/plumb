@@ -151,11 +151,10 @@ def check_code_policy(table: dict, warnings: list) -> None:
     want_str_list(table, "code_policy", "exclude")
     want_str(table, "code_policy", "exceptions")
     want_str_list(table, "code_policy", "allow_directives")
-    if "rule" not in table:
-        return
-    rules = table["rule"]
+    rules = table.get("rule", [])
     if not isinstance(rules, list):
         raise Invalid("code_policy.rule", "expected an array of tables with id and kind")
+    seen = set()
     for index, item in enumerate(rules):
         here = f"code_policy.rule[{index}]"
         if not isinstance(item, dict):
@@ -164,6 +163,9 @@ def check_code_policy(table: dict, warnings: list) -> None:
             raise Invalid(f"{here}.id", "missing")
         if not isinstance(item["id"], str) or not item["id"]:
             raise Invalid(f"{here}.id", "expected a non-empty string")
+        if item["id"] in seen:
+            raise Invalid(f"{here}.id", f"duplicate rule id {item['id']!r}")
+        seen.add(item["id"])
         if "kind" not in item:
             raise Invalid(f"{here}.kind", "missing")
         kind = item["kind"]
@@ -176,7 +178,7 @@ def check_code_policy(table: dict, warnings: list) -> None:
                 raise Invalid(f"{here}.pattern", "expected a non-empty string")
             try:
                 re.compile(item["pattern"])
-            except re.error:
+            except (re.error, OverflowError):
                 raise Invalid(f"{here}.pattern", "not a valid regular expression")
         known = {"id", "kind", "pattern"} if kind == "pattern" else {"id", "kind"}
         for extra in sorted(set(item) - known):

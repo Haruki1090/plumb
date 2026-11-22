@@ -4,14 +4,16 @@
     python3 -B scripts/test-code-policy.py
 
 One `ok` / `NG` line per case; exit 1 when any case is NG. Everything runs offline under
-tempfile.mkdtemp(): the fixture under scripts/fixtures/code-policy/ is committed into fresh
+tempfile.TemporaryDirectory(): the fixture under scripts/fixtures/code-policy/ is committed into fresh
 repositories (the base commit, then the head commit on a feature branch), the contract variants
 are written here, and the report runs through bin/plumb-code-policy. No network, no other
 checkout is read.
 """
 from __future__ import annotations
 
+import errno
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -26,10 +28,11 @@ FIXTURE = HERE / "fixtures" / "code-policy"
 CLI = PLUGIN / "bin" / "plumb-code-policy"
 PROJECT_CLI = PLUGIN / "bin" / "plumb-project"
 SCRIPT = HERE / "plumb-code-policy.py"
-ROOT = Path(tempfile.mkdtemp(prefix="plumb-code-policy-test-"))
+TEMP = tempfile.TemporaryDirectory(prefix="plumb-code-policy-test-")
+ROOT = Path(TEMP.name)
 FAILED: list = []
 IDENTITY = ["-c", "user.name=selftest", "-c", "user.email=code-policy@users.noreply.github.com",
-            "-c", "commit.gpgsign=false"]
+            "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null"]
 COUNTER = [0]
 
 CONTRACT = (FIXTURE / "project.toml").read_text()
@@ -100,12 +103,35 @@ def fixture_repo(name: str) -> Path:
     return repo
 
 
+def policy_repo(name: str, files: dict, contract: str = CONTRACT) -> Path:
+    repo = make_repo(name)
+    write(repo, ".plumb/project.toml", contract)
+    for path, contents in files.items():
+        write(repo, path, contents)
+    commit(repo, "base")
+    git(repo, "checkout", "-q", "-b", "feature")
+    return repo
+
+
 def run_cli(cwd: Path, *args: str):
     return subprocess.run([str(CLI), *args], cwd=str(cwd), capture_output=True, text=True, timeout=300)
 
 
 def project_cli(cwd: Path, *args: str):
     return subprocess.run([str(PROJECT_CLI), *args], cwd=str(cwd), capture_output=True, text=True, timeout=60)
+
+
+def run_instrumented(repo: Path, preamble: str, *args: str):
+    code = ('import os, runpy, subprocess, sys\n' + preamble + '\n'
+            f'sys.argv = {["plumb-code-policy", *args]!r}\n'
+            f'runpy.run_path({str(SCRIPT)!r}, run_name="__main__")\n')
+    return subprocess.run([sys.executable, "-B", "-c", code], cwd=repo,
+                          capture_output=True, text=True, timeout=60)
+
+
+def json_findings(done, exit_code=0) -> list:
+    assert done.returncode == exit_code, (done.returncode, done.stdout, done.stderr)
+    return json.loads(done.stdout)["findings"]
 
 
 def findings_of(stdout: str) -> set:
@@ -193,7 +219,188 @@ def _():
     assert found - extra == EXPECTED, (sorted(found - extra), sorted(EXPECTED))
 
 
-@case("the comment kind allows headers, doc-above-export and directives, and reads literals as literals")
+@case("committed findings use worktree line numbers after uncommitted deletions and reversions")
+def _():
+    repo = policy_repo("worktree-offset", {
+        "src/position.ts": "const a = 1;\nconst b = 2;\n// existing\n",
+        "src/reverted.ts": "const original = 0;\n",
+    })
+    write(repo, "src/position.ts", "const a = 1;\nconst b = 2;\n// introduced\n// existing\n")
+    write(repo, "src/reverted.ts", "// gone before the report\n")
+    commit(repo, "head")
+    write(repo, "src/position.ts", "const b = 2;\n// introduced\n// existing\n")
+    write(repo, "src/reverted.ts", "const original = 0;\n")
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert rows == [{"rule": "no-new-comment", "path": "src/position.ts", "line": 2,
+                     "excerpt": "// introduced"}], rows
+
+
+@case("changed paths preserve spaces, quotes, non-ASCII and line delimiters")
+def _():
+    names = ('src/space and "quote".ts', 'src/space only.ts', 'src/日本語.ts', 'src/tab\tand\nnewline.ts')
+    repo = policy_repo("path-bytes", {name: "const original = 0;\n" for name in names})
+    git(repo, "config", "core.quotePath", "true")
+    for name in names:
+        write(repo, name, "const original = 0;\n// added\n")
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert {(row["path"], row["line"], row["excerpt"]) for row in rows} == {
+        (name, 2, "// added") for name in names
+    }, rows
+
+
+@case("hunk counts keep header-like source lines in their own file")
+def _():
+    repo = policy_repo("hunk-counts", {"src/a.ts": "const a = 1;\nold\nconst b = 2;\n",
+                                       "src/z.ts": "const z = 1;\n"})
+    write(repo, "src/a.ts", "const a = 1;\n++ counter\n// after fake file header\nconst b = 2;\n// after second hunk")
+    write(repo, "src/z.ts", "const z = 1;\n// in next file\n")
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert [(row["path"], row["line"]) for row in rows] == [
+        ("src/a.ts", 3), ("src/a.ts", 5), ("src/z.ts", 2)
+    ], rows
+
+
+@case("an incomplete hunk exits 2 instead of returning a partial scan")
+def _():
+    repo = policy_repo("truncated-patch", {"src/a.ts": "old\n"})
+    write(repo, "src/a.ts", "// first\n// second\n")
+    done = run_instrumented(repo, '''
+run = subprocess.run
+def truncate_patch(command, *args, **kwargs):
+    result = run(command, *args, **kwargs)
+    if command[0] == "git" and "--patch" in command:
+        marker = b"+// second\\n"
+        assert result.stdout.endswith(marker), result.stdout
+        result.stdout = result.stdout[:-len(marker)]
+    return result
+subprocess.run = truncate_patch
+''', "report", "--json")
+    assert (done.returncode, done.stdout) == (2, ""), (done.returncode, done.stdout, done.stderr)
+    assert "Git diff" in done.stderr, done.stderr
+
+
+@case("a pure rename adds no finding and an edited rename adds only its new line")
+def _():
+    kept = "// existing\n" + "\n".join(f"const item{i} = {i};" for i in range(20)) + "\n"
+    repo = policy_repo("renames", {"src/pure.ts": kept, "src/edit.ts": kept.replace("item", "other")})
+    git(repo, "config", "diff.renames", "false")
+    git(repo, "mv", "src/pure.ts", "src/pure renamed.ts")
+    git(repo, "mv", "src/edit.ts", 'src/edited "rename".ts')
+    write(repo, 'src/edited "rename".ts', kept.replace("item", "other") + "// added\n")
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert [(row["path"], row["line"], row["excerpt"]) for row in rows] == [
+        ('src/edited "rename".ts', 22, "// added")
+    ], rows
+
+
+@case("only regular files are scanned and symlinks and gitlinks are listed")
+def _():
+    repo = policy_repo("file-types", {"src/regular-to-link.ts": "old\n", "src/deleted.ts": "// deleted\n"})
+    outside = ROOT / "outside.ts"
+    outside.write_text("// outside contents\n")
+    (repo / "src/link-to-regular.ts").symlink_to(outside)
+    (repo / "src/tracked-link.ts").symlink_to("old-target")
+    commit(repo, "add symlinks")
+    git(repo, "branch", "-f", "main", "HEAD")
+    (repo / "src/deleted.ts").unlink()
+    for name in ("regular-to-link.ts", "tracked-link.ts"):
+        path = repo / "src" / name
+        path.unlink()
+        path.symlink_to(outside)
+    (repo / "src/untracked-link.ts").symlink_to(outside)
+    (repo / "src/link-to-regular.ts").unlink()
+    write(repo, "src/link-to-regular.ts", "// new regular contents\n")
+    target = git(repo, "rev-parse", "HEAD").strip()
+    git(repo, "update-index", "--add", "--cacheinfo", f"160000,{target},src/module.ts")
+    (repo / "src/module.ts").mkdir()
+    done = run_cli(repo, "report", "--json")
+    rows = json_findings(done)
+    assert [(row["path"], row["excerpt"]) for row in rows] == [
+        ("src/link-to-regular.ts", "// new regular contents")
+    ], rows
+    assert set(done.stderr.splitlines()) == {
+        "skip: symlink 'src/regular-to-link.ts'", "skip: symlink 'src/tracked-link.ts'",
+        "skip: symlink 'src/untracked-link.ts'", "skip: gitlink 'src/module.ts'",
+    }, done.stderr
+
+
+@case("an untracked enumeration failure cannot produce a clean report")
+def _():
+    repo = policy_repo("enumeration-error", {}, contract_with(mode="enforce"))
+    for exit_code in (2, 0):
+        done = run_instrumented(repo, f'''
+run = subprocess.run
+def fail_untracked(command, *args, **kwargs):
+    if command[:2] == ["git", "ls-files"]:
+        return subprocess.CompletedProcess(command, {exit_code}, b"", b"warning: could not open directory")
+    return run(command, *args, **kwargs)
+subprocess.run = fail_untracked
+''', "report", "--json")
+        assert (done.returncode, done.stdout) == (2, ""), (exit_code, done.returncode, done.stdout, done.stderr)
+        assert "untracked" in done.stderr, done.stderr
+
+
+@case("lstat or read failures in tracked and untracked files exit 2 after scope filtering")
+def _():
+    repo = policy_repo("read-error", {"src/tracked.ts": "const old = 0;\n"}, contract_with(mode="enforce"))
+    write(repo, "src/tracked.ts", "// tracked\n")
+    write(repo, "src/untracked.ts", "// untracked\n")
+    write(repo, "tools/untracked.ts", "// out of scope\n")
+    for api in ("lstat", "open"):
+        for path in ("src/tracked.ts", "src/untracked.ts", "tools/untracked.ts"):
+            done = run_instrumented(repo, f'''
+import builtins
+blocked = os.fsencode(os.path.abspath({path!r}))
+def guard(original):
+    def deny(path, *args, **kwargs):
+        if not isinstance(path, int) and os.fsencode(path) == blocked:
+            raise PermissionError("fixture denied access")
+        return original(path, *args, **kwargs)
+    return deny
+os.{api} = guard(os.{api})
+if {api!r} == "open":
+    builtins.open = guard(builtins.open)
+''', "report", "--json")
+            if path.startswith("src/"):
+                assert (done.returncode, done.stdout) == (2, ""), (api, path, done.returncode, done.stdout, done.stderr)
+                assert path in done.stderr, done.stderr
+            else:
+                assert len(json_findings(done, exit_code=1)) == 2, done.stdout
+
+
+@case("Git output stays in bytes and only in-scope source is decoded")
+def _():
+    repo = policy_repo("source-encoding", {"src/a.ts": "old\n", "tools/bytes.txt": "old\n"})
+    (repo / "tools/bytes.txt").write_bytes(b"outside \xff\n")
+    (repo / "src/a.ts").write_bytes(b"// inside \xff\n")
+    # Some filesystems reject undecodable path bytes. Where supported, cover them too.
+    raw_path = b"src/name-\xff.ts"
+    try:
+        with open(os.fsencode(repo) + b"/" + raw_path, "wb") as handle:
+            handle.write(b"// raw name\n")
+    except OSError as error:
+        if error.errno not in (errno.EINVAL, errno.EILSEQ, errno.EPERM):
+            raise
+        expected = []
+    else:
+        expected = [(os.fsdecode(raw_path), "// raw name")]
+        git(repo, "add", "--", os.fsdecode(raw_path))
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert [(row["path"], row["excerpt"]) for row in rows] == [("src/a.ts", "// inside �"), *expected], rows
+
+
+@case("source line numbers use LF and strip CR only in CRLF")
+def _():
+    contract = CONTRACT + '[[code_policy.rule]]\nid = "end-anchor"\nkind = "pattern"\npattern = "END$"\n'
+    repo = policy_repo("physical-lines", {"src/a.ts": "old\n"}, contract)
+    (repo / "src/a.ts").write_bytes('const s = "a\u2028b // still quoted";\r\n// second\r\nEND\r\n'.encode())
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert [(row["rule"], row["line"], row["excerpt"]) for row in rows] == [
+        ("no-new-comment", 2, "// second"), ("end-anchor", 3, "END")
+    ], rows
+
+
+@case("the comment scan is line-local and only standalone directives are allowed")
 def _():
     repo = fixture_repo("kinds")
     kinds = (FIXTURE / "kinds.tsx").read_text()
@@ -205,8 +412,57 @@ def _():
     def line_of(snippet: str) -> int:
         return next(i for i, l in enumerate(kinds.splitlines(), 1) if snippet in l)
 
-    assert rows == [("no-new-comment", "src/kinds.tsx", line_of("a jsx comment counts")),
-                    ("no-new-comment", "src/kinds.tsx", line_of("this one is a real finding"))], rows
+    expected = ("SPDX-License-Identifier", "ordinary leading comment", "/**", "ordinary note", "a jsx comment counts",
+                "this one is a real finding", "inline directive", "unfinished //",
+                "template continuation //", "// inside regex")
+    assert rows == sorted(("no-new-comment", "src/kinds.tsx", line_of(snippet)) for snippet in expected), rows
+    write(repo, "src/shebang.ts", "#!/usr/bin/env -S tool https://example.invalid\n")
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert [(row["line"], row["rule"]) for row in rows if row["path"] == "src/shebang.ts"] == [
+        (1, "no-new-comment")
+    ], rows
+
+
+@case("an unfinished block at EOF has no extra physical line")
+def _():
+    pattern_only = (CONTRACT.split("[[code_policy.rule]]", 1)[0]
+                    + '[[code_policy.rule]]\nid = "block-start"\nkind = "pattern"\npattern = "unfinished"\n')
+    repo = policy_repo("unterminated-block", {"src/a.ts": "const x = 0;\n"}, pattern_only)
+    for ending in ("", "\n"):
+        write(repo, "src/a.ts", f"const x = 0;\n/* unfinished{ending}")
+        rows = json_findings(run_cli(repo, "report", "--json"))
+        assert [(row["rule"], row["line"], row["excerpt"]) for row in rows] == [
+            ("block-start", 2, "/* unfinished")
+        ], rows
+
+
+@case("the default directive includes standalone JSX and an empty list disables it")
+def _():
+    repo = policy_repo("directives", {})
+    write(repo, "src/a.tsx", "// prettier-ignore\n/* prettier-ignore */\n  {/* prettier-ignore */}\n"
+                             "doWork(); // prettier-ignore\n/* prettier-ignore */ /* more */\n")
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert [row["line"] for row in rows] == [4, 5], rows
+    write(repo, ".plumb/project.toml", contract_with("allow_directives = []"))
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert [row["line"] for row in rows] == [1, 2, 3, 4, 5], rows
+
+
+@case("the documented effect pattern has the same boundaries when the checker runs it")
+def _():
+    docs = (PLUGIN / "docs" / "project-contract.md").read_text()
+    example = re.search(r"(?m)^pattern = ('[^']+')$", docs)
+    assert example, "the contract example must include an effect pattern"
+    examples = re.findall(r"(?m)^\| `([^`]+)`[^|]*\| (yes|no) \|$", docs)
+    assert examples, "the effect pattern must have runnable examples"
+    contract = ('schema = 1\n[code_policy]\n[[code_policy.rule]]\nid = "no-new-effect"\n'
+                f'kind = "pattern"\npattern = {example[1]}\n')
+    repo = policy_repo("documented-pattern", {}, contract)
+    write(repo, "src/examples.ts", "\n".join(line for line, _ in examples) + "\n")
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert [(row["line"], row["excerpt"]) for row in rows] == [
+        (number, line) for number, (line, matched) in enumerate(examples, 1) if matched == "yes"
+    ], rows
 
 
 @case("--json carries the outcome, the findings and a count per rule")
@@ -260,7 +516,8 @@ def _():
     commit(clean, "head")
     done = run_cli(clean, "report")
     assert done.returncode == 0, (done.returncode, done.stdout, done.stderr)
-    assert done.stdout.strip() == "clean", done.stdout
+    assert done.stdout.splitlines() == ["clean", "summary: no-new-comment 0",
+                                       "summary: no-new-effect 0", "summary: no-new-suppression 0"], done.stdout
 
 
 @case("an exceptions row suppresses its rule in that path, and only there")
@@ -268,12 +525,13 @@ def _():
     repo = fixture_repo("exceptions")
     write(repo, ".plumb/project.toml", contract_with('exceptions = ".plumb/code-policy-exceptions.tsv"'))
     shutil.copyfile(FIXTURE / "exceptions" / "exceptions.tsv", repo / ".plumb" / "code-policy-exceptions.tsv")
+    write(repo, "src/other.ts", "const value = 0;\n// still report this path\n")
     done = run_cli(repo, "report")
     assert done.returncode == 0, (done.returncode, done.stderr)
     rows = findings_of(done.stdout)
-    assert not any(rule == "no-new-comment" for rule, _, _ in rows), rows
-    assert {rule for rule, _, _ in rows} == {"no-new-effect", "no-new-suppression"}, rows
-    assert counts_of(done.stdout) == {"no-new-comment": 0, "no-new-effect": 2, "no-new-suppression": 1}
+    expected = {row for row in EXPECTED if row[0] != "no-new-comment"}
+    assert rows == expected | {("no-new-comment", "src/other.ts", 2)}, rows
+    assert counts_of(done.stdout) == {"no-new-comment": 1, "no-new-effect": 2, "no-new-suppression": 1}
 
 
 @case("an exceptions row without a reason is invalid, and so is a configured file that is not there")
@@ -283,10 +541,12 @@ def _():
     done = run_cli(repo, "report")
     assert done.returncode == 2 and done.stdout == "", (done.returncode, done.stdout)
     assert "does not exist" in done.stderr, done.stderr
-    shutil.copyfile(FIXTURE / "exceptions" / "empty-reason.tsv", repo / ".plumb" / "code-policy-exceptions.tsv")
-    done = run_cli(repo, "report")
-    assert done.returncode == 2, (done.returncode, done.stdout)
-    assert "non-empty reason" in done.stderr, done.stderr
+    empty_reason = (FIXTURE / "exceptions" / "empty-reason.tsv").read_text()
+    for row in (empty_reason, "\n\t\t\n"):
+        write(repo, ".plumb/code-policy-exceptions.tsv", row)
+        done = run_cli(repo, "report")
+        assert (done.returncode, done.stdout) == (2, ""), (repr(row), done.returncode, done.stdout)
+        assert "non-empty reason" in done.stderr, done.stderr
 
 
 @case("no contract, no [code_policy] table and mode = off are a visible skip with exit 0")
@@ -308,22 +568,27 @@ def _():
 
 @case("the default base is origin/HEAD's target when a remote is configured, else main")
 def _():
-    upstream = make_repo("upstream")
-    write(upstream, ".plumb/project.toml", CONTRACT)
-    apply_tree(upstream, "base")
-    commit(upstream, "base")
-    COUNTER[0] += 1
-    bare = ROOT / f"origin-bare-{COUNTER[0]}.git"
-    subprocess.run(["git", "clone", "-q", "--bare", str(upstream), str(bare)],
-                   check=True, capture_output=True)
-    work = ROOT / f"origin-work-{COUNTER[0]}"
-    subprocess.run(["git", "clone", "-q", str(bare), str(work)], check=True, capture_output=True)
-    git(work, "checkout", "-q", "-b", "feature")
-    apply_tree(work, "head")
-    commit(work, "head")
-    done = run_cli(work, "report")           # no --base
-    assert done.returncode == 0, (done.returncode, done.stderr)
-    assert findings_of(done.stdout) == EXPECTED, findings_of(done.stdout)
+    work = make_repo("remote-default")
+    write(work, ".plumb/project.toml", CONTRACT)
+    write(work, "src/a.ts", "const a = 1;\n")
+    commit(work, "base")
+    git(work, "checkout", "-q", "-b", "release")
+    write(work, "src/a.ts", "const a = 1;\n// on the remote default branch\n")
+    commit(work, "release")
+    git(work, "update-ref", "refs/remotes/origin/release", "HEAD")
+    git(work, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/release")
+    git(work, "checkout", "-q", "main")
+    write(work, "src/main-only.ts", "const main = 1;\n")
+    commit(work, "advance main independently")
+    git(work, "checkout", "-q", "-b", "feature", "release")
+    write(work, "src/feature.ts", "// on feature\n")
+    commit(work, "feature")
+    for flags, expected in (((), {("no-new-comment", "src/feature.ts", 1)}),
+                            (("--base", "main"), {("no-new-comment", "src/feature.ts", 1),
+                                                  ("no-new-comment", "src/a.ts", 2)})):
+        done = run_cli(work, "report", *flags)
+        assert done.returncode == 0, (done.returncode, done.stderr)
+        assert findings_of(done.stdout) == expected, (flags, done.stdout)
 
     alone = make_repo("trunk")
     write(alone, ".plumb/project.toml", CONTRACT)
@@ -333,6 +598,27 @@ def _():
     done = run_cli(alone, "report")
     assert done.returncode == 2, (done.returncode, done.stdout)
     assert "cannot resolve the base main" in done.stderr, done.stderr
+
+
+@case("--worktree scans proposed changes with the trusted contract and exceptions")
+def _():
+    trusted = make_repo("trusted")
+    exceptions = ".plumb/code-policy-exceptions.tsv"
+    write(trusted, ".plumb/project.toml", contract_with(f'exceptions = "{exceptions}"', mode="enforce"))
+    write(trusted, exceptions, "no-new-comment\tsrc/allowed.ts\ttrusted reason\n")
+    commit(trusted, "trusted base")
+    proposed = ROOT / "proposed"
+    git(ROOT, "clone", "-q", "--local", str(trusted), str(proposed))
+    git(proposed, "checkout", "-q", "-b", "feature")
+    write(proposed, ".plumb/project.toml", contract_with(mode="off"))
+    write(proposed, exceptions, "no-new-comment\tsrc/blocked.ts\tproposed exception\n")
+    write(proposed, "src/blocked.ts", "// blocked\n")
+    write(proposed, "src/allowed.ts", "// allowed\n")
+    commit(proposed, "proposed policy changes")
+    assert run_cli(proposed, "report").stdout.strip() == "skip: code_policy mode is off"
+    rows = json_findings(run_cli(trusted, "report", "--base", "main", "--worktree", str(proposed), "--json"), 1)
+    assert rows == [{"rule": "no-new-comment", "path": "src/blocked.ts", "line": 1,
+                     "excerpt": "// blocked"}], rows
 
 
 # ---------------------------------------------------------------- the contract
@@ -353,6 +639,14 @@ def _():
     done = project_cli(repo, "code_policy.mode")
     assert done.returncode == 0, (done.returncode, done.stderr)
     assert "warning: unknown key code_policy.nonsense" in done.stderr, done.stderr
+
+
+@case("a misspelled rules key warns through both readers without a rule array")
+def _():
+    repo = policy_repo("misspelled-rules", {}, 'schema = 1\n[code_policy]\nrules = []\n')
+    for done in (project_cli(repo, "code_policy"), run_cli(repo, "report")):
+        assert done.returncode == 0, (done.returncode, done.stderr)
+        assert "warning: unknown key code_policy.rules" in done.stderr, done.stderr
 
 
 @case("a broken [code_policy] is invalid for both readers, and the message names the key")
@@ -385,19 +679,31 @@ def _():
         assert report.stderr.startswith("plumb-code-policy: invalid:"), (key, report.stderr)
 
 
+@case("duplicate IDs and regex overflow are invalid for both readers")
+def _():
+    repo = policy_repo("invalid-rules", {})
+    for suffix, key, reason in (
+        ('id = "no-new-comment"\nkind = "comment"\n', "code_policy.rule[3].id", "no-new-comment"),
+        ('id = "overflow"\nkind = "pattern"\npattern = "a{5000000000}"\n',
+         "code_policy.rule[3].pattern", "regular expression"),
+    ):
+        write(repo, ".plumb/project.toml", CONTRACT + "\n[[code_policy.rule]]\n" + suffix)
+        for done in (project_cli(repo, "code_policy.mode"), run_cli(repo, "report")):
+            assert (done.returncode, done.stdout) == (2, ""), (key, done.returncode, done.stdout, done.stderr)
+            assert key in done.stderr and reason in done.stderr, (key, done.stderr)
+
+
 @case("a Python without tomllib is unavailable (exit 3), with or without a contract")
 def _():
     repo = make_repo("unavailable")
-    write(repo, ".plumb/project.toml", CONTRACT)
-    done = subprocess.run(
-        ["python3", "-c",
-         'import os, runpy, sys\n'
-         'sys.modules["tomllib"] = None\n'
-         'sys.argv = ["plumb-code-policy", "report"]\n'
-         f'runpy.run_path({str(SCRIPT)!r}, run_name="__main__")'],
-        cwd=str(repo), capture_output=True, text=True, timeout=60)
-    assert done.returncode == 3, (done.returncode, done.stdout, done.stderr)
-    assert "tomllib" in done.stderr, done.stderr
+    for has_contract in (True, False):
+        if has_contract:
+            write(repo, ".plumb/project.toml", CONTRACT)
+        else:
+            (repo / ".plumb/project.toml").unlink()
+        done = run_instrumented(repo, 'sys.modules["tomllib"] = None', "report")
+        assert (done.returncode, done.stdout) == (3, ""), (has_contract, done.returncode, done.stdout, done.stderr)
+        assert "tomllib" in done.stderr, done.stderr
 
 
 @case("usage errors and an unreachable contract fail with exit 2")
