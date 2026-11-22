@@ -225,3 +225,12 @@ gets lost among 34 `__pycache__` directories.
 - If the scale being run passes "does not finish in one session", the brief template and the
   liveness section of `orchestrate` are worth coming back for — those two sections only, not
   the ritual
+
+## Cockpit mode
+
+Cockpit draws three ideas from pstack (MIT, Lauren Tan). Each lane starts with a shared
+`worker.md`, per-role model lines become personal launch-command keys, and Attack the Premise
+becomes a hold when two attempts on the same work report the same cause.
+
+The upstream worker prose, model assignments, launch machinery, and orchestration playbooks
+remain outside cockpit. The commands implement routing and acceptance from plumb's own event log.

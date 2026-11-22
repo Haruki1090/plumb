@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+"""Resolve a cockpit route without changing repository state."""
+
+from cockpit import answer, history, parser, resolve, run_cli, run_root, subcommand, transaction
+
+
+def main(args):
+    root = run_root(args.repo)
+    with transaction(root):
+        route = resolve(args.kind, history(root))
+    launch = route["command"] or "main session does it"
+    return answer(args, "ok", route, message=f'{route["role"]} ({route["why"]}): {launch}')
+
+
+if __name__ == "__main__":
+    cli = parser("plumb-route", __doc__)
+    commands = cli.add_subparsers(required=True)
+    subcommand(commands, "resolve", "Resolve the command for a work kind").add_argument("kind")
+    raise SystemExit(run_cli(cli, main))

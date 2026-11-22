@@ -1419,6 +1419,10 @@ else
   printf '  %-4s %s\n' "--" "python3 not on PATH, statusline-cost assertions skipped"
 fi
 
+python3 -B "$root/scripts/test-cockpit.py" \
+  && ok "cockpit routing, briefs, guards and event replay" \
+  || ng "cockpit routing, briefs, guards and event replay"
+
 if command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-efficiency.py" \
     && ok "runtime usage and quality/cost gate regression suite" \

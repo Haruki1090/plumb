@@ -1,0 +1,296 @@
+#!/usr/bin/env python3
+"""Record cockpit lane events and apply their guard rules."""
+
+from __future__ import annotations
+
+from hashlib import sha256
+from pathlib import Path
+
+from cockpit import (
+    ROUTE_LOG, Invalid, answer, append, demote_after, git, git_path, history, identifier,
+    kind_info, new_event, next_timestamp, nonempty, parser, read_events, replace_text, resolve, run_cli,
+    run_directory, run_root, subcommand, transaction,
+)
+from cockpit_brief import one_line, problems, read_spec, render
+from cockpit_state import outside_range, replay, rows, tsv
+
+
+def hold(args, reasons, **data):
+    message = "hold: " + "; ".join(f"{code}: {detail}" for code, detail in reasons.items())
+    return answer(args, "hold", {**data, "reasons": reasons}, codes=reasons, status=1, message=message)
+
+
+def revision(repo, ref):
+    return git(repo, "rev-parse", "--verify", "--end-of-options", f"{ref}^{{commit}}").decode("ascii").strip()
+
+
+def checkout_for(repo, worktree):
+    repo = Path(repo or Path.cwd())
+    directory = git_path(worktree or repo, "--show-toplevel")
+    common_args = ("--path-format=absolute", "--git-common-dir")
+    if git_path(repo, *common_args) != git_path(directory, *common_args):
+        raise Invalid("the lane worktree must belong to this repository")
+    return directory
+
+
+def collected(repo, lane):
+    attempt = lane.current
+    directory = checkout_for(repo, Path(attempt.worktree))
+    head = revision(directory, "HEAD")
+    diff = ("diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", "--ignore-submodules=none")
+    tracked = git(directory, *diff, "--") + git(directory, *diff, "--cached", "--")
+    untracked = git(directory, "ls-files", "--others", "--exclude-standard", "-z", "--")
+    changed = git(directory, *diff, f"{attempt.base}..{head}", "--") + tracked + untracked
+    paths = sorted({path.decode("utf-8", "surrogateescape") for path in changed.split(b"\0") if path})
+    if revision(directory, "HEAD") != head:
+        raise Invalid("the lane worktree head moved during collection")
+    data = {"attempt": len(lane.attempts), "head": head, "changed_paths": paths, "report": lane.report,
+            "uncommitted": bool(tracked or untracked)}
+    if outside_range(paths, lane.allow_paths):
+        # The scope violation and its single route miss are the same durable write.
+        data.update(verdict="miss", reason="out-of-range", demote_after=demote_after())
+    return data
+
+
+def active_locks(states):
+    locks = {}
+    for run, (lanes, _) in states.items():
+        for lane in lanes.values():
+            if lane.state in ("running", "collected"):
+                for name in lane.locks:
+                    locks[name] = (run, lane.name)
+    return locks
+
+
+def sync_locks(root, states):
+    # Directory locks are a projection. Replaying before a start also catches an interrupted write
+    # that committed its event before creating the directory.
+    directory = root / "locks"
+    directory.mkdir(exist_ok=True)
+    active = active_locks(states)
+    declared = {name for lanes, _ in states.values() for lane in lanes.values() for name in lane.locks}
+    for name in sorted(declared):
+        path = directory / identifier(name, "lock name")
+        if name in active:
+            path.mkdir(exist_ok=True)
+        elif path.is_dir():
+            path.rmdir()
+
+
+def sync_view(directory, lanes, works):
+    path = directory / "lanes.tsv"
+    view = tsv(rows(lanes, works))
+    if not path.exists() or path.read_text(encoding="utf-8") != view:
+        replace_text(path, view)
+
+
+def apply(args, logs, states, lanes, works, directory):
+    action = args.action
+    name = identifier(args.lane, "lane")
+    if action == "add":
+        if name in lanes:
+            raise Invalid(f"lane already exists: {name}")
+        work_id = one_line(args.work, "work")
+        spec = read_spec(args.spec)
+        brief = directory / "briefs" / f"{name}.md"
+        brief_text = render(name, spec)
+        if not brief.is_file() or brief.read_bytes() != brief_text.encode("utf-8"):
+            raise Invalid("generate the lane brief from this spec before adding the lane")
+        data = {"kind": spec["kind"], "brief": str(brief), "allow_paths": spec["allow_paths"],
+                "acceptance": [item["id"] for item in spec["acceptance"]], "locks": spec["locks"],
+                "report": spec["report_path"], "brief_digest": sha256(brief_text.encode("utf-8")).hexdigest()}
+        return "lane-added", work_id, data
+
+    if name not in lanes:
+        raise Invalid(f"unknown lane: {name}")
+    lane = lanes[name]
+    if lane.closed:
+        raise Invalid(f"lane is closed: {name}")
+    work = works[lane.work]
+    reasons = work.reasons()
+    attempt_number = len(lane.attempts)
+    attempt = lane.current
+    if action in ("start", "close") and reasons:
+        return hold(args, reasons)
+    if action == "start":
+        if lane.state not in ("ready", "reviewed"):
+            raise Invalid("finish the current attempt before starting another")
+        brief_bytes = Path(lane.brief).read_bytes()
+        if lane.brief_digest and sha256(brief_bytes).hexdigest() != lane.brief_digest:
+            return hold(args, {"stale-brief": "regenerate the brief from the registered spec"})
+        issues = problems(brief_bytes.decode("utf-8"))
+        if issues:
+            return hold(args, {"invalid-brief": "; ".join(issues)})
+        occupied = active_locks(states)
+        conflicts = [f"{lock} ({'/'.join(occupied[lock])})" for lock in lane.locks if lock in occupied]
+        if conflicts:
+            return hold(args, {"resource-busy": ", ".join(conflicts)})
+        route = resolve(lane.kind, logs)
+        worktree = checkout_for(args.repo, args.worktree)
+        base = revision(worktree, args.base or (attempt.base if attempt else "HEAD"))
+        if attempt and base != attempt.base:
+            raise Invalid("a retry must keep the lane's original base")
+        data = {
+            "attempt": attempt_number + 1, "role": route["role"], "command": route["command"],
+            "worktree": str(worktree), "base": base,
+        }
+        if work.last_resume:
+            data["resume"] = work.last_resume
+        return "attempt-started", lane.work, data
+    if action == "collect":
+        if lane.state != "running":
+            raise Invalid("collect requires a running attempt")
+        return "attempt-collected", lane.work, collected(args.repo, lane)
+    if action == "resume":
+        fields = {key: (getattr(args, key) or "").strip() for key in ("diagnosis", "hypothesis", "test")}
+        if not reasons:
+            raise Invalid("resume requires a held lane")
+        if any(not value or value == work.last_resume.get(key) for key, value in fields.items()):
+            return hold(args, {"stale-brief": "give a new diagnosis, hypothesis and distinguishing test"})
+        if work.unclassified:
+            return hold(args, {"unclassified": reasons["unclassified"]})
+        return "resumed", lane.work, fields
+    if not attempt or not attempt.head:
+        raise Invalid(f"{action} requires a collected attempt")
+    if action == "observe":
+        if args.ac not in lane.acceptance:
+            raise Invalid(f"unknown acceptance item: {args.ac}")
+        data = {"attempt": attempt_number, "ac": args.ac, "result": args.result}
+        if args.cause is not None:
+            data["cause"] = nonempty(args.cause, "cause")
+        return "observed", lane.work, data
+    if action == "adjudicate":
+        if attempt.verdict:
+            raise Invalid(f"attempt already adjudicated: {attempt.verdict}")
+        return "adjudicated", lane.work, {"attempt": attempt_number, "verdict": args.verdict,
+                                         "reason": nonempty(args.reason, "reason"), "demote_after": demote_after()}
+    if attempt.outside:
+        return hold(args, {"out-of-range": "the collected attempt exceeded its registered range"})
+    missing = [ac for ac in lane.acceptance if attempt.observations.get(ac) != "pass"]
+    if missing:
+        return hold(args, {"acceptance-incomplete": "missing passes on the collected head: " + ", ".join(missing)},
+                    missing=missing)
+    if attempt.uncommitted:
+        return hold(args, {"uncommitted-edits": "collection found uncommitted paths"})
+    if not attempt.verdict:
+        raise Invalid("close requires an adjudicated attempt")
+    if args.head is not None and args.head != attempt.head:
+        raise Invalid("closing head must match the collected commit")
+    return "closed", lane.work, {"head": attempt.head}
+
+
+def write(args, root):
+    action = args.action
+    reset = action == "route-reset"
+    directory = None if reset else run_directory(root, args.run)
+    if directory and action != "init" and not (directory / "events.jsonl").is_file():
+        raise Invalid(f"run is not initialized: {args.run}")
+    if getattr(args, "event_id", None) is not None:
+        args.event_id = nonempty(args.event_id, "event id")
+    with transaction(root, write=True):
+        logs = history(root)
+        if reset:
+            kind_info(args.kind)
+            log = logs.get(ROUTE_LOG, [])
+            if any(event["event_id"] == args.event_id for event in log):
+                return answer(args, "duplicate", message="event already recorded")
+            event = new_event(log, next_timestamp(logs), "route-reset", "", "", {"kind": args.kind}, args.event_id)
+            append(root / ROUTE_LOG, event)
+            return answer(args, "ok", event, message=f"route reset: {args.kind}")
+
+        if action == "init":
+            directory.mkdir(exist_ok=True)
+            (directory / "briefs").mkdir(exist_ok=True)
+            (directory / "events.jsonl").touch(exist_ok=True)
+            sync_view(directory, *replay(logs.get(args.run, [])))
+            (root / "locks").mkdir(exist_ok=True)
+            return answer(args, "ok", {"run": args.run, "path": str(directory)}, message=str(directory))
+
+        states = {run: replay(events) for run, events in logs.items() if run != ROUTE_LOG}
+        events = logs[args.run]
+        lanes, works = states[args.run]
+        if any(event["event_id"] == args.event_id for event in events):
+            sync_view(directory, lanes, works)
+            sync_locks(root, states)
+            return answer(args, "duplicate", message="event already recorded")
+        result = apply(args, logs, states, lanes, works, directory)
+        if isinstance(result, int):
+            return result
+        event_type, work, data = result
+        event = new_event(events, next_timestamp(logs), event_type, args.lane, work, data, args.event_id)
+        states[args.run] = replay([*events, event])
+        append(directory / "events.jsonl", event)
+        sync_view(directory, *states[args.run])
+        sync_locks(root, states)
+        if event_type == "attempt-collected" and data.get("verdict") == "miss":
+            outside = outside_range(data["changed_paths"], lanes[args.lane].allow_paths)
+            return hold(args, {"out-of-range": "paths outside the brief: " + ", ".join(outside)}, event=event)
+        message = f'{event_type}: {args.lane}'
+        if event_type == "attempt-started":
+            message += f' (attempt {data["attempt"]}, {data["role"]}): {data["command"] or "main session does it"}'
+        return answer(args, "ok", event, message=message)
+
+
+def main(args):
+    if args.action == "init":
+        run_directory(Path(), args.run)
+    elif args.action == "route-reset":
+        kind_info(args.kind)
+    root = run_root(args.repo)
+    if args.action not in ("guard", "status"):
+        return write(args, root)
+    directory = run_directory(root, args.run)
+    with transaction(root):
+        if not (directory / "events.jsonl").is_file():
+            raise Invalid(f"run is not initialized: {args.run}")
+        lanes, works = replay(read_events(directory / "events.jsonl"))
+    if args.action == "status":
+        view = rows(lanes, works)
+        return answer(args, "ok", {"lanes": view}, message=tsv(view).rstrip("\n"))
+    if args.lane not in lanes:
+        raise Invalid(f"unknown lane: {args.lane}")
+    lane = lanes[args.lane]
+    if lane.closed:
+        return hold(args, {"closed": "the lane is closed"})
+    reasons = works[lane.work].reasons()
+    return hold(args, reasons) if reasons else answer(args, "allow")
+
+
+def command_line():
+    cli = parser("plumb-lane", __doc__)
+    commands = cli.add_subparsers(dest="action", required=True)
+    command_help = {
+        "init": "Initialize a run", "add": "Add a lane from its brief specification",
+        "start": "Apply the guard and record the next attempt", "collect": "Collect the current worktree head and paths",
+        "observe": "Record one acceptance result", "adjudicate": "Record a route verdict",
+        "guard": "Read the work's current hold reasons", "resume": "Resume with a new diagnosis, hypothesis and test",
+        "close": "Close a lane whose acceptance items passed", "status": "Print the derived lane table",
+        "route-reset": "Clear the repository's route demotion for a kind",
+    }
+    options = {name: subcommand(commands, name, help_text) for name, help_text in command_help.items()}
+    for name, command in options.items():
+        if name != "route-reset":
+            command.add_argument("--run", required=True)
+        if name not in ("init", "status", "route-reset"):
+            command.add_argument("--lane", required=True)
+        if name not in ("init", "guard", "status"):
+            command.add_argument("--event-id", help="idempotency key for this event (default: generated)")
+    options["add"].add_argument("--work", required=True, help="stable work identifier, shared by lanes on the same work")
+    options["add"].add_argument("--spec", required=True, type=Path)
+    options["start"].add_argument("--worktree", type=Path, help="lane worktree (default: repository checkout)")
+    options["start"].add_argument("--base", help="starting revision (default: HEAD on first start, then the original base)")
+    options["observe"].add_argument("--ac", required=True, help="acceptance item identifier")
+    options["observe"].add_argument("--result", choices=("pass", "fail"), required=True)
+    options["observe"].add_argument("--cause", help="stable cause identifier for a failed observation")
+    options["adjudicate"].add_argument("--verdict", choices=("hit", "miss", "inconclusive"), required=True)
+    options["adjudicate"].add_argument("--reason", required=True)
+    options["resume"].add_argument("--diagnosis")
+    options["resume"].add_argument("--hypothesis")
+    options["resume"].add_argument("--test", help="distinguishing test")
+    options["close"].add_argument("--head", help="require this collected commit")
+    options["route-reset"].add_argument("kind")
+    return cli
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_cli(command_line(), main))

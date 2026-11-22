@@ -1,0 +1,6 @@
+role.bulk = "worker-cli --tier x" # preferred
+role.implementer = worker-cli --tier y
+role.draft = worker-cli --tier z
+route.test-transcription = bulk
+route.test-transcription.baseline = implementer
+cockpit.demote_after = 2

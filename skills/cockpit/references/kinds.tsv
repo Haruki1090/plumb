@@ -1,0 +1,11 @@
+kind	meaning	default_role	default_baseline	read_only
+test-transcription	Turn existing cases into executable tests	bulk	implementer	false
+mechanical-edit	Apply a fixed edit across a bounded set of files	bulk	implementer	false
+doc-format	Format supplied text without changing its substance	bulk	implementer	false
+review-preview	Look for issues before the final review	draft	judge	true
+repro-draft	Draft a small reproduction of a reported failure	draft	implementer	false
+small-draft	Draft a bounded implementation	draft	implementer	false
+stateful-implementation	Implement changes with state or lifecycle invariants	complex	implementer	false
+architecture	Resolve a framed design question	architect	judge	true
+diagnosis	Identify the cause of observed behavior	complex	judge	true
+final-review	Independently check the finished work	final	judge	true
