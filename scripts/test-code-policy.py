@@ -248,6 +248,87 @@ def _():
     }, rows
 
 
+@case("scope globs match bracket classes within a segment")
+def _():
+    contract = CONTRACT.replace('["src/**/*.ts", "src/**/*.tsx"]', '["src/**/*.[jt]sx"]')
+    contract = contract.replace("**/*.test.*", "**/skip.test.[jt]sx")
+    repo = policy_repo("glob-class", {}, contract)
+    for name in ("src/keep.jsx", "src/nested/keep.tsx", "src/skip.test.jsx",
+                 "src/nested/skip.test.tsx", "src/other.test.tsx", "src/out.css"):
+        write(repo, name, "// added\n")
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert [row["path"] for row in rows] == [
+        "src/keep.jsx", "src/nested/keep.tsx", "src/other.test.tsx",
+    ], rows
+
+
+@case("terminal globstar spans paths with newline bytes")
+def _():
+    contract = CONTRACT.replace('["src/**/*.ts", "src/**/*.tsx"]', '["src/**"]')
+    names = ("src/line\nbreak.ts", "src/sub\ndir/regular.ts", "src2/out.ts")
+    repo = policy_repo("globstar", {name: "old\n" for name in names}, contract)
+    for name in names:
+        write(repo, name, "// added\n")
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert [row["path"] for row in rows] == list(names[:2]), rows
+
+
+@case("binary and -diff attributes still produce tracked findings")
+def _():
+    repo = policy_repo("binary-attributes", {"src/a.ts": "old\n"}, contract_with(mode="enforce"))
+    write(repo, "src/a.ts", "const data = 1;\n// added\n")
+    for attrs in ("*.ts binary", "*.ts -diff"):
+        write(repo, ".gitattributes", attrs + "\n")
+        rows = json_findings(run_cli(repo, "report", "--json"), exit_code=1)
+        assert rows == [{"rule": "no-new-comment", "path": "src/a.ts", "line": 2,
+                         "excerpt": "// added"}], (attrs, rows)
+
+
+@case("tracked rules use patch text after Git converts the worktree encoding")
+def _():
+    repo = policy_repo("worktree-encoding", {})
+    write(repo, ".gitattributes", "*.ts working-tree-encoding=UTF-16LE\n")
+    (repo / "src").mkdir()
+    path = repo / "src" / "a.ts"
+    path.write_bytes("const old = 0;\n".encode("utf-16-le"))
+    commit(repo, "encoded base")
+    git(repo, "branch", "-f", "main", "HEAD")
+    path.write_bytes("const old = 0;\n// added\n".encode("utf-16-le"))
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert rows == [{"rule": "no-new-comment", "path": "src/a.ts", "line": 2,
+                     "excerpt": "// added"}], rows
+
+
+@case("tracked findings retain the patch line and excerpt after a worktree edit")
+def _():
+    repo = policy_repo("patch-snapshot", {"src/a.ts": "old\n"})
+    write(repo, "src/a.ts", "const a = 1;\n// captured\n")
+    done = run_instrumented(repo, '''
+from pathlib import Path
+run = subprocess.run
+path = Path("src/a.ts")
+def edit_after_diff(command, *args, **kwargs):
+    result = run(command, *args, **kwargs)
+    if command[0] == "git" and "--patch" in command:
+        path.write_text("// shifted\\nconst a = 1;\\n// captured\\n")
+    return result
+subprocess.run = edit_after_diff
+
+import builtins
+def guard(original):
+    def reject_reopen(source, *args, **kwargs):
+        if not isinstance(source, int) and Path(os.fsdecode(source)).resolve() == path.resolve():
+            raise AssertionError("tracked source was opened a second time")
+        return original(source, *args, **kwargs)
+    return reject_reopen
+os.open = guard(os.open)
+builtins.open = guard(builtins.open)
+''', "report", "--json")
+    rows = json_findings(done)
+    assert rows == [{"rule": "no-new-comment", "path": "src/a.ts", "line": 2,
+                     "excerpt": "// captured"}], rows
+
+
 @case("hunk counts keep header-like source lines in their own file")
 def _():
     repo = policy_repo("hunk-counts", {"src/a.ts": "const a = 1;\nold\nconst b = 2;\n",
@@ -313,6 +394,9 @@ def _():
     target = git(repo, "rev-parse", "HEAD").strip()
     git(repo, "update-index", "--add", "--cacheinfo", f"160000,{target},src/module.ts")
     (repo / "src/module.ts").mkdir()
+    embedded = repo / "src/embedded.ts"
+    embedded.mkdir()
+    git(embedded, "init", "-q")
     done = run_cli(repo, "report", "--json")
     rows = json_findings(done)
     assert [(row["path"], row["excerpt"]) for row in rows] == [
@@ -321,23 +405,92 @@ def _():
     assert set(done.stderr.splitlines()) == {
         "skip: symlink 'src/regular-to-link.ts'", "skip: symlink 'src/tracked-link.ts'",
         "skip: symlink 'src/untracked-link.ts'", "skip: gitlink 'src/module.ts'",
+        "skip: non-regular file 'src/embedded.ts'",
     }, done.stderr
+
+
+@case("enforce reports non-regular paths and honors rule-specific exceptions")
+def _():
+    exceptions = ".plumb/code-policy-exceptions.tsv"
+    contract = contract_with(f'exceptions = "{exceptions}"', mode="enforce")
+    repo = policy_repo("non-regular", {"src/normal.ts": "old\n"}, contract)
+    (repo / "src" / "link.ts").symlink_to("normal.ts")
+    git(repo, "add", "src/link.ts")
+    git(repo, "config", "core.symlinks", "false")
+    (repo / "src" / "link.ts").unlink()
+    write(repo, "src/link.ts", "normal.ts")
+    (repo / "src" / "new-link.ts").symlink_to("normal.ts")
+    (repo / "tools").mkdir()
+    (repo / "tools" / "out.ts").symlink_to("outside")
+    target = git(repo, "rev-parse", "HEAD").strip()
+    git(repo, "update-index", "--add", "--cacheinfo", f"160000,{target},src/module.ts")
+    (repo / "src" / "module.ts").mkdir()
+    embedded = repo / "src" / "embedded.ts"
+    embedded.mkdir()
+    git(embedded, "init", "-q")
+    write(repo, exceptions, "no-new-comment\tsrc/link.ts\tDifferent rule\n")
+
+    done = run_cli(repo, "report", "--json")
+    rows = json_findings(done, exit_code=1)
+    expected = [
+        {"rule": "non-regular", "path": f"src/{name}", "line": 0, "excerpt": kind}
+        for name, kind in (("embedded.ts", "non-regular file"), ("link.ts", "symlink"),
+                           ("module.ts", "gitlink"), ("new-link.ts", "symlink"))
+    ]
+    assert rows == expected, rows
+    assert json.loads(done.stdout)["counts"] == {rule: 0 for rule in EXPECTED_COUNTS} | {"non-regular": 4}
+    assert done.stderr == "", done.stderr
+    text_report = run_cli(repo, "report")
+    assert text_report.returncode == 1, (text_report.returncode, text_report.stdout, text_report.stderr)
+    assert "summary: non-regular 4" in text_report.stdout.splitlines(), text_report.stdout
+
+    write(repo, exceptions, "non-regular\tsrc/link.ts\tApproved symlink\n")
+    rows = json_findings(run_cli(repo, "report", "--json"), exit_code=1)
+    assert rows == [row for row in expected if row["path"] != "src/link.ts"], rows
+
+    write(repo, exceptions, "".join(f"non-regular\t{row['path']}\tApproved path\n" for row in expected))
+    assert json_findings(run_cli(repo, "report", "--json")) == []
+
+
+@case("benign stderr stays visible while Git output is scanned")
+def _():
+    repo = policy_repo("git-diagnostics", {"src/a.ts": "old\n"}, contract_with(mode="enforce"))
+    write(repo, "src/a.ts", "// added\n")
+    done = run_instrumented(repo, '''
+run = subprocess.run
+def with_warning(command, *args, **kwargs):
+    result = run(command, *args, **kwargs)
+    if command[0] == "git":
+        result.stderr += f"warning: benign diagnostic from {command[1]}\\n".encode()
+    return result
+subprocess.run = with_warning
+''', "report", "--json")
+    rows = json_findings(done, exit_code=1)
+    assert rows == [{"rule": "no-new-comment", "path": "src/a.ts", "line": 1, "excerpt": "// added"}], rows
+    assert done.stderr.splitlines() == [
+        f"warning: benign diagnostic from {command}"
+        for command in ("rev-parse", "rev-parse", "merge-base", "-c", "ls-files")
+    ], done.stderr
 
 
 @case("an untracked enumeration failure cannot produce a clean report")
 def _():
     repo = policy_repo("enumeration-error", {}, contract_with(mode="enforce"))
-    for exit_code in (2, 0):
+    for exit_code, diagnostic in ((2, b"warning: could not open directory"),
+                                  (0, b"warning: could not open directory"),
+                                  (0, b"warning: unable to access 'src/.gitignore'"),
+                                  (128, b"fatal: fixture enumeration failed")):
         done = run_instrumented(repo, f'''
 run = subprocess.run
 def fail_untracked(command, *args, **kwargs):
     if command[:2] == ["git", "ls-files"]:
-        return subprocess.CompletedProcess(command, {exit_code}, b"", b"warning: could not open directory")
+        return subprocess.CompletedProcess(command, {exit_code}, b"", {diagnostic!r})
     return run(command, *args, **kwargs)
 subprocess.run = fail_untracked
 ''', "report", "--json")
         assert (done.returncode, done.stdout) == (2, ""), (exit_code, done.returncode, done.stdout, done.stderr)
         assert "untracked" in done.stderr, done.stderr
+        assert diagnostic.decode() in done.stderr, done.stderr
 
 
 @case("lstat or read failures in tracked and untracked files exit 2 after scope filtering")
@@ -351,6 +504,12 @@ def _():
             done = run_instrumented(repo, f'''
 import builtins
 blocked = os.fsencode(os.path.abspath({path!r}))
+run = subprocess.run
+def deny_git_read(command, *args, **kwargs):
+    if {api!r} == "open" and {path!r} == "src/tracked.ts" and command[0] == "git" and "--patch" in command:
+        return subprocess.CompletedProcess(command, 128, b"", b"error: src/tracked.ts: fixture denied access")
+    return run(command, *args, **kwargs)
+subprocess.run = deny_git_read
 def guard(original):
     def deny(path, *args, **kwargs):
         if not isinstance(path, int) and os.fsencode(path) == blocked:
@@ -397,6 +556,20 @@ def _():
     rows = json_findings(run_cli(repo, "report", "--json"))
     assert [(row["rule"], row["line"], row["excerpt"]) for row in rows] == [
         ("no-new-comment", 2, "// second"), ("end-anchor", 3, "END")
+    ], rows
+
+
+@case("tracked and untracked source retain a bare CR at end of file and scan after NUL")
+def _():
+    contract = CONTRACT + '[[code_policy.rule]]\nid = "bare-cr"\nkind = "pattern"\npattern = \'END\\r$\'\n'
+    repo = policy_repo("bare-cr", {"src/tracked.ts": "old\n"}, contract)
+    for path in ("src/tracked.ts", "src/untracked.ts"):
+        (repo / path).write_bytes(b'const data = "\0";\n// second\nEND\r')
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert [(row["path"], row["rule"], row["line"]) for row in rows] == [
+        (path, rule, line)
+        for path in ("src/tracked.ts", "src/untracked.ts")
+        for rule, line in (("no-new-comment", 2), ("bare-cr", 3))
     ], rows
 
 
@@ -649,6 +822,23 @@ def _():
         assert "warning: unknown key code_policy.rules" in done.stderr, done.stderr
 
 
+@case("both readers preserve line separators in the checkout path")
+def _():
+    for leaf in ("checkout\nsegment", "checkout\u2028segment", "checkout\rsegment", "checkout-ending-lf\n"):
+        repo = policy_repo("contract-path", {})
+        repo = repo.rename(ROOT / leaf)
+        write(repo, "src/a.ts", "// added\n")
+        done = project_cli(repo, "code_policy.mode")
+        assert (done.returncode, done.stdout) == (0, "report\n"), (leaf, done.returncode, done.stdout, done.stderr)
+        rows = json_findings(run_cli(repo, "report", "--json"))
+        assert [row["path"] for row in rows] == ["src/a.ts"], (leaf, rows)
+
+        write(repo, ".plumb/project.toml", 'schema = 1\n[code_policy]\nmode = "loud"\n')
+        for done in (project_cli(repo, "code_policy.mode"), run_cli(repo, "report", "--json")):
+            assert (done.returncode, done.stdout) == (2, ""), (leaf, done.returncode, done.stdout, done.stderr)
+            assert "code_policy.mode" in done.stderr, (leaf, done.stderr)
+
+
 @case("a broken [code_policy] is invalid for both readers, and the message names the key")
 def _():
     repo = make_repo("invalid")
@@ -679,11 +869,12 @@ def _():
         assert report.stderr.startswith("plumb-code-policy: invalid:"), (key, report.stderr)
 
 
-@case("duplicate IDs and regex overflow are invalid for both readers")
+@case("duplicate or reserved IDs and regex overflow are invalid for both readers")
 def _():
     repo = policy_repo("invalid-rules", {})
     for suffix, key, reason in (
         ('id = "no-new-comment"\nkind = "comment"\n', "code_policy.rule[3].id", "no-new-comment"),
+        ('id = "non-regular"\nkind = "comment"\n', "code_policy.rule[3].id", "reserved"),
         ('id = "overflow"\nkind = "pattern"\npattern = "a{5000000000}"\n',
          "code_policy.rule[3].pattern", "regular expression"),
     ):

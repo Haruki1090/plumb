@@ -13,12 +13,14 @@ import re
 import stat
 import subprocess
 import sys
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 FILE_LABEL = ".plumb/project.toml"
 DEFAULT_DIRECTIVES = ("prettier-ignore",)
 MOVE_NOTE = "note: moved lines count as added (known limitation)"
+NO_NEWLINE = rb"\ No newline at end of file"
 HUNK_HEADER = re.compile(rb"@@ -[0-9]+(?:,([0-9]+))? \+([0-9]+)(?:,([0-9]+))? @@(?: |$)")
 # Match complete same-line literals before looking for comment markers.
 COMMENT_TOKENS = re.compile(r"""'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`|(//|/\*)""")
@@ -36,8 +38,9 @@ each finding on a line the change newly introduces. Run it inside the policy che
   --worktree DIR     scan DIR using the current checkout's contract and exceptions
 
 Plain output is one line per finding, `rule<TAB>path:line<TAB>excerpt` (the excerpt is at most
-80 characters), then `summary: <rule> <count>` for every rule. A report with findings ends with
-a note that moved lines count as added. A clean change prints `clean` before its summaries.
+80 characters), then `summary: <rule> <count>` for every configured rule and for
+`non-regular` when that finding occurs. A report with findings ends with a note that moved
+lines count as added. A clean change prints `clean` before its summaries.
 A contract without [code_policy] prints `skip: no code_policy`.
 
 The comment kind scans each added line for // or /* outside a quote or backtick pair that
@@ -96,36 +99,35 @@ class ScanError(Exception):
     """An incomplete scan must exit with an error."""
 
 
-def checked_git(args: list, cwd, message: str) -> bytes:
-    result = subprocess.run(["git", *args], cwd=cwd, capture_output=True)
-    # Git can warn about an unreadable path while returning success.
-    if result.returncode or result.stderr:
+def checked_git(args: list, cwd, message: str, allowed=(0,)) -> subprocess.CompletedProcess:
+    result = subprocess.run(["git", *args], cwd=cwd, capture_output=True,
+                            env={**os.environ, "LC_ALL": "C"})
+    if result.stderr:
+        sys.stderr.buffer.write(result.stderr)
+        if not result.stderr.endswith(b"\n"):
+            sys.stderr.buffer.write(b"\n")
+    incomplete = any(line.startswith((b"warning: could not open", b"warning: unable to access"))
+                     for line in result.stderr.split(b"\n"))
+    if result.returncode not in allowed or incomplete:
         raise ScanError(message)
-    return result.stdout
+    return result
 
 
-def glob_regex(pattern: str) -> re.Pattern:
-    """A gitwildmatch-shaped glob: a `**` segment spans whole directories (zero or more), `*`
-    and `?` stay inside one segment, and the pattern matches from the repository top level."""
-    parts = pattern.split("/")
-    chunks = []
-    for index, part in enumerate(parts):
-        if part == "**":
-            body = ".*" if index == len(parts) - 1 else "(?:[^/]+/)*"
-            chunks.append(("/" + body) if index > 0 and parts[index - 1] != "**" else body)
-            continue
-        if index > 0 and parts[index - 1] != "**":
-            chunks.append("/")
-        piece = []
-        for char in part:
-            if char == "*":
-                piece.append("[^/]*")
-            elif char == "?":
-                piece.append("[^/]")
-            else:
-                piece.append(re.escape(char))
-        chunks.append("".join(piece))
-    return re.compile("\\A" + "".join(chunks) + "\\Z")
+def glob_matches(parts: list, pattern: list) -> bool:
+    """Match a repository-relative path, with fnmatch syntax within each segment."""
+    ends = {0}
+    for index, segment in enumerate(pattern):
+        if not ends:
+            return False
+        if segment == "**":
+            start = min(ends)
+            if index == len(pattern) - 1:
+                return start < len(parts)
+            ends = set(range(start, len(parts) + 1))
+        else:
+            ends = {end + 1 for end in ends
+                    if end < len(parts) and fnmatchcase(parts[end], segment)}
+    return len(parts) in ends
 
 
 def added_from_diff(output: bytes) -> tuple:
@@ -135,9 +137,9 @@ def added_from_diff(output: bytes) -> tuple:
     the deletion of the old type, followed by the addition of the new type.
     """
     added = {}
-    gitlinks = set()
+    file_types = {}
     if not output:
-        return added, gitlinks
+        return added, file_types
 
     raw, separator, patch = output.partition(b"\0\0")
     if not separator:
@@ -154,17 +156,20 @@ def added_from_diff(output: bytes) -> tuple:
         if not path:
             raise ScanError("missing destination path in Git diff")
         if mode != b"000000":
-            added[path] = set()
+            added[path] = {}
         if mode == b"160000":
-            gitlinks.add(path)
+            file_types[path] = "gitlink"
+        elif mode == b"120000":
+            file_types[path] = "symlink"
         if status == b"T":
             sections.append(None)
         sections.append(path if path in added else None)
 
     section = -1
     old_left = new_left = line_number = 0
-    for line in patch.split(b"\n"):
-        if line == rb"\ No newline at end of file":
+    patch_lines = patch.split(b"\n")
+    for index, line in enumerate(patch_lines):
+        if line == NO_NEWLINE:
             continue
         if old_left or new_left:
             prefix = line[:1]
@@ -172,7 +177,12 @@ def added_from_diff(output: bytes) -> tuple:
                 old_left -= 1
             if prefix in (b"+", b" "):
                 if prefix == b"+" and sections[section] is not None:
-                    added[sections[section]].add(line_number)
+                    payload = line[1:]
+                    # Git adds a display LF to unterminated source lines.
+                    if (payload.endswith(b"\r") and index + 1 < len(patch_lines)
+                            and patch_lines[index + 1] != NO_NEWLINE):
+                        payload = payload[:-1]
+                    added[sections[section]][line_number] = payload
                 new_left -= 1
                 line_number += 1
             if prefix not in (b"-", b"+", b" ") or old_left < 0 or new_left < 0:
@@ -192,29 +202,27 @@ def added_from_diff(output: bytes) -> tuple:
 
     if old_left or new_left or section + 1 != len(sections):
         raise ScanError("incomplete Git diff patch")
-    return added, gitlinks
+    return added, file_types
 
 
 def introduced(base, top: bytes) -> tuple:
-    """Each changed path maps to its added line numbers. None means the whole untracked file."""
+    """Each changed path maps to its added lines. None means the whole untracked file."""
     if base is None:
-        head = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "origin/HEAD"],
-                              cwd=top, capture_output=True)
-        if head.returncode not in (0, 1) or head.stderr:
-            raise ScanError("cannot resolve origin/HEAD (try --base <ref>)")
+        head = checked_git(["rev-parse", "--verify", "--quiet", "origin/HEAD"], top,
+                           "cannot resolve origin/HEAD (try --base <ref>)", allowed=(0, 1))
         base = "origin/HEAD" if head.returncode == 0 else "main"
     merge_base = checked_git(["merge-base", "--", base, "HEAD"], top,
-                             f"cannot resolve the base {base} against HEAD (try --base <ref>)").strip()
+                             f"cannot resolve the base {base} against HEAD (try --base <ref>)").stdout.strip()
     diff = checked_git(
         ["-c", "core.safecrlf=false", "diff", "-U0", "--find-renames", "--raw", "-z", "--patch",
-         "--no-color", "--no-ext-diff", "--no-textconv", "--no-relative",
+         "--text", "--no-color", "--no-ext-diff", "--no-textconv", "--no-relative",
          "--inter-hunk-context=0",
          "--ignore-submodules=none", "--submodule=short", merge_base, "--"],
         top, f"cannot read the change against {os.fsdecode(merge_base)}",
-    )
-    added, gitlinks = added_from_diff(diff)
+    ).stdout
+    added, file_types = added_from_diff(diff)
     untracked = checked_git(["ls-files", "--others", "--exclude-standard", "-z"], top,
-                            "cannot enumerate untracked files")
+                            "cannot enumerate untracked files").stdout
     if untracked:
         if not untracked.endswith(b"\0"):
             raise ScanError("incomplete Git untracked path list")
@@ -222,7 +230,7 @@ def introduced(base, top: bytes) -> tuple:
             if not path:
                 raise ScanError("empty path in Git untracked path list")
             added.setdefault(path.rstrip(b"/"), None)
-    return added, gitlinks
+    return added, file_types
 
 
 def directive_body(line: str):
@@ -277,39 +285,41 @@ def read_source(full: bytes, info: os.stat_result) -> bytes:
         return handle.read()
 
 
-def scan(rules: list, added: dict, gitlinks: set, top: bytes, scoped,
-         exceptions: set, only_paths, directives: tuple) -> list:
+def scan(rules: list, added: dict, file_types: dict, top: bytes, scoped,
+         exceptions: set, only_paths, directives: tuple, mode: str) -> list:
     """Report findings in path, line, and contract rule order."""
     found = []
     for path in sorted(added):
         name = os.fsdecode(path)
         if not scoped(name) or (only_paths is not None and name not in only_paths):
             continue
-        if path in gitlinks:
-            print(f"skip: gitlink {name!r}", file=sys.stderr)
-            continue
         full = os.path.join(top, path)
-        numbers = added[path]
+        kind = file_types.get(path)
+        tracked_lines = added[path]
         try:
-            info = os.lstat(full)
-            if not stat.S_ISREG(info.st_mode):
-                kind = "symlink" if stat.S_ISLNK(info.st_mode) else "non-regular file"
-                print(f"skip: {kind} {name!r}", file=sys.stderr)
+            if kind != "gitlink":
+                info = os.lstat(full)
+                if not stat.S_ISREG(info.st_mode):
+                    kind = "symlink" if stat.S_ISLNK(info.st_mode) else "non-regular file"
+            if kind:
+                if mode == "enforce":
+                    if ("non-regular", name) not in exceptions:
+                        found.append({"rule": "non-regular", "path": name, "line": 0, "excerpt": kind})
+                else:
+                    print(f"skip: {kind} {name!r}", file=sys.stderr)
                 continue
-            if numbers is not None and not numbers:
-                continue
-            raw = read_source(full, info)
+            if tracked_lines is None:
+                raw = read_source(full, info)
+                parts = raw.replace(b"\r\n", b"\n").split(b"\n")
+                if parts[-1] == b"":
+                    parts.pop()
+                lines = enumerate(parts, 1)
+            else:
+                lines = sorted(tracked_lines.items())
         except (OSError, ScanError) as error:
             raise ScanError(f"cannot read source {name!r}: {error}") from error
-        if b"\0" in raw[:8192]:
-            continue
-        lines = raw.replace(b"\r\n", b"\n").decode("utf-8-sig", errors="replace").split("\n")
-        if lines[-1] == "":
-            lines.pop()
-        if numbers is not None and max(numbers) > len(lines):
-            raise ScanError(f"source {name!r} has fewer lines than its Git diff")
-        for number in range(1, len(lines) + 1) if numbers is None else sorted(numbers):
-            line = lines[number - 1]
+        for number, payload in lines:
+            line = payload.decode("utf-8-sig" if number == 1 else "utf-8", errors="replace")
             for rule in rules:
                 if (rule["id"], name) in exceptions:
                     continue
@@ -382,13 +392,14 @@ def main(argv: list) -> int:
             rule["regex"] = re.compile(item["pattern"])
         rules.append(rule)
     directives = tuple(table.get("allow_directives", DEFAULT_DIRECTIVES))
-    include = [glob_regex(pattern) for pattern in (table.get("include") or [])]
-    exclude = [glob_regex(pattern) for pattern in (table.get("exclude") or [])]
+    include = [pattern.split("/") for pattern in table.get("include", [])]
+    exclude = [pattern.split("/") for pattern in table.get("exclude", [])]
 
     def scoped(path_: str) -> bool:
-        if include and not any(regex.match(path_) for regex in include):
+        parts = path_.split("/")
+        if include and not any(glob_matches(parts, pattern) for pattern in include):
             return False
-        return not any(regex.match(path_) for regex in exclude)
+        return not any(glob_matches(parts, pattern) for pattern in exclude)
 
     only_paths = None
     if args["paths_from"] is not None:
@@ -407,14 +418,15 @@ def main(argv: list) -> int:
 
     try:
         top = checked_git(["rev-parse", "--show-toplevel"], args["worktree"],
-                          "cannot find the worktree top level").removesuffix(b"\n")
-        added, gitlinks = introduced(args["base"], top)
-        findings = scan(rules, added, gitlinks, top, scoped, exceptions, only_paths, directives)
+                          "cannot find the worktree top level").stdout.removesuffix(b"\n")
+        added, file_types = introduced(args["base"], top)
+        findings = scan(rules, added, file_types, top, scoped, exceptions, only_paths, directives, mode)
     except (ScanError, OSError) as error:
         return invalid_exit(str(error))
     counts = {rule["id"]: 0 for rule in rules}
     for finding in findings:
-        counts[finding["rule"]] += 1
+        rule_id = finding["rule"]
+        counts[rule_id] = counts.get(rule_id, 0) + 1
     outcome = "findings" if findings else "clean"
 
     if args["json"]:
@@ -424,8 +436,8 @@ def main(argv: list) -> int:
             print("clean")
         for finding in findings:
             print(f"{finding['rule']}\t{finding['path']}:{finding['line']}\t{finding['excerpt']}")
-        for rule in rules:
-            print(f"summary: {rule['id']} {counts[rule['id']]}")
+        for rule_id, count in counts.items():
+            print(f"summary: {rule_id} {count}")
         if findings:
             print(MOVE_NOTE)
 

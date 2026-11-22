@@ -163,6 +163,8 @@ def check_code_policy(table: dict, warnings: list) -> None:
             raise Invalid(f"{here}.id", "missing")
         if not isinstance(item["id"], str) or not item["id"]:
             raise Invalid(f"{here}.id", "expected a non-empty string")
+        if item["id"] == "non-regular":
+            raise Invalid(f"{here}.id", "non-regular is reserved for the built-in file type finding")
         if item["id"] in seen:
             raise Invalid(f"{here}.id", f"duplicate rule id {item['id']!r}")
         seen.add(item["id"])
@@ -261,12 +263,13 @@ def render(value: object) -> str:
 def contract_path() -> tuple:
     """(path, error). The path is asked from plumb-path; it is never rebuilt here."""
     try:
-        done = subprocess.run(["bash", str(PATH_SCRIPT), "project"], capture_output=True, text=True)
+        done = subprocess.run(["bash", str(PATH_SCRIPT), "project"], capture_output=True)
     except OSError:
         return None, "cannot run plumb-path"
-    if done.returncode != 0 or not done.stdout.strip():
+    path = done.stdout[:-1] if done.stdout.endswith(b"\n") else done.stdout
+    if done.returncode != 0 or not path:
         return None, "cannot locate the contract (run inside a git repository)"
-    return done.stdout.strip().splitlines()[0], None
+    return os.fsdecode(path), None
 
 
 def syntax_reason(error: Exception) -> str:

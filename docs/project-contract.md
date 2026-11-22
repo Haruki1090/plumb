@@ -121,10 +121,10 @@ pattern = '\buse(Layout)?Effect\s*\('
 | `verify.thresholds` | string | A path to the thresholds file the comparator reads ([verify protocol](verify-protocol.md)) |
 | `failure.extra_codes` | array of tables `{code, mechanism}` | Product-specific failure codes |
 | `code_policy.mode` | string: `off`, `report` or `enforce` (default `report`) | Whether findings fail the run (`enforce` exits 1) or are reported only (`report` exits 0) |
-| `code_policy.include`, `code_policy.exclude` | arrays of strings | Globs from the repository top level (`**` spans directories); an absent `include` means every path |
+| `code_policy.include`, `code_policy.exclude` | arrays of strings | Globs from the repository top level. An absent or empty `include` means every path |
 | `code_policy.exceptions` | string | A TSV file, one `rule<TAB>path<TAB>reason` row per exception; a row suppresses that rule in that path, and a row whose reason is empty is `invalid` |
 | `code_policy.allow_directives` | array of strings (default `["prettier-ignore"]`) | Standalone comments containing exactly one listed directive are allowed. An empty array disables the allowance |
-| `code_policy.rule` | array of tables `{id, kind}` | IDs must be unique. Use `kind = "comment"` or `kind = "pattern"` with a valid regular expression in `pattern` |
+| `code_policy.rule` | array of tables `{id, kind}` | IDs must be unique. The checker reserves `non-regular`. Use `kind = "comment"` or `kind = "pattern"` with a valid regular expression in `pattern` |
 
 `plumb-doctor` prints a `contract` block: `none` when the file is absent, `ok` or `--` for each key,
 one `NG` line naming the key and reason when the file is invalid, an `NG` for a verify command
@@ -274,17 +274,27 @@ plumb-code-policy report [--base REF] [--json] [--paths-from FILE] [--worktree D
 - The checker requires Python 3.11 or later. A Python without `tomllib` exits 3 even when the
   contract file is absent. The checker uses the same contract validation as `plumb-project`.
   An absent file or table prints `skip: no code_policy` and exits 0. `mode = "off"` also skips.
-- **Introduced** means a line added in one `git diff -U0 --find-renames <merge-base>` against
-  the scanned worktree. Every line in an in-scope untracked file is introduced. `--base`
-  defaults to `origin/HEAD`'s target, else `main`. Git path records preserve the original
-  filename bytes. The scan uses LF line boundaries, normalizes CRLF, and decodes source as
-  UTF-8 with replacement for malformed bytes.
-- The checker scans regular files and lists skipped in-scope symlinks and gitlinks on stderr.
-  A Git enumeration or source read failure exits 2.
+- **Introduced** means a line added in one `git diff -U0 --find-renames --text <merge-base>`
+  against the scanned worktree. The checker uses added lines from the patch and reads the
+  full contents of in-scope untracked regular files. `--base` defaults to `origin/HEAD`'s
+  target, else `main`. Git path records preserve the original filename bytes. The scan uses
+  LF line boundaries, normalizes CRLF, and decodes source as UTF-8 with replacement for
+  malformed bytes.
+- Scope globs match repository-relative paths. Within a path segment, use `*`, `?`,
+  and character classes such as `[jt]` or `[!a-z]`. A `**` segment spans directories and
+  matches names containing line breaks. For example, `**/skip.test.[jt]sx` matches
+  `skip.test.jsx` and `skip.test.tsx` at any depth.
+- In report mode, the checker lists in-scope symlinks, gitlinks, and other non-regular paths
+  from Git's change and untracked lists on stderr. Enforce mode reports each such path at
+  line 0 with rule ID `non-regular`. An exceptions row for that rule and path suppresses
+  the finding.
+- The checker forwards Git diagnostics to stderr. A failed Git command, a diagnostic
+  indicating incomplete enumeration, or a source read failure exits 2.
 - Plain output is one line per finding, `rule<TAB>path:line<TAB>excerpt` (the excerpt is at most
-  80 characters), then `summary: <rule> <count>` for every rule. A report with findings ends
-  with a note that moved lines count as added. A clean change prints `clean` before its zero-count
-  summaries. With `--json` the answer is
+  80 characters), then `summary: <rule> <count>` for every configured rule and for
+  `non-regular` when that finding occurs. A report with findings ends with a note that
+  moved lines count as added. A clean change prints `clean` before its zero-count summaries.
+  With `--json` the answer is
   `{"schema":1,"outcome":"clean|findings|skip","findings":[…],"counts":{…}}`.
 - Exit: `mode = "report"` → 0 even with findings; `mode = "enforce"` → 1 with findings;
   `invalid` → 2; `unavailable` → 3.
