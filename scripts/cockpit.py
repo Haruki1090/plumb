@@ -13,7 +13,6 @@ import sys
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from shutil import which
 from tempfile import NamedTemporaryFile
 from uuid import uuid4
 
@@ -21,6 +20,8 @@ ROOT = Path(__file__).resolve().parent.parent
 REFERENCES = ROOT / "skills/cockpit/references"
 ROUTE_LOG = "route-events.jsonl"
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+STORE_NAME = re.compile(r"[a-z0-9_-]+", re.ASCII)
+ATTEMPT_EVENTS = {"attempt-started", "attempt-collected", "observed", "adjudicated", "abandoned"}
 
 
 class Invalid(ValueError):
@@ -62,7 +63,7 @@ def run_cli(cli, handler):
     try:
         args = cli.parse_args()
         return handler(args)
-    except (OSError, ValueError, Unavailable) as exc:
+    except Exception as exc:
         status = 3 if isinstance(exc, Unavailable) else 2
         outcome = "unavailable" if status == 3 else "invalid"
         args = argparse.Namespace(json="--json" in sys.argv[1:])
@@ -72,6 +73,18 @@ def run_cli(cli, handler):
 def identifier(value, field):
     if not isinstance(value, str) or not IDENTIFIER.fullmatch(value):
         raise Invalid(f"{field} must start with a letter or digit and contain only letters, digits, '.', '_' or '-'")
+    return value
+
+
+def store_name(value, field):
+    if not isinstance(value, str) or not value.isascii() or not STORE_NAME.fullmatch(value.lower()):
+        raise Invalid(f"{field} must contain only ASCII letters, digits, '_' or '-'")
+    return value.lower()
+
+
+def positive_int(value, field):
+    if type(value) is not int or value < 1:
+        raise Invalid(f"{field} must be a positive integer")
     return value
 
 
@@ -92,7 +105,7 @@ def invoke(*args, cwd=None):
     return result.stdout
 
 
-def git(repo, *args):
+def git(repo, *args, allowed=(0,)):
     # A lane path takes precedence over Git environment overrides inherited from the caller.
     env = {key: value for key, value in os.environ.items() if key not in {
         "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_PREFIX",
@@ -104,7 +117,7 @@ def git(repo, *args):
                                 capture_output=True)
     except FileNotFoundError as exc:
         raise Unavailable("git is unavailable") from exc
-    if result.returncode:
+    if result.returncode not in allowed:
         raise Invalid(os.fsdecode(result.stderr).strip() or f"git exited {result.returncode}")
     return result.stdout
 
@@ -117,19 +130,17 @@ def run_root(repo):
     checkout = Path(repo or Path.cwd()).resolve(strict=True)
     if not checkout.is_dir():
         raise Invalid("repository path must be a directory")
-    if repo is None and not os.environ.get("PLUMB_ROOT") and which("git") is None:
-        raise Unavailable("git is unavailable")
-    # With no --repo, let plumb-path discover the checkout or handle an absolute PLUMB_ROOT.
-    options = []
-    if repo is not None:
-        options.append(str(git_path(checkout, "--show-toplevel")))
-    path = invoke("bash", str(ROOT / "scripts/plumb-path.sh"), "run", *options, cwd=checkout)
-    return Path(os.fsdecode(path.rstrip(b"\n"))) / "cockpit"
+    common = git_path(checkout, "--path-format=absolute", "--git-common-dir").stat()
+    # Git lists the primary checkout first, including when its Git directory lives elsewhere.
+    primary = git(checkout, "worktree", "list", "--porcelain", "-z").split(b"\0", 1)[0]
+    primary = os.fsdecode(primary.removeprefix(b"worktree "))
+    path = invoke("bash", str(ROOT / "scripts/plumb-path.sh"), "run", primary, cwd=checkout)
+    return Path(os.fsdecode(path.rstrip(b"\n"))).resolve() / "cockpit" / f"{common.st_dev:x}-{common.st_ino:x}"
 
 
 def run_directory(root, name):
-    identifier(name, "run")
-    if name.casefold() in ("locks", ROUTE_LOG):
+    name = store_name(name, "run")
+    if name == "locks":
         raise Invalid(f"the run name {name!r} is reserved")
     return root / name
 
@@ -153,24 +164,41 @@ def kind_info(kind):
 def read_events(path):
     events = []
     seen = set()
-    with path.open(encoding="utf-8") as handle:
+    with path.open("rb") as handle:
+        offset = 0
         for line_number, line in enumerate(handle, 1):
+            if not line.endswith(b"\n"):
+                with path.open("r+b") as output:
+                    output.truncate(offset)
+                    os.fsync(output.fileno())
+                print(f"recovered incomplete event in {path} at line {line_number}", file=sys.stderr)
+                break
+            offset += len(line)
+            event_id = None
             try:
-                if not line.endswith("\n"):
-                    raise ValueError
-                event = json.loads(line)
+                event = json.loads(line.decode("utf-8"))
                 event_id = event["event_id"]
                 if not isinstance(event_id, str) or not event_id or not isinstance(event["data"], dict):
                     raise ValueError
                 if any(not isinstance(event[key], str) for key in ("type", "lane", "work", "ts")):
                     raise ValueError
+                positive_int(event["seq"], "seq")
+                data = event["data"]
+                if event["type"] in ATTEMPT_EVENTS:
+                    positive_int(data["attempt"], "attempt")
+                if "demote_after" in data:
+                    positive_int(data["demote_after"], "demote_after")
+                if "rev" in data:
+                    store_name(data["rev"], "rev")
                 if event_id in seen:
                     continue
-                if type(event["seq"]) is not int or event["seq"] != len(events) + 1:
-                    raise ValueError
+                if event["seq"] != len(events) + 1:
+                    raise Invalid("unexpected seq")
                 event_time(event)
             except (KeyError, TypeError, ValueError) as exc:
-                raise Invalid(f"invalid event in {path} at line {line_number}") from exc
+                detail = f" ({event_id})" if event_id is not None else ""
+                field = f": {exc}" if isinstance(exc, Invalid) else ""
+                raise Invalid(f"invalid event{detail} in {path} at line {line_number}{field}") from exc
             events.append(event)
             seen.add(event_id)
     return events
@@ -231,15 +259,16 @@ def transaction(root, *, write=False):
     lock = root / ".writer-lock"
     if write:
         root.mkdir(parents=True, exist_ok=True)
-    elif not lock.exists():
-        yield
+    elif not root.exists():
+        yield False
         return
-    with lock.open("ab" if write else "rb") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX if write else fcntl.LOCK_SH)
+    with lock.open("ab") as handle:
+        # Readers can repair an interrupted append, so they also hold the exclusive lock.
+        fcntl.flock(handle, fcntl.LOCK_EX)
         if write and not (root / ".gitignore").exists():
             # Keep generated files out of collection even in a fresh checkout.
             replace_text(root / ".gitignore", "*\n")
-        yield
+        yield True
 
 
 def demote_after():
@@ -266,19 +295,19 @@ def resolve(kind, logs):
 
     decisions = []
     for run, events in logs.items():
-        lanes, roles = {}, {}
+        lanes, routes = {}, {}
         for event in events:
             data = event["data"]
             lane = event["lane"]
-            if event["type"] == "lane-added":
+            if event["type"] in ("lane-added", "brief-registered"):
                 lanes[lane] = read_field(event, "kind", str)
             elif event["type"] == "attempt-started":
-                roles[lane, read_field(event, "attempt", int)] = read_field(event, "role", str)
+                routes[lane, data["attempt"]] = (lanes[lane], read_field(event, "role", str))
             elif event["type"] == "route-reset" and read_field(event, "kind", str) == kind:
                 decisions.append((event_time(event), run, event["seq"], "reset", threshold))
-            elif event["type"] in ("adjudicated", "attempt-collected") and lanes.get(lane) == kind:
+            elif event["type"] in ("adjudicated", "attempt-collected", "abandoned"):
                 verdict = data.get("verdict")
-                if verdict and roles.get((lane, read_field(event, "attempt", int))) == preferred:
+                if verdict and routes.get((lane, data["attempt"])) == (kind, preferred):
                     decisions.append((event_time(event), run, event["seq"], verdict, data.get("demote_after", threshold)))
 
     misses = 0

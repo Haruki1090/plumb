@@ -6,11 +6,21 @@ import json
 import re
 from pathlib import Path, PurePosixPath
 
-from cockpit import Invalid, REFERENCES, identifier, kind_info, nonempty
+from cockpit import Invalid, REFERENCES, identifier, kind_info, nonempty, store_name
 
 SECTIONS = ("Kind", "Range", "Material", "Do not touch", "Acceptance", "Report path",
             "Forbidden means", "Return")
 ACCEPTANCE_ITEM = re.compile(r"- \[([A-Za-z0-9][A-Za-z0-9_.-]*)\] .+")
+WORKER_INSTRUCTION = re.compile(r"Read (.+) before anything else\.")
+
+
+def brief_path(directory, lane, rev):
+    suffix = f".{rev}" if rev else ""
+    return directory / "briefs" / f"{lane}{suffix}.md"
+
+
+def worker_instruction():
+    return f"Read {REFERENCES / 'worker.md'} before anything else."
 
 
 def one_line(value, field):
@@ -50,7 +60,10 @@ def read_spec(path):
     if not Path(report).is_absolute():
         raise Invalid("report_path must be absolute")
     spec["report_path"] = report
-    spec["locks"] = sorted({identifier(name, "lock name") for name in text_list(spec.get("locks", []), "locks")})
+    locks = spec.get("locks", [])
+    if not isinstance(locks, list):
+        raise Invalid("locks must be a list")
+    spec["locks"] = sorted({store_name(name, "lock name") for name in locks})
     items = spec.get("acceptance")
     if not isinstance(items, list) or not items:
         raise Invalid("acceptance must list at least one item")
@@ -85,14 +98,17 @@ def render(lane, spec):
         "Return": "Write the report with changes, the commands run, exit statuses, and open caveats.\n"
                   "Reply with the report path.",
     }
-    worker = REFERENCES / "worker.md"
-    opening = f'Read {worker} before anything else.\n\n# Lane {lane}: {spec["title"]}\n'
+    opening = f'{worker_instruction()}\n\n# Lane {lane}: {spec["title"]}\n'
     return opening + "".join(f"\n## {heading}\n\n{contents[heading]}\n" for heading in SECTIONS)
 
 
 def problems(brief):
     sections = {}
     issues = []
+    opening = WORKER_INSTRUCTION.fullmatch(brief.partition("\n")[0])
+    worker = Path(opening[1]) if opening else None
+    if worker is None or not worker.is_absolute() or worker.name != "worker.md" or not worker.is_file():
+        issues.append("first line must refer to an existing absolute worker.md path")
     heading = None
     # Material can include command transcripts. A heading inside a fenced block is literal.
     fence = None

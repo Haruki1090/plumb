@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Resolve a cockpit route without changing repository state."""
+"""Resolve a cockpit route from repository event history."""
 
 from cockpit import answer, history, parser, resolve, run_cli, run_root, subcommand, transaction
 
 
 def main(args):
     root = run_root(args.repo)
-    with transaction(root):
-        route = resolve(args.kind, history(root))
+    with transaction(root) as locked:
+        route = resolve(args.kind, history(root) if locked else {})
     launch = route["command"] or "main session does it"
     return answer(args, "ok", route, message=f'{route["role"]} ({route["why"]}): {launch}')
 
