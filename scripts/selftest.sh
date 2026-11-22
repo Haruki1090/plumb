@@ -1469,6 +1469,14 @@ if command -v python3 >/dev/null 2>&1; then
     || ng "skill evals: trigger observation, scoring, and lead-grade checks on synthetic transcripts"
 fi
 
+if command -v python3 >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
+  python3 -B "$root/scripts/test-code-policy.py" >/dev/null \
+    && ok "code policy: introduced findings only (the moved block counted, strings and URLs not), enforce mode, exceptions, contract validation" \
+    || ng "code policy (run scripts/test-code-policy.py)"
+else
+  printf '  %-4s %s\n' "--" "python3 or git not on PATH, code policy suite skipped"
+fi
+
 # ---- safety regressions: worktree-audit buckets and paths, project config ownership ----
 # worktree-audit runs against a throwaway repository, a fake HOME (no chat history is read) and a gh
 # stub that reports no default branch and one CLOSED, never-merged PR. Without jq the PR column is

@@ -93,6 +93,19 @@ thresholds = "scripts/feature-map/verify/thresholds.json"
 
 [failure]
 extra_codes = [ { code = "P01", mechanism = "describe the failure mechanism" } ]
+
+[code_policy]
+mode = "report"
+include = ["src/**/*.ts", "src/**/*.tsx"]
+exclude = ["**/*.test.*", "**/generated/**"]
+exceptions = ".plumb/code-policy-exceptions.tsv"
+[[code_policy.rule]]
+id = "no-new-comment"
+kind = "comment"
+[[code_policy.rule]]
+id = "no-new-effect"
+kind = "pattern"
+pattern = '\buse(Layout)?Effect\s*\('
 ```
 
 | Key | Type | Meaning |
@@ -107,6 +120,11 @@ extra_codes = [ { code = "P01", mechanism = "describe the failure mechanism" } ]
 | `verify.scenarios` | string | A path to the project's procedure for writing and running one scenario, or a command |
 | `verify.thresholds` | string | A path to the thresholds file the comparator reads ([verify protocol](verify-protocol.md)) |
 | `failure.extra_codes` | array of tables `{code, mechanism}` | Product-specific failure codes |
+| `code_policy.mode` | string: `off`, `report` or `enforce` (default `report`) | Whether findings fail the run (`enforce` exits 1) or are reported only (`report` exits 0) |
+| `code_policy.include`, `code_policy.exclude` | arrays of strings | Globs from the repository top level (`**` spans directories); an absent `include` means every path |
+| `code_policy.exceptions` | string | A TSV file, one `rule<TAB>path<TAB>reason` row per exception; a row suppresses that rule in that path, and a row whose reason is empty is `invalid` |
+| `code_policy.allow_directives` | array of strings (default `["prettier-ignore"]`) | Comment lines that are only one of these entries are always allowed |
+| `code_policy.rule` | array of tables `{id, kind}` | `kind = "comment"` or `kind = "pattern"` with a valid regular expression in `pattern` |
 
 `plumb-doctor` prints a `contract` block: `none` when the file is absent, `ok` or `--` for each key,
 one `NG` line naming the key and reason when the file is invalid, an `NG` for a verify command
@@ -239,3 +257,47 @@ Python 3.11+, and **fails the job on any non-zero exit**: an invalid base contra
 runner without `tomllib` (exit 3) fails the job instead of enforcing nothing. Do not add
 `continue-on-error` or `|| true` to that step. A base commit with no contract opts out: the list is
 empty and nobody is required. The head's contract is never read.
+
+## Code policy: what a change newly introduces
+
+`[code_policy]` (optional) holds rules a repository reports on lines a change **newly
+introduces**: no new comments in application code, no new effect hooks, no new lint suppressions.
+Prose versions of such rules drift, and a repository with hundreds of existing instances cannot
+turn one on at once, so the comparator only ever looks at the introduced lines. plumb holds the
+contract shape and the comparator; the project owns the rule set, its scope and its exceptions,
+and decides whether anything fails.
+
+```bash
+plumb-code-policy report [--base REF] [--json] [--paths-from FILE]
+```
+
+- The contract is read with the same rules as `plumb-project`: no file (or no `[code_policy]`
+  table) is a visible `skip: no code_policy`, exit 0; a contract that does not validate is
+  `invalid`, exit 2; a Python without `tomllib` is `unavailable`, exit 3. `mode = "off"` skips
+  the same way.
+- **Introduced** is a finding on a line that `git diff -U0 --no-renames <merge-base REF HEAD>`
+  marks as added, plus the uncommitted changes and the untracked files in scope. `--base`
+  defaults to `origin/HEAD`'s target, else `main`.
+- Plain output is one line per finding, `rule<TAB>path:line<TAB>excerpt` (the excerpt is at most
+  80 characters), then `summary: <rule> <count>` for every rule, then a note that moved lines
+  count as added. A clean change prints `clean`. With `--json` the answer is
+  `{"schema":1,"outcome":"clean|findings|skip","findings":[…],"counts":{…}}`.
+- Exit: `mode = "report"` → 0 even with findings; `mode = "enforce"` → 1 with findings;
+  `invalid` → 2; `unavailable` → 3.
+- **Moved lines count as added**, and the report says so instead of hiding it: a diff cannot tell
+  a move from an introduction. Report-only makes that acceptable; a repository that enforces
+  owns the false positives in its exceptions file.
+
+The built-in `comment` kind is a lexer without a parser. It reports a line comment or a block
+comment in C-family syntax (`//`, `/* */`, JSX `{/* */}`) and ignores comment markers inside
+string, template and regex literals as far as token-by-token scanning can tell: a regex literal
+is told from a division by the previous significant token, an unterminated quoted literal ends at
+its line, and a template literal's `${…}` is read as literal text. Always allowed, never
+reported: license headers in the first block of a file (a shebang line may sit above one),
+`/** … */` directly above an `export`, and comment lines that are only a tool directive listed
+in `allow_directives`. Those limits are documented here, not hidden; a project that needs more
+buys a parser, not a louder lexer.
+
+A repository that turns `mode = "enforce"` into a required job reads the contract from the base
+commit or another trusted ref, exactly as the Fixes-PR wiring above does: a branch must not be
+able to weaken the policy it is judged by in the same diff.
