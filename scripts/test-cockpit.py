@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -57,11 +59,12 @@ class Fixture:
         return subprocess.run(["git", *args], cwd=directory, env=self.env, check=True,
                               stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout.strip()
 
-    def cmd(self, command, *args, code=0, cwd=None, as_json=True, plugin=ROOT):
+    def cmd(self, command, *args, code=0, cwd=None, as_json=True, plugin=ROOT, timeout=None):
         argv = [str(plugin / "bin" / f"plumb-{command}"), *map(str, args)]
         if as_json:
             argv.append("--json")
-        result = subprocess.run(argv, cwd=cwd or self.repo, env=self.env, capture_output=True, text=True)
+        result = subprocess.run(argv, cwd=cwd or self.repo, env=self.env, capture_output=True,
+                                text=True, timeout=timeout)
         self.stderr = result.stderr
         assert result.returncode == code, (argv, result.returncode, result.stdout, result.stderr)
         if not as_json:
@@ -100,14 +103,14 @@ class Fixture:
         return next(event["data"] for event in reversed(self.events(run))
                     if event["lane"] == lane and event["type"] == "attempt-collected")
 
-    def observe(self, run, ac, result, cause=None, event_id=None, lane="lane"):
+    def observe(self, run, ac, result, cause=None, event_id=None, lane="lane", code=0):
         collected = self.evidence(run, lane)
         args = ["--attempt", collected["attempt"], "--head", collected["head"], "--ac", ac, "--result", result]
         if cause is not None:
             args += ["--cause", cause]
         if event_id is not None:
             args += ["--event-id", event_id]
-        return self.lane("observe", run, *args, lane=lane)
+        return self.lane("observe", run, *args, lane=lane, code=code)
 
     def adjudicate(self, run, verdict, code=0, lane="lane"):
         collected = self.evidence(run, lane)
@@ -291,6 +294,8 @@ def locks_and_base(fixture):
     fixture.git(worktree, "add", "--", "checks/new.txt")
     collected = fixture.lane("collect", "left")["data"]["data"]
     assert collected["uncommitted"] and collected["changed_paths"] == ["checks/new.txt"], collected
+    fixture.git(worktree, "reset", "-q", "--", "checks/new.txt")
+    (worktree / "checks/new.txt").unlink()
     fixture.observe("left", "automated", "pass")
     fixture.observe("left", "manual", "pass")
     fixture.adjudicate("left", "hit")
@@ -305,6 +310,8 @@ def locks_and_base(fixture):
     for command in ("route", "brief", "lane"):
         assert fixture.cmd(command, "--help", as_json=False).startswith(f"usage: plumb-{command}")
     assert fixture.cmd("lane", "start", code=2)["outcome"] == "invalid"
+    fixture.file(worktree, "checks/new.txt")
+    fixture.git(worktree, "add", "--", "checks/new.txt")
     fixture.git(worktree, "commit", "-qm", "finish the staged edit")
     fixture.git(worktree, "mv", "checks/record.txt", "outside.txt")
     fixture.git(worktree, "commit", "-qm", "move outside the range")
@@ -376,7 +383,7 @@ def observation_order(fixture):
         fixture.lane("init", run)
         for name in "abcd":
             fixture.add(run, lane=name)
-            fixture.lane("start", run, lane=name)
+            fixture.lane("start", run, "--worktree", fixture.worktree(f"{run}-{name}"), lane=name)
             fixture.lane("collect", run, lane=name)
         for name in order:
             fixture.observe(run, "automated", "pass", lane=name)
@@ -401,8 +408,11 @@ def recover_tail(fixture):
     log.write_bytes(durable + b'{"event_id":')
     assert fixture.lane("collect", run, "--event-id", "collected") == first
     assert "recovered incomplete event" in fixture.stderr and log.read_bytes() == durable
-    log.write_bytes(durable + b'{"event_id":"complete-json-without-newline"}')
+    incomplete = durable + b'{"event_id":"complete-json-without-newline"}'
+    log.write_bytes(incomplete)
     fixture.route()
+    assert not fixture.stderr and log.read_bytes() == incomplete
+    assert fixture.lane("collect", run, "--event-id", "collected") == first
     assert "recovered incomplete event" in fixture.stderr and log.read_bytes() == durable
     for broken in (durable + b"broken\n", before + b"broken\n" + durable[len(before):] + b"tail"):
         log.write_bytes(broken)
@@ -547,7 +557,7 @@ def ignored_inventory(fixture):
         fixture.file(fixture.repo, name)
     fixture.setup(run)
     started = fixture.lane("start", run)["data"]["data"]
-    assert started["inventory"] == ["existing.ignored", "existing.local", "existing.txt"], started
+    assert sorted(started["inventory"]) == ["existing.ignored", "existing.local", "existing.txt"], started
     fixture.setup("later")
     for name in ("outside/new.ignored", "outside/new.local"):
         fixture.file(fixture.repo, name)
@@ -575,7 +585,7 @@ def repeat_collection(fixture):
 
 
 def repair_view(fixture):
-    for run, repair in (("status-repair", "status"), ("write-repair", "other-write"), ("brief-repair", "brief-write")):
+    for run, repair in (("write-repair", "other-write"), ("brief-repair", "brief-write")):
         fixture.setup(run)
         table = fixture.cockpit / run / "lanes.tsv"
         before = table.read_bytes()
@@ -596,21 +606,21 @@ runpy.run_path(str(Path(scripts) / "plumb-lane.py"), run_name="__main__")
 """, "start", "--run", run, "--lane", "lane")
         assert crash.returncode == 73 and not crash.stderr, crash
         assert table.read_bytes() == before and fixture.events(run)[-1]["type"] == "attempt-started"
-        if repair == "status":
-            status = fixture.lane("status", run, as_json=False)
-            assert table.read_text() == status
-        elif repair == "other-write":
+        status = fixture.lane("status", run, as_json=False)
+        assert "\trunning\t" in status and table.read_bytes() == before
+        if repair == "other-write":
             fixture.cmd("lane", "route-reset", KIND)
         else:
             fixture.cmd("brief", "new", "--run", run, "--lane", "lane", "--spec", fixture.spec)
         assert b"\trunning\t" in table.read_bytes(), repair
-    print("  C11 process interrupted after fsync, status and cross-run writes repair the TSV")
+        fixture.lane("abandon", run, "--attempt", 1, "--reason", "fixture finished")
+    print("  C11 status reads past a stale TSV after fsync, cross-run writers repair it")
 
 
 def refresh_brief(fixture):
     run = "plugin-move"
     old = fixture.directory / "former plugin"
-    for directory in ("scripts", "bin", "skills/cockpit/references"):
+    for directory in ("scripts", "bin", "skills/cockpit/references", ".claude-plugin"):
         shutil.copytree(ROOT / directory, old / directory)
     fixture.lane("init", run)
     options = ("--run", run, "--lane", "lane")
@@ -620,8 +630,20 @@ def refresh_brief(fixture):
     fixture.cmd("brief", "check", original)
     stripped = fixture.directory / "stripped.md"
     stripped.write_bytes(contents.partition(b"\n")[2])
-    issue = "first line must refer to an existing absolute worker.md path"
+    issue = "first line must refer to the cockpit worker.md in a recognized plumb installation"
     assert issue in fixture.cmd("brief", "check", stripped, code=1)["data"]["issues"]
+    fake = fixture.directory / "wrong-opening.md"
+    for root, relative, manifest in (
+        (old, "unrelated/worker.md", None),
+        (fixture.directory / "unmarked", "skills/cockpit/references/worker.md", None),
+        (fixture.directory / "other", "skills/cockpit/references/worker.md", '{"name":"other"}'),
+    ):
+        fixture.file(root, relative)
+        if manifest:
+            fixture.file(root, ".claude-plugin/plugin.json")
+            (root / ".claude-plugin/plugin.json").write_text(manifest)
+        fake.write_bytes(f"Read {root / relative} before anything else.\n".encode() + contents.partition(b"\n")[2])
+        assert issue in fixture.cmd("brief", "check", fake, code=1)["data"]["issues"]
     (old / "skills/cockpit/references/worker.md").unlink()
     assert issue in fixture.cmd("brief", "check", original, code=1)["data"]["issues"]
     assert fixture.lane("start", run, code=1)["reason_codes"] == ["invalid-brief"]
@@ -674,13 +696,343 @@ def collection_demotes(fixture):
     print("  C14 an explicit miss and a collection miss demote across runs, resend leaves the count unchanged")
 
 
+def fingerprint_inventory(fixture):
+    run = "fingerprint"
+    fixture.setup(run)
+    (fixture.repo / ".git/info/exclude").write_text("*.ignored\n")
+    for name in ("existing.ignored", "existing.txt", "deleted.ignored", "unchanged.ignored"):
+        fixture.file(fixture.repo, name)
+    link = fixture.repo / "link.ignored"
+    link.symlink_to("old-target")
+    fixture.lane("start", run)
+    for name in ("existing.ignored", "existing.txt"):
+        (fixture.repo / name).write_text("changed\n")
+    (fixture.repo / "deleted.ignored").unlink()
+    link.unlink()
+    link.symlink_to("new-target")
+    result = fixture.lane("collect", run, code=1)
+    data = result["data"]["event"]["data"]
+    assert result["reason_codes"] == ["out-of-range"], result
+    assert data["outside_paths"] == ["deleted.ignored", "existing.ignored", "existing.txt", "link.ignored"], data
+    print("  C16 same-size file and symlink changes and removed paths count towards scope")
+
+
+def retry_inventory(fixture):
+    run = "retry-scope"
+    fixture.setup(run)
+    outside = fixture.repo / "outside.txt"
+    fixture.lane("start", run)
+    fixture.file(fixture.repo, outside.name)
+    for number in (1, 2):
+        result = fixture.lane("collect", run, code=1)
+        data = result["data"]["event"]["data"]
+        assert data["attempt"] == number and data["outside_paths"] == [outside.name], data
+        fixture.lane("resume", run, "--diagnosis", f"scope crossing {number}",
+                     "--hypothesis", f"revert outside edit {number}", "--test", f"check status {number}")
+        if number == 2:
+            outside.unlink()
+        fixture.lane("start", run)
+    data = fixture.lane("collect", run)["data"]["data"]
+    assert data["attempt"] == 3 and not data["changed_paths"] and not data["uncommitted"], data
+    print("  C17 a surviving outside path still misses on retry and removal clears it")
+
+
+def commit_inventory(fixture):
+    run = "commit-untracked"
+    fixture.setup(run)
+    path = "checks/initially-untracked.txt"
+    fixture.file(fixture.repo, path)
+    fixture.lane("start", run)
+    fixture.git(fixture.repo, "add", "--", path)
+    fixture.git(fixture.repo, "commit", "-qm", "commit an in-range file")
+    data = fixture.lane("collect", run)["data"]["data"]
+    assert data["changed_paths"] == [path] and not data["uncommitted"], data
+    fixture.observe(run, "automated", "pass")
+    fixture.observe(run, "manual", "pass")
+    fixture.adjudicate(run, "hit")
+    fixture.lane("close", run)
+    print("  C18 an initially untracked file counts towards scope and closes after commit")
+
+
+def classify_inactive(fixture):
+    for run in ("abandoned", "revised"):
+        fixture.setup(run)
+        tree = fixture.worktree(run)
+        fixture.lane("start", run, "--worktree", tree)
+        fixture.lane("collect", run)
+        fixture.observe(run, "automated", "fail")
+        if run == "abandoned":
+            fixture.lane("abandon", run, "--attempt", 1, "--reason", "checkout removed")
+        else:
+            fixture.adjudicate(run, "inconclusive")
+            spec = fixture.spec.read_bytes()
+            revised = json.loads(spec)
+            revised["acceptance"] = [item for item in revised["acceptance"] if item["id"] == "manual"]
+            fixture.spec.write_text(json.dumps(revised))
+            options = ("--run", run, "--lane", "lane", "--spec", fixture.spec, "--rev", "new")
+            fixture.cmd("brief", "new", *options)
+            fixture.lane("add", run, "--work", "record", "--spec", fixture.spec, "--rev", "new")
+            fixture.spec.write_bytes(spec)
+        fixture.git(fixture.repo, "worktree", "remove", str(tree))
+        assert fixture.lane("start", run, code=1)["reason_codes"] == ["unclassified"]
+        before = fixture.events(run)
+        assert fixture.observe(run, "automated", "pass", code=1)["reason_codes"] == ["stale-attempt"]
+        assert fixture.observe(run, "manual", "fail", "other", code=1)["reason_codes"] == ["stale-attempt"]
+        wrong = fixture.lane("observe", run, "--attempt", 2, "--ac", "automated", "--result", "fail",
+                             "--cause", "missing-label", code=1)
+        assert wrong["reason_codes"] == ["stale-attempt"] and fixture.events(run) == before, wrong
+        fixture.observe(run, "automated", "fail", "missing-label")
+        assert fixture.lane("guard", run)["outcome"] == "allow"
+        fixture.lane("start", run)
+        fixture.lane("abandon", run, "--attempt", 2, "--reason", "fixture finished")
+    print("  C19 the original failure can be classified after abandonment or brief replacement")
+
+
+def reject_dirty_evidence(fixture):
+    run = "dirty"
+    fixture.setup(run)
+    (fixture.repo / ".git/info/exclude").write_text("*.ignored\n")
+    fixture.lane("start", run)
+    collected = fixture.lane("collect", run)["data"]["data"]
+    assert not collected["uncommitted"], collected
+    tracked = fixture.repo / "checks/record.txt"
+    original = tracked.read_bytes()
+    before = fixture.events(run)
+
+    def refuse():
+        observe = fixture.observe(run, "automated", "pass", code=1)
+        adjudicate = fixture.adjudicate(run, "hit", code=1)
+        assert observe["reason_codes"] == adjudicate["reason_codes"] == ["dirty-checkout"], (observe, adjudicate)
+        assert fixture.events(run) == before
+        assert fixture.git(fixture.repo, "rev-parse", "HEAD") == collected["head"]
+
+    tracked.write_text("different\n")
+    refuse()
+    fixture.git(fixture.repo, "add", "--", "checks/record.txt")
+    tracked.write_bytes(original)
+    refuse()
+    fixture.git(fixture.repo, "reset", "-q", "--", "checks/record.txt")
+    new = fixture.repo / "checks/new file.txt"
+    fixture.file(fixture.repo, "checks/new file.txt")
+    refuse()
+    new.unlink()
+    fixture.file(fixture.repo, "checks/new.ignored")
+    refuse()
+    (fixture.repo / "checks/new.ignored").unlink()
+    fixture.observe(run, "automated", "pass")
+    fixture.adjudicate(run, "hit")
+    fixture.lane("start", run)
+    fixture.file(fixture.repo, "checks/already-collected.txt")
+    assert fixture.lane("collect", run)["data"]["data"]["uncommitted"]
+    fixture.observe(run, "automated", "pass")
+    fixture.adjudicate(run, "hit")
+    print("  C20 both evidence commands refuse staged, unstaged and newly untracked or ignored paths at the same HEAD")
+
+
+def reserve_worktree(fixture):
+    fixture.spec_data.update(locks=[], allow_paths=["checks/"])
+    fixture.write_spec()
+    fixture.setup("writer")
+    fixture.spec_data["allow_paths"] = ["other/"]
+    fixture.write_spec()
+    fixture.setup("competing")
+    alias = fixture.directory / "checkout-alias"
+    alias.symlink_to(fixture.repo, target_is_directory=True)
+    fixture.lane("start", "writer")
+    for state in ("running", "collected"):
+        before = fixture.events("competing")
+        busy = fixture.lane("start", "competing", "--worktree", alias / "checks", code=1)
+        assert busy["reason_codes"] == ["worktree-busy"] and fixture.events("competing") == before, busy
+        if state == "running":
+            fixture.lane("collect", "writer")
+    fixture.adjudicate("writer", "hit")
+    fixture.lane("start", "competing", "--worktree", alias)
+    fixture.lane("abandon", "competing", "--attempt", 1, "--reason", "fixture finished")
+    fixture.spec_data.update(kind="review-preview", allow_paths=[])
+    fixture.write_spec()
+    for reader in ("reader-one", "reader-two"):
+        fixture.setup(reader)
+        fixture.lane("start", reader)
+    busy = fixture.lane("start", "writer", code=1)
+    assert busy["reason_codes"] == ["worktree-busy"], busy
+    print("  C21 an active writer reserves the canonical checkout across runs with no resource lock")
+
+
+def read_only_history(fixture):
+    run = "read-only"
+    assert fixture.route()["why"] == "preferred"
+    assert fixture.lane("status", run)["data"]["lanes"] == []
+    assert not fixture.cockpit.parent.exists()
+    fixture.setup(run)
+    fixture.attempt(run, "miss")
+    fixture.attempt(run, "miss")
+    directory = fixture.cockpit / run
+    log = directory / "events.jsonl"
+    log.write_bytes(log.read_bytes() + b'{"event_id":"unfinished","utf8":"\xf0\x9f')
+    table = directory / "lanes.tsv"
+    table.unlink()
+    lock = fixture.cockpit / ".writer-lock"
+
+    def read():
+        assert fixture.route(timeout=5)["demoted"] and not fixture.stderr
+        status = fixture.cmd("lane", "status", "--run", run, timeout=5)
+        assert status["data"]["lanes"][0]["state"] == "reviewed" and not fixture.stderr, status
+
+    with lock.open("rb") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            read()
+        except subprocess.TimeoutExpired as exc:
+            raise AssertionError("a reader waited for the writer lock") from exc
+    lock.unlink()
+    snapshot = log.read_bytes(), log.stat().st_mtime_ns
+    readonly = (log, directory, fixture.cockpit)
+    for path in readonly:
+        path.chmod(0o555 if path.is_dir() else 0o444)
+    try:
+        read()
+        assert snapshot == (log.read_bytes(), log.stat().st_mtime_ns)
+        assert not lock.exists() and not table.exists()
+    finally:
+        for path in reversed(readonly):
+            path.chmod(0o755 if path.is_dir() else 0o644)
+    print("  C22 readers use the complete prefix with a held or missing lock and leave read-only state untouched")
+
+
+def refuse_closed_start(fixture):
+    run = "closed"
+    fixture.setup(run)
+    fixture.lane("start", run)
+    fixture.lane("collect", run)
+    fixture.observe(run, "automated", "pass")
+    fixture.observe(run, "manual", "pass")
+    fixture.adjudicate(run, "hit")
+    fixture.lane("close", run)
+    before = fixture.events(run)
+    guarded = fixture.lane("guard", run, code=1)
+    started = fixture.lane("start", run, code=1)
+    assert started == guarded and started["reason_codes"] == ["closed"], (started, guarded)
+    assert fixture.events(run) == before
+    print("  C23 guard and start both refuse a closed lane with exit 1 and closed")
+
+
+def reject_reused_resume(fixture):
+    run = "resume-context"
+    fixture.setup(run)
+    fixture.lane("init", run)
+    fixture.add(run, lane="other")
+    contexts = [("--diagnosis", f"scope crossing {n}", "--hypothesis", f"revert outside edit {n}",
+                 "--test", f"check status {n}") for n in ("a", "b")]
+    outside = fixture.repo / "outside.txt"
+    for i, lane in enumerate(("lane", "other", "other")):
+        fixture.lane("start", run, lane=lane)
+        fixture.file(fixture.repo, outside.name)
+        fixture.lane("collect", run, lane=lane, code=1)
+        outside.unlink()
+        before = fixture.events(run)
+        resumed = fixture.lane("resume", run, *contexts[i % 2], lane=lane, code=int(i == 2))
+        if i == 2:
+            assert resumed["reason_codes"] == ["stale-brief"] and fixture.events(run) == before, resumed
+    print("  C24 a work ID rejects a reused resume context across lanes after a different context")
+
+
+def validate_replay(fixture):
+    run = "corrupt"
+    fixture.setup(run)
+    fixture.setup("healthy")
+    fixture.attempt(run, "hit")
+    before = fixture.events(run)
+    log = fixture.cockpit / run / "events.jsonl"
+    route_log = fixture.cockpit / "route-events.jsonl"
+    fixture.cmd("lane", "route-reset", KIND)
+    reset = json.loads(route_log.read_bytes())
+
+    def verify(event_id):
+        for command, action in (("route", ("resolve", KIND)), ("lane", ("status", "--run", "healthy"))):
+            invalid = fixture.cmd(command, *action, code=2)
+            assert event_id in invalid["data"]["message"], invalid
+
+    for field, value in (("verdict", "typo"), ("attempt", 2)):
+        events = fixture.events(run)
+        events[-1]["event_id"] = f"bad-{field}"
+        events[-1]["data"][field] = value
+        log.write_text("".join(json.dumps(event) + "\n" for event in events))
+        verify(f"bad-{field}")
+        log.write_text("".join(json.dumps(event) + "\n" for event in before))
+    abandoned = {**before[-2], "event_id": "abandoned-first", "type": "abandoned",
+                 "data": {"attempt": 1, "verdict": "inconclusive"}}
+    collected = {**before[-2], "seq": abandoned["seq"] + 1, "event_id": "collected-after-abandon"}
+    log.write_text("".join(json.dumps(event) + "\n" for event in [*before[:2], abandoned, collected]))
+    verify("collected-after-abandon")
+    log.write_text("".join(json.dumps(event) + "\n" for event in before))
+    reset["event_id"] = "bad-reset"
+    reset["data"]["kind"] = []
+    route_log.write_text(json.dumps(reset) + "\n")
+    verify("bad-reset")
+    print("  C25 route and status both name invalid verdict, attempt, transition and reset events")
+
+
+def default_bulk_route(fixture):
+    fixture.config.write_text("role.bulk = worker-cli --tier w\nrole.implementer = worker-cli --tier z\n")
+    result = fixture.route()
+    assert (result["role"], result["command"], result["why"]) == ("bulk", "worker-cli --tier w", "preferred"), result
+    assert not fixture.cockpit.exists()
+    print("  C26 fresh routing selects the configured bulk command without route overrides")
+
+
+def configured_demotion(fixture):
+    fixture.config.write_text(fixture.config.read_text().replace("after = 2", "after = 3"))
+    run = "three-misses"
+    fixture.setup(run)
+    for _ in range(2):
+        fixture.attempt(run, "miss")
+    result = fixture.route()
+    assert result["why"] == "preferred" and not result["demoted"], result
+    fixture.attempt(run, "miss")
+    result = fixture.route()
+    assert result["why"] == "demoted" and result["demoted"], result
+    print("  C27 a fresh threshold of three holds through two misses and demotes on the third")
+
+
+def unsupported_python(fixture):
+    run = "runtime"
+    fixture.lane("init", run)
+    brief = fixture.add(run)
+    shim = fixture.directory / "shim"
+    shim.mkdir()
+    executable = shim / "python3"
+    interpreter = shlex.quote(sys.executable)
+    executable.write_text(f"""#!/bin/sh
+if [ "$1" = -B ] && [ "$2" = -c ]; then
+  exec {interpreter} -B -c 'import sys; sys.version_info = (3, int(sys.argv[1])); exec(sys.argv[2])' "$FIXTURE_PYTHON_MINOR" "$3"
+fi
+exec {interpreter} "$@"
+""")
+    executable.chmod(0o755)
+    fixture.env["PATH"] = f"{shim}{os.pathsep}{fixture.env['PATH']}"
+    for command, action in (("route", ("resolve", KIND)), ("lane", ("status", "--run", run)),
+                            ("brief", ("check", brief))):
+        fixture.env["FIXTURE_PYTHON_MINOR"] = "8"
+        result = fixture.cmd(command, *action, code=3)
+        assert result["outcome"] == "unavailable" and "Python 3.9" in result["data"]["message"], result
+        fixture.env["FIXTURE_PYTHON_MINOR"] = "9"
+        assert fixture.cmd(command, *action)["outcome"] == "ok"
+    print("  C28 all three launchers return unavailable for Python 3.8 and accept Python 3.9")
+
+
 CASES = {"replay": replay_fixtures, "routing": routing, "idempotency": idempotency,
          "guards": briefs_and_guards, "locks": locks_and_base, "c01-stale": stale_attempt,
          "c02-base": divergent_base, "c03-order": observation_order, "c04-tail": recover_tail,
          "c05-brief": immutable_brief, "c06-repo": repository_scope, "c07-abandon": abandonment,
          "c08-names": canonical_names, "c09-inventory": ignored_inventory, "c10-resend": repeat_collection,
          "c11-view": repair_view, "c12-refresh": refresh_brief, "c13-numbers": malformed_numbers,
-         "c14-collection-demotes": collection_demotes}
+         "c14-collection-demotes": collection_demotes, "c16-fingerprints": fingerprint_inventory,
+         "c17-retry-inventory": retry_inventory, "c18-commit-inventory": commit_inventory,
+         "c19-inactive-failure": classify_inactive, "c20-dirty-evidence": reject_dirty_evidence,
+         "c21-worktree-busy": reserve_worktree, "c22-read-only": read_only_history,
+         "c23-closed-start": refuse_closed_start, "c24-resume-context": reject_reused_resume,
+         "c25-invalid-replay": validate_replay, "c26-default-bulk": default_bulk_route,
+         "c27-configured-threshold": configured_demotion, "c28-python-version": unsupported_python}
 
 
 def main():

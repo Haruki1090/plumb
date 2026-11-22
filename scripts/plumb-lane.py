@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from hashlib import sha256
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from cockpit import (
     run_root, store_name, subcommand, transaction,
 )
 from cockpit_brief import brief_path, one_line, problems, read_spec, render
-from cockpit_state import outside_range, reconcile, replay, rows, sync_view, tsv
+from cockpit_state import guard_reasons, outside_range, reconcile, replay, rows, sync_view, tsv, validate_history
 
 
 def hold(args, reasons, *, context="", **data):
@@ -44,13 +45,40 @@ def paths_from(output):
     return {os.fsdecode(path) for path in output.split(b"\0") if path}
 
 
-def inventory(directory, store):
-    # Without exclusion options, Git includes ignored entries in the untracked listing.
-    paths = paths_from(git(directory, "ls-files", "--others", "-z", "--"))
-    if store != directory and store.is_relative_to(directory):
+def without_artifacts(paths, directory, store):
+    if store != directory and directory in store.parents:
         relative = store.relative_to(directory).as_posix()
         return {path for path in paths if path != relative and not path.startswith(relative + "/")}
     return paths
+
+
+def fingerprint(path):
+    info = path.lstat()
+    file_type = stat.S_IFMT(info.st_mode)
+    value = {"type": file_type, "size": info.st_size}
+    if stat.S_ISLNK(info.st_mode):
+        value["target"] = os.readlink(path)
+    elif stat.S_ISREG(info.st_mode):
+        digest = sha256()
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(128 * 1024), b""):
+                digest.update(block)
+        value["sha256"] = digest.hexdigest()
+    return value
+
+
+def untracked_paths(directory, store):
+    # Without exclusion options, Git includes ignored entries in the untracked listing.
+    paths = paths_from(git(directory, "ls-files", "--others", "-z", "--"))
+    return without_artifacts(paths, directory, store)
+
+
+def checkout_status(directory, store):
+    entries = paths_from(git(directory, "status", "--porcelain=v1", "-z", "--untracked-files=all",
+                             "--no-renames", "--ignore-submodules=none"))
+    tracked = {entry[3:] for entry in entries if not entry.startswith("?? ")}
+    untracked = {entry[3:] for entry in entries if entry.startswith("?? ")}
+    return tracked, without_artifacts(untracked, directory, store)
 
 
 def collected(repo, lane, store):
@@ -59,14 +87,18 @@ def collected(repo, lane, store):
     head = revision(directory, "HEAD")
     require_ancestor(directory, attempt.base, head)
     diff = ("diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", "--ignore-submodules=none")
-    tracked = git(directory, *diff, "--") + git(directory, *diff, "--cached", "--")
-    untracked = inventory(directory, store).symmetric_difference(attempt.inventory)
+    tracked, untracked = checkout_status(directory, store)
+    current = untracked_paths(directory, store)
+    baseline = lane.attempts[0].inventory
+    untracked_changes = current ^ baseline.keys()
+    untracked_changes.update(path for path in current & baseline.keys()
+                             if baseline[path] is not None and baseline[path] != fingerprint(directory / path))
     changed = git(directory, *diff, f"{attempt.base}..{head}", "--")
-    paths = sorted(paths_from(changed + tracked) | untracked)
+    paths = sorted(paths_from(changed) | tracked | untracked_changes)
     if revision(directory, "HEAD") != head:
         raise Invalid("the lane worktree head moved during collection")
     data = {"attempt": len(lane.attempts), "head": head, "changed_paths": paths, "report": lane.report,
-            "uncommitted": bool(tracked or untracked)}
+            "uncommitted": bool(tracked or untracked), "untracked": sorted(current)}
     if outside := outside_range(paths, lane.allow_paths):
         # The scope violation and its single route miss are the same durable write.
         data.update(verdict="miss", reason="out-of-range", demote_after=demote_after(), outside_paths=outside)
@@ -126,21 +158,36 @@ def apply(args, logs, states, lanes, works, directory):
     lane = lanes[name]
     attempt_number = len(lane.attempts)
     attempt = lane.current
+    work = works[lane.work]
+    reasons = guard_reasons(lane, work)
+    if action == "start" and reasons:
+        return hold(args, reasons)
+    if lane.closed:
+        raise Invalid(f"lane is closed: {name}")
+    store = directory.parent.parent
     if action in ("observe", "adjudicate", "abandon"):
-        stale = (not attempt or args.attempt != attempt_number or attempt.abandoned or lane.brief_seq > attempt.seq)
+        historical = attempt and (attempt.abandoned or lane.brief_seq > attempt.seq)
+        classification = historical and action == "observe" and work.can_classify(
+            attempt, args.ac, args.result, (args.cause or "").strip()
+        )
+        stale = not attempt or args.attempt != attempt_number or (historical and not classification)
         if not stale and action != "abandon" and attempt.head:
             stale = args.head not in (None, attempt.head)
-            if not stale:
+            if not stale and not classification:
                 worktree = checkout_for(args.repo, Path(attempt.worktree))
                 stale = revision(worktree, "HEAD") != attempt.head
         if stale:
             return hold(args, {"stale-attempt": "use the latest attempt and its collected head"},
                         attempt=attempt_number, head=attempt.head if attempt else None)
-    if lane.closed:
-        raise Invalid(f"lane is closed: {name}")
-    work = works[lane.work]
-    reasons = work.reasons()
-    if action in ("start", "close") and reasons:
+        if action != "abandon" and attempt.head and not classification:
+            tracked, _ = checkout_status(worktree, store)
+            snapshot = attempt.collected_untracked
+            if snapshot is None:
+                snapshot = lane.attempts[0].inventory.keys()
+            if tracked or untracked_paths(worktree, store) - snapshot:
+                return hold(args, {"dirty-checkout": "the checkout has uncommitted tracked changes or new untracked files"},
+                            attempt=attempt_number, head=attempt.head)
+    if action == "close" and reasons:
         return hold(args, reasons)
     if action == "start":
         if lane.state not in ("ready", "reviewed"):
@@ -157,6 +204,11 @@ def apply(args, logs, states, lanes, works, directory):
             return hold(args, {"resource-busy": ", ".join(conflicts)})
         route = resolve(lane.kind, logs)
         worktree = checkout_for(args.repo, args.worktree)
+        for run, (other_lanes, _) in states.items():
+            for other in other_lanes.values():
+                if (other.state in ("running", "collected") and other.current.worktree == str(worktree)
+                        and (not route["read_only"] or kind_info(other.kind)["read_only"] != "true")):
+                    return hold(args, {"worktree-busy": f"checkout is in use by {run}/{other.name}"})
         head = revision(worktree, "HEAD")
         base = revision(worktree, args.base) if args.base else attempt.base if attempt else head
         if attempt and base != attempt.base:
@@ -164,15 +216,17 @@ def apply(args, logs, states, lanes, works, directory):
         require_ancestor(worktree, base, head)
         data = {
             "attempt": attempt_number + 1, "role": route["role"], "command": route["command"],
-            "worktree": str(worktree), "base": base, "inventory": sorted(inventory(worktree, directory.parent.parent)),
+            "worktree": str(worktree), "base": base,
         }
+        if not attempt:
+            data["inventory"] = {path: fingerprint(worktree / path) for path in sorted(untracked_paths(worktree, store))}
         if work.last_resume:
             data["resume"] = work.last_resume
         return "attempt-started", lane.work, data
     if action == "collect":
         if lane.state != "running":
             raise Invalid("collect requires a running attempt")
-        return "attempt-collected", lane.work, collected(args.repo, lane, directory.parent.parent)
+        return "attempt-collected", lane.work, collected(args.repo, lane, store)
     if action == "abandon":
         if lane.state not in ("running", "collected"):
             raise Invalid("abandon requires a running or collected attempt")
@@ -183,15 +237,15 @@ def apply(args, logs, states, lanes, works, directory):
         fields = {key: (getattr(args, key) or "").strip() for key in ("diagnosis", "hypothesis", "test")}
         if not reasons:
             raise Invalid("resume requires a held lane")
-        if any(not value or value == work.last_resume.get(key) for key, value in fields.items()):
+        if fields in work.resumes or any(not value or value == work.last_resume.get(key) for key, value in fields.items()):
             return hold(args, {"stale-brief": "give a new diagnosis, hypothesis and distinguishing test"})
         if work.unclassified:
             return hold(args, {"unclassified": reasons["unclassified"]})
         return "resumed", lane.work, fields
-    if not attempt or not attempt.head or attempt.abandoned:
+    if not attempt or not attempt.head or (attempt.abandoned and action != "observe"):
         raise Invalid(f"{action} requires a collected attempt")
     if action == "observe":
-        if args.ac not in lane.acceptance:
+        if not classification and args.ac not in lane.acceptance:
             raise Invalid(f"unknown acceptance item: {args.ac}")
         data = {"attempt": attempt_number, "head": attempt.head, "ac": args.ac, "result": args.result}
         if args.cause is not None:
@@ -245,8 +299,8 @@ def write(args, root):
     directory = None if reset else run_directory(root, args.run)
     if getattr(args, "event_id", None) is not None:
         args.event_id = nonempty(args.event_id, "event id")
-    with transaction(root, write=True):
-        logs = history(root)
+    with transaction(root):
+        logs = history(root, repair=True)
         states = reconcile(root, logs)
         sync_locks(root, states)
         if reset:
@@ -298,22 +352,20 @@ def main(args):
     if args.action not in ("guard", "status"):
         return write(args, root)
     directory = run_directory(root, args.run)
-    with transaction(root) as locked:
-        if not locked or not (directory / "events.jsonl").is_file():
-            raise Invalid(f"run is not initialized: {args.run}")
-        if args.action == "status":
-            lanes, works = reconcile(root, history(root))[args.run]
-        else:
-            lanes, works = replay(read_events(directory / "events.jsonl"))
     if args.action == "status":
+        states = validate_history(history(root))
+        if states and args.run not in states:
+            raise Invalid(f"run is not initialized: {args.run}")
+        lanes, works = states.get(args.run, ({}, {}))
         view = rows(lanes, works)
         return answer(args, "ok", {"lanes": view}, message=tsv(view).rstrip("\n"))
+    if not (directory / "events.jsonl").is_file():
+        raise Invalid(f"run is not initialized: {args.run}")
+    lanes, works = replay(read_events(directory / "events.jsonl"))
     if args.lane not in lanes:
         raise Invalid(f"unknown lane: {args.lane}")
     lane = lanes[args.lane]
-    if lane.closed:
-        return hold(args, {"closed": "the lane is closed"})
-    reasons = works[lane.work].reasons()
+    reasons = guard_reasons(lane, works[lane.work])
     return hold(args, reasons) if reasons else answer(args, "allow")
 
 

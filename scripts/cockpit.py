@@ -161,17 +161,18 @@ def kind_info(kind):
     return options[kind]
 
 
-def read_events(path):
+def read_events(path, *, repair=False):
     events = []
     seen = set()
     with path.open("rb") as handle:
         offset = 0
         for line_number, line in enumerate(handle, 1):
             if not line.endswith(b"\n"):
-                with path.open("r+b") as output:
-                    output.truncate(offset)
-                    os.fsync(output.fileno())
-                print(f"recovered incomplete event in {path} at line {line_number}", file=sys.stderr)
+                if repair:
+                    with path.open("r+b") as output:
+                        output.truncate(offset)
+                        os.fsync(output.fileno())
+                    print(f"recovered incomplete event in {path} at line {line_number}", file=sys.stderr)
                 break
             offset += len(line)
             event_id = None
@@ -211,16 +212,16 @@ def event_time(event):
     return timestamp
 
 
-def history(root):
+def history(root, *, repair=False):
     logs = {}
     if root.exists():
         for directory in sorted(root.iterdir()):
             path = directory / "events.jsonl"
             if directory.name.casefold() != "locks" and path.is_file():
-                logs[directory.name] = read_events(path)
+                logs[directory.name] = read_events(path, repair=repair)
         reset = root / ROUTE_LOG
         if reset.exists():
-            logs[ROUTE_LOG] = read_events(reset)
+            logs[ROUTE_LOG] = read_events(reset, repair=repair)
     return logs
 
 
@@ -255,20 +256,15 @@ def replace_text(path, content):
 
 
 @contextmanager
-def transaction(root, *, write=False):
+def transaction(root):
     lock = root / ".writer-lock"
-    if write:
-        root.mkdir(parents=True, exist_ok=True)
-    elif not root.exists():
-        yield False
-        return
+    root.mkdir(parents=True, exist_ok=True)
     with lock.open("ab") as handle:
-        # Readers can repair an interrupted append, so they also hold the exclusive lock.
         fcntl.flock(handle, fcntl.LOCK_EX)
-        if write and not (root / ".gitignore").exists():
+        if not (root / ".gitignore").exists():
             # Keep generated files out of collection even in a fresh checkout.
             replace_text(root / ".gitignore", "*\n")
-        yield True
+        yield
 
 
 def demote_after():
@@ -287,12 +283,6 @@ def resolve(kind, logs):
     threshold = demote_after()
 
     # An adjudication is attributed to the role actually started on that attempt.
-    def read_field(event, field, expected):
-        value = event["data"].get(field)
-        if type(value) is not expected:
-            raise Invalid(f"invalid {field} in {event['type']} event {event['event_id']}")
-        return value
-
     decisions = []
     for run, events in logs.items():
         lanes, routes = {}, {}
@@ -300,10 +290,10 @@ def resolve(kind, logs):
             data = event["data"]
             lane = event["lane"]
             if event["type"] in ("lane-added", "brief-registered"):
-                lanes[lane] = read_field(event, "kind", str)
+                lanes[lane] = data["kind"]
             elif event["type"] == "attempt-started":
-                routes[lane, data["attempt"]] = (lanes[lane], read_field(event, "role", str))
-            elif event["type"] == "route-reset" and read_field(event, "kind", str) == kind:
+                routes[lane, data["attempt"]] = (lanes[lane], data["role"])
+            elif event["type"] == "route-reset" and data["kind"] == kind:
                 decisions.append((event_time(event), run, event["seq"], "reset", threshold))
             elif event["type"] in ("adjudicated", "attempt-collected", "abandoned"):
                 verdict = data.get("verdict")

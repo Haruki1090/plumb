@@ -6,12 +6,13 @@ import json
 import re
 from pathlib import Path, PurePosixPath
 
-from cockpit import Invalid, REFERENCES, identifier, kind_info, nonempty, store_name
+from cockpit import Invalid, ROOT, identifier, kind_info, nonempty, store_name
 
 SECTIONS = ("Kind", "Range", "Material", "Do not touch", "Acceptance", "Report path",
             "Forbidden means", "Return")
 ACCEPTANCE_ITEM = re.compile(r"- \[([A-Za-z0-9][A-Za-z0-9_.-]*)\] .+")
 WORKER_INSTRUCTION = re.compile(r"Read (.+) before anything else\.")
+WORKER_REFERENCE = Path("skills/cockpit/references/worker.md")
 
 
 def brief_path(directory, lane, rev):
@@ -20,7 +21,24 @@ def brief_path(directory, lane, rev):
 
 
 def worker_instruction():
-    return f"Read {REFERENCES / 'worker.md'} before anything else."
+    return f"Read {ROOT / WORKER_REFERENCE} before anything else."
+
+
+def recognized_worker(worker):
+    if not worker.is_absolute() or not worker.is_file():
+        return False
+    if worker.parts[-4:] != WORKER_REFERENCE.parts:
+        return False
+    root = worker.parents[3].resolve()
+    if worker.resolve() != root / WORKER_REFERENCE:
+        return False
+    if root == ROOT and (root / ".git").exists():
+        return True
+    try:
+        manifest = json.loads((root / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(manifest, dict) and manifest.get("name") == "plumb"
 
 
 def one_line(value, field):
@@ -107,8 +125,8 @@ def problems(brief):
     issues = []
     opening = WORKER_INSTRUCTION.fullmatch(brief.partition("\n")[0])
     worker = Path(opening[1]) if opening else None
-    if worker is None or not worker.is_absolute() or worker.name != "worker.md" or not worker.is_file():
-        issues.append("first line must refer to an existing absolute worker.md path")
+    if worker is None or not recognized_worker(worker):
+        issues.append("first line must refer to the cockpit worker.md in a recognized plumb installation")
     heading = None
     # Material can include command transcripts. A heading inside a fenced block is literal.
     fence = None

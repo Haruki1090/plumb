@@ -25,8 +25,8 @@ def main(args):
     root = run_root(args.repo)
     directory = run_directory(root, args.run)
     path = brief_path(directory, lane, rev)
-    with transaction(root, write=True):
-        logs = history(root)
+    with transaction(root):
+        logs = history(root, repair=True)
         states = reconcile(root, logs)
         if directory.name not in states:
             raise Invalid("run is not initialized")

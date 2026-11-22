@@ -6,7 +6,7 @@ import csv
 import io
 from dataclasses import dataclass, field
 
-from cockpit import ROUTE_LOG, Invalid, replace_text, store_name
+from cockpit import ROUTE_LOG, Invalid, kinds, nonempty, replace_text, store_name
 
 COLUMNS = ("lane", "work", "kind", "state", "role", "attempt", "head", "last_check", "stop_code", "next")
 NEXT = {"ready": "start", "running": "collect", "collected": "observe or adjudicate",
@@ -25,7 +25,8 @@ class Attempt:
     progress: bool = False
     uncommitted: bool = False
     outside: list[str] = field(default_factory=list)
-    inventory: list[str] = field(default_factory=list)
+    inventory: dict = field(default_factory=dict)
+    collected_untracked: set[str] | None = None
     observation_seq: int = 0
     completion_seq: int = 0
     abandoned: bool = False
@@ -75,7 +76,11 @@ class Work:
     failed: dict[str, int] = field(default_factory=dict)
     causes: dict[str, int] = field(default_factory=dict)
     completed: list[Attempt] = field(default_factory=list)
-    last_resume: dict = field(default_factory=dict)
+    resumes: list[dict] = field(default_factory=list)
+
+    @property
+    def last_resume(self):
+        return self.resumes[-1] if self.resumes else {}
 
     def reasons(self):
         reasons = dict(self.holds)
@@ -106,10 +111,16 @@ class Work:
         if not cause:
             self.unclassified.add(key)
         else:
-            self.unclassified.discard(key)
-            first = self.causes.setdefault(cause, attempt.seq)
-            if first != attempt.seq:
-                self.holds.setdefault("same-cause", f"{cause} was observed in two attempts")
+            self.classify(attempt, ac, cause)
+
+    def can_classify(self, attempt, ac, result, cause):
+        return result == "fail" and cause and (attempt.seq, ac) in self.unclassified
+
+    def classify(self, attempt, ac, cause):
+        self.unclassified.discard((attempt.seq, ac))
+        first = self.causes.setdefault(cause, attempt.seq)
+        if first != attempt.seq:
+            self.holds.setdefault("same-cause", f"{cause} was observed in two attempts")
 
     def adjudicate(self, attempt, verdict, seq):
         attempt.verdict = verdict
@@ -123,8 +134,20 @@ def outside_range(paths, allowed):
     ))
 
 
+def guard_reasons(lane, work):
+    return {"closed": "the lane is closed"} if lane.closed else work.reasons()
+
+
+def string_list(data, field):
+    value = data[field]
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise Invalid(f"{field} must be a list of strings")
+    return value
+
+
 def replay(events):
     lanes, works = {}, {}
+    known_kinds = kinds()
     for event in events:
         name, work_id, data, event_type = (event[key] for key in ("lane", "work", "data", "type"))
         try:
@@ -138,9 +161,12 @@ def replay(events):
                     not previous or previous.work != work_id or previous.state not in ("ready", "reviewed")
                 ):
                     raise Invalid(f"cannot register a brief revision for {name}")
-                locks = [store_name(lock, "lock name") for lock in data.get("locks", [])]
-                lanes[name] = Lane(name, work_id, data["kind"], data["allow_paths"], data["acceptance"],
-                                   locks, data["brief"], data.get("report", ""),
+                if not isinstance(data["kind"], str) or data["kind"] not in known_kinds:
+                    raise Invalid("invalid kind")
+                locks = [store_name(lock, "lock name") for lock in string_list(data, "locks")] if "locks" in data else []
+                lanes[name] = Lane(name, work_id, data["kind"], string_list(data, "allow_paths"),
+                                   string_list(data, "acceptance"),
+                                   locks, nonempty(data["brief"], "brief"), data.get("report", ""),
                                    data.get("brief_digest", ""), event["seq"],
                                    attempts=previous.attempts if previous else [])
                 works.setdefault(work_id, Work())
@@ -152,19 +178,31 @@ def replay(events):
             if event_type == "attempt-started":
                 if lane.state not in ("ready", "reviewed") or data["attempt"] != len(lane.attempts) + 1:
                     raise Invalid(f"invalid attempt start for {name}")
+                if not isinstance(data["role"], str):
+                    raise Invalid("role must be a string")
+                inventory = data.get("inventory", {})
+                if isinstance(inventory, list):
+                    # Older starts recorded path names without content fingerprints.
+                    inventory = dict.fromkeys(string_list(data, "inventory"))
+                elif not isinstance(inventory, dict):
+                    raise Invalid("inventory must be an object")
                 lane.attempts.append(Attempt(event["seq"], data["role"], data.get("worktree", ""),
-                                             data.get("base", ""), inventory=data.get("inventory", [])))
+                                             data.get("base", ""), inventory=inventory))
                 lane.last_check = ""
             elif event_type in ("attempt-collected", "observed", "adjudicated", "abandoned"):
                 attempt = lane.current
                 if not attempt or data["attempt"] != len(lane.attempts):
                     raise Invalid(f"event does not refer to the current attempt of {name}")
                 if event_type == "attempt-collected":
-                    if attempt.head:
-                        raise Invalid(f"attempt already collected for {name}")
-                    attempt.head = data["head"]
+                    if lane.state != "running":
+                        raise Invalid(f"collection requires a running attempt for {name}")
+                    attempt.head = nonempty(data["head"], "head")
                     attempt.uncommitted = data.get("uncommitted", False)
-                    attempt.outside = outside_range(data["changed_paths"], lane.allow_paths)
+                    if "untracked" in data:
+                        attempt.collected_untracked = set(string_list(data, "untracked"))
+                    attempt.outside = outside_range(string_list(data, "changed_paths"), lane.allow_paths)
+                    if data.get("verdict") != ("miss" if attempt.outside else None):
+                        raise Invalid(f"invalid collection verdict for {name}")
                     if attempt.outside:
                         work.holds.setdefault("out-of-range", "paths outside the brief: " + ", ".join(attempt.outside))
                         work.adjudicate(attempt, "miss", event["seq"])
@@ -173,27 +211,37 @@ def replay(events):
                         raise Invalid(f"invalid abandonment for {name}")
                     attempt.abandoned = True
                     work.adjudicate(attempt, data["verdict"], event["seq"])
-                elif not attempt.head or attempt.abandoned:
+                elif not attempt.head:
                     raise Invalid(f"collect the attempt before adding evidence for {name}")
                 elif data.get("head", attempt.head) != attempt.head:
                     raise Invalid(f"evidence does not match the collected head for {name}")
+                elif attempt.abandoned or lane.brief_seq > attempt.seq:
+                    if event_type != "observed" or not work.can_classify(
+                        attempt, data["ac"], data["result"], data.get("cause")
+                    ):
+                        raise Invalid(f"event cannot add evidence to an inactive attempt for {name}")
+                    work.classify(attempt, data["ac"], nonempty(data["cause"], "cause"))
                 elif event_type == "observed":
                     if data["ac"] not in lane.acceptance or data["result"] not in ("pass", "fail"):
                         raise Invalid(f"invalid observation for {name}")
+                    if "cause" in data:
+                        nonempty(data["cause"], "cause")
                     work.observe(lane, attempt, data, event["seq"])
                 else:
                     if attempt.verdict or data["verdict"] not in ("hit", "miss", "inconclusive"):
-                        raise Invalid(f"invalid adjudication for {name}")
+                        raise Invalid(f"invalid adjudication verdict or attempt for {name}")
                     work.adjudicate(attempt, data["verdict"], event["seq"])
             elif event_type == "held":
                 work.holds[data["code"]] = data["reason"]
             elif event_type == "resumed":
+                for field in ("diagnosis", "hypothesis", "test"):
+                    nonempty(data[field], field)
                 work.holds.clear()
                 work.completed.clear()
-                work.last_resume = data
+                work.resumes.append(data)
             elif event_type == "closed":
-                if not lane.current or data["head"] != lane.current.head:
-                    raise Invalid(f"invalid closing head for {name}")
+                if lane.state != "reviewed" or lane.current.abandoned or data["head"] != lane.current.head:
+                    raise Invalid(f"invalid closing head or attempt for {name}")
                 lane.closed = True
             else:
                 raise Invalid(f"unknown event type: {event_type}")
@@ -230,7 +278,18 @@ def sync_view(directory, lanes, works):
 
 
 def reconcile(root, logs):
-    states = {run: replay(events) for run, events in logs.items() if run != ROUTE_LOG}
+    states = validate_history(logs)
     for run, (lanes, works) in states.items():
         sync_view(root / run, lanes, works)
     return states
+
+
+def validate_history(logs):
+    if resets := logs.get(ROUTE_LOG):
+        known_kinds = kinds()
+        for event in resets:
+            kind = event["data"].get("kind")
+            if (event["type"] != "route-reset" or event["lane"] or event["work"]
+                    or not isinstance(kind, str) or kind not in known_kinds):
+                raise Invalid(f"invalid route reset event {event['event_id']}")
+    return {run: replay(events) for run, events in logs.items() if run != ROUTE_LOG}
