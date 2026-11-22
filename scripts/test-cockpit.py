@@ -501,7 +501,9 @@ def abandonment(fixture):
     assert miss["verdict"] == "miss"
     fixture.lane("close", "waiting", code=2)
     assert not fixture.route()["demoted"]
-    fixture.lane("start", "lost")
+    unavailable = fixture.lane("start", "lost", code=2)
+    assert "worktree is unavailable" in unavailable["data"]["message"], unavailable
+    fixture.lane("start", "lost", "--worktree", fixture.repo, "--rebase-baseline")
     assert fixture.lane("abandon", "lost", *args, code=1)["reason_codes"] == ["stale-attempt"]
     fixture.lane("abandon", "lost", "--attempt", 2, "--reason", "retry unavailable", "--miss")
     assert fixture.route()["demoted"]
@@ -816,7 +818,7 @@ def classify_inactive(fixture):
         assert wrong["reason_codes"] == ["stale-attempt"] and fixture.events(run) == before, wrong
         fixture.observe(run, "automated", "fail", "missing-label")
         assert fixture.lane("guard", run)["outcome"] == "allow"
-        fixture.lane("start", run)
+        fixture.lane("start", run, "--worktree", fixture.repo, "--rebase-baseline")
         fixture.lane("abandon", run, "--attempt", 2, "--reason", "fixture finished")
     print("  C19 the original failure can be classified after abandonment or brief replacement")
 
@@ -1023,6 +1025,237 @@ def legacy_presence(fixture):
     print("  C34 old inventory shapes supply path presence only, and new events omit them")
 
 
+def protected_collection_evidence(fixture):
+    run = "protected-evidence"
+    name = "checks/local.ignored"
+    fixture.spec_data["do_not_touch"] = [name, "checks/absent.ignored"]
+    fixture.write_spec()
+    fixture.setup(run)
+    (fixture.repo / ".git/info/exclude").write_text("*.ignored\n")
+    fixture.file(fixture.repo, name)
+    fixture.lane("start", run)
+    data = fixture.lane("collect", run)["data"]["data"]
+    before = fixture.events(run)
+    path = fixture.repo / name
+    path.write_text("changed\n")
+    assert fixture.observe(run, "automated", "pass", code=1)["reason_codes"] == ["dirty-checkout"]
+    path.unlink()
+    assert fixture.adjudicate(run, "hit", code=1)["reason_codes"] == ["dirty-checkout"]
+    fixture.file(fixture.repo, name)
+    fixture.file(fixture.repo, "checks/absent.ignored")
+    assert fixture.observe(run, "automated", "pass", code=1)["reason_codes"] == ["dirty-checkout"]
+    assert fixture.adjudicate(run, "hit", code=1)["reason_codes"] == ["dirty-checkout"]
+    assert fixture.events(run) == before
+    assert data["collected_protected_ignored"]["checks/absent.ignored"] is None, data
+    (fixture.repo / "checks/absent.ignored").unlink()
+    fixture.observe(run, "automated", "pass")
+    fixture.adjudicate(run, "hit")
+    print("  C35 evidence rejects changes to protected ignored files and paths collected as absent")
+
+
+def canonical_protected_paths(fixture):
+    run = "protected-names"
+    name = "checks/local.ignored"
+    fixture.spec_data["do_not_touch"] = ["`./checks/./local.ignored`", "checks/./local.ignored"]
+    fixture.write_spec()
+    fixture.setup(run)
+    (fixture.repo / ".git/info/exclude").write_text("*.ignored\n")
+    fixture.file(fixture.repo, name)
+    started = fixture.lane("start", run)["data"]["data"]
+    assert list(started["protected_ignored"]) == [name], started
+    (fixture.repo / name).write_text("changed\n")
+    result = fixture.lane("collect", run, code=1)
+    assert result["data"]["event"]["data"]["outside_paths"] == [name], result
+    print("  C36 a dotted protected path is stored and reported under its canonical name")
+
+
+def reject_unsafe_protected_paths(fixture):
+    for run, unsafe in (("parent", "checks/../local.ignored"), ("absolute", str(fixture.repo / "local.ignored"))):
+        fixture.spec_data["do_not_touch"] = [unsafe]
+        fixture.write_spec()
+        fixture.setup(run)
+        before = fixture.events(run)
+        result = fixture.lane("start", run, code=2)
+        assert result["outcome"] == "invalid" and unsafe in result["data"]["message"], result
+        assert fixture.events(run) == before
+    print("  C37 start rejects parent traversals and absolute protected paths")
+
+
+def protected_absence(fixture):
+    run = "protected-absence"
+    name = "checks/new.ignored"
+    fixture.spec_data["do_not_touch"] = [name]
+    fixture.write_spec()
+    fixture.setup(run)
+    (fixture.repo / ".git/info/exclude").write_text("*.ignored\n")
+    started = fixture.lane("start", run)["data"]["data"]
+    assert started["protected_ignored"] == {name: None}, started
+    fixture.file(fixture.repo, name)
+    result = fixture.lane("collect", run, code=1)
+    data = result["data"]["event"]["data"]
+    assert result["reason_codes"] == ["out-of-range"] and data["outside_paths"] == [name], result
+    assert data["collected_protected_ignored"][name] is not None, data
+    print("  C38 collection reports ignored files that appear at protected paths")
+
+
+def protected_directory(fixture):
+    run = "protected-directory"
+    name = "checks/cache"
+    fixture.spec_data["do_not_touch"] = [name + "/"]
+    fixture.write_spec()
+    fixture.setup(run)
+    (fixture.repo / ".git/info/exclude").write_text("/checks/cache/\n")
+    for entry in ("z", "nested/file", "a"):
+        fixture.file(fixture.repo, f"{name}/{entry}")
+    started = fixture.lane("start", run)["data"]["data"]
+    fixture.lane("collect", run)
+    (fixture.repo / name / "nested/file").write_text("changed\n")
+    assert fixture.observe(run, "automated", "pass", code=1)["reason_codes"] == ["dirty-checkout"]
+    fixture.file(fixture.repo, name + "/nested/file")
+    fixture.adjudicate(run, "hit")
+    fixture.lane("start", run)
+    (fixture.repo / name / "nested/file").write_text("changed\n")
+    result = fixture.lane("collect", run, code=1)
+    data = result["data"]["event"]["data"]
+    assert data["outside_paths"] == [name], result
+    assert list(started["protected_ignored"][name]["entries"]) == ["a", "nested", "nested/file", "z"], started
+    print("  C39 directory fingerprints catch nested edits during collection and evidence checks")
+
+
+def cap_protected_directory(fixture):
+    run = "protected-cap"
+    name = "checks/cache"
+    fixture.spec_data["do_not_touch"] = [name]
+    fixture.write_spec()
+    fixture.setup(run)
+    (fixture.repo / ".git/info/exclude").write_text("/checks/cache/\n")
+    directory = fixture.repo / name
+    directory.mkdir()
+    for number in range(10_000):
+        (directory / str(number)).touch()
+    extra = directory / "extra"
+    extra.touch()
+    before = fixture.events(run)
+    result = fixture.lane("start", run, code=1)
+    assert result["reason_codes"] == ["protected-too-large"] and fixture.events(run) == before, result
+    extra.unlink()
+    fixture.lane("start", run)
+    fixture.lane("collect", run)
+    extra.touch()
+    assert fixture.adjudicate(run, "hit", code=1)["reason_codes"] == ["dirty-checkout"]
+    extra.unlink()
+    fixture.adjudicate(run, "hit")
+    extra.touch()
+    assert fixture.lane("start", run, code=1)["reason_codes"] == ["protected-too-large"]
+    extra.unlink()
+    fixture.lane("start", run)
+    extra.touch()
+    result = fixture.lane("collect", run, code=1)
+    assert result["data"]["event"]["data"]["outside_paths"] == [name], result
+    print("  C40 the protected directory limit accepts 10,000 entries and detects overflow")
+
+
+def retry_moved_checkout(fixture):
+    run = "retry-move"
+    fixture.setup(run)
+    worktree = fixture.worktree()
+    fixture.file(worktree, "notes.txt")
+    started = fixture.lane("start", run, "--worktree", worktree)["data"]["data"]
+    fixture.lane("collect", run)
+    fixture.adjudicate(run, "hit")
+    moved = fixture.directory / "moved checkout"
+    fixture.git(fixture.repo, "worktree", "move", str(worktree), str(moved))
+    retry = fixture.lane("start", run)["data"]["data"]
+    assert retry["worktree"] == str(moved) and retry["git_dir"] == started["git_dir"], retry
+    data = fixture.lane("collect", run)["data"]["data"]
+    assert data["changed_paths"] == [], data
+    print("  C41 a retry defaults to the recorded checkout even after it moves")
+
+
+def retry_other_checkout(fixture):
+    run = "retry-other"
+    name = "checks/local.ignored"
+    fixture.spec_data["do_not_touch"] = [name]
+    fixture.write_spec()
+    fixture.setup(run)
+    (fixture.repo / ".git/info/exclude").write_text("*.ignored\n")
+    worktree = fixture.worktree()
+    fixture.file(worktree, "notes.txt")
+    fixture.lane("start", run, "--worktree", worktree)
+    fixture.lane("collect", run)
+    fixture.adjudicate(run, "hit")
+    ref = f"refs/plumb-cockpit/{run}/lane"
+    baseline = fixture.git(fixture.repo, "rev-parse", ref)
+    before = fixture.events(run)
+    result = fixture.lane("start", run, "--worktree", fixture.repo, code=1)
+    assert result["reason_codes"] == ["other-checkout"] and fixture.events(run) == before, result
+    assert fixture.git(fixture.repo, "rev-parse", ref) == baseline
+    fixture.file(fixture.repo, name)
+    retry = fixture.lane("start", run, "--worktree", fixture.repo, "--rebase-baseline")["data"]["data"]
+    assert fixture.git(fixture.repo, "rev-parse", ref) == retry.get("baseline_tree") != baseline, retry
+    data = fixture.lane("collect", run)["data"]["data"]
+    assert data["changed_paths"] == [], data
+    fixture.adjudicate(run, "hit")
+    fixture.lane("start", run)
+    (fixture.repo / name).write_text("changed\n")
+    result = fixture.lane("collect", run, code=1)
+    assert result["data"]["event"]["data"]["outside_paths"] == [name], result
+    print("  C42 replacing the checkout requires permission and sets the baseline for later retries")
+
+
+def reject_sparse_checkout(fixture):
+    run = "sparse"
+    fixture.setup(run)
+    fixture.git(fixture.repo, "config", "core.sparseCheckout", "true")
+    before = fixture.events(run)
+    result = fixture.lane("start", run, code=1)
+    assert result["reason_codes"] == ["sparse-checkout"] and fixture.events(run) == before, result
+    print("  C43 start refuses core.sparseCheckout")
+
+
+def reject_sparse_index(fixture):
+    run = "sparse-index"
+    fixture.setup(run)
+    fixture.file(fixture.repo, "other/file.txt")
+    fixture.git(fixture.repo, "add", "other")
+    fixture.git(fixture.repo, "commit", "-qm", "add another directory")
+    fixture.git(fixture.repo, "sparse-checkout", "set", "--cone", "--sparse-index", "checks")
+    index = fixture.git(fixture.repo, "ls-files", "--sparse", "--stage")
+    assert "\n040000 " in index, index
+    fixture.git(fixture.repo, "config", "--worktree", "core.sparseCheckout", "false")
+    fixture.git(fixture.repo, "config", "--worktree", "index.sparse", "false")
+    before = fixture.events(run)
+    result = fixture.lane("start", run, code=1)
+    assert result["reason_codes"] == ["sparse-checkout"] and fixture.events(run) == before, result
+    print("  C44 start refuses a sparse index even with core.sparseCheckout disabled")
+
+
+def legacy_collected_names(fixture):
+    run = "old-collection"
+    name = "checks/known.txt"
+    fixture.setup(run)
+    (fixture.repo / ".git/info/exclude").write_text("*.ignored\n")
+    fixture.file(fixture.repo, name)
+    fixture.lane("start", run)
+    fixture.lane("collect", run)
+    added, started, collected = fixture.events(run)
+    del collected["data"]["collected_tree"]
+    collected["data"]["untracked"] = [name, "checks/old-cache.ignored"]
+    log = fixture.cockpit / run / "events.jsonl"
+    log.write_text("".join(json.dumps(event) + "\n" for event in (added, started, collected)))
+    (fixture.repo / name).unlink()
+    assert fixture.observe(run, "automated", "pass", code=1)["reason_codes"] == ["dirty-checkout"]
+    assert fixture.adjudicate(run, "hit", code=1)["reason_codes"] == ["dirty-checkout"]
+    fixture.file(fixture.repo, name)
+    fixture.file(fixture.repo, "checks/new.txt")
+    assert fixture.observe(run, "automated", "pass", code=1)["reason_codes"] == ["dirty-checkout"]
+    (fixture.repo / "checks/new.txt").unlink()
+    fixture.file(fixture.repo, "checks/new-cache.ignored")
+    fixture.observe(run, "automated", "pass")
+    fixture.adjudicate(run, "hit")
+    print("  C45 legacy collected names reject additions and removals of non-ignored paths")
+
+
 def read_only_history(fixture):
     run = "read-only"
     assert fixture.route()["why"] == "preferred"
@@ -1200,7 +1433,13 @@ CASES = {"replay": replay_fixtures, "routing": routing, "idempotency": idempoten
          "c27-configured-threshold": configured_demotion, "c28-python-version": unsupported_python,
          "c29-moved-worktree": reserve_moved_worktree, "c30-retained-baseline": retained_baseline,
          "c31-missing-baseline": missing_baseline, "c32-abandon-scope-hold": abandon_scope_hold,
-         "c33-nested-head": snapshot_nested_head, "c34-legacy-presence": legacy_presence}
+         "c33-nested-head": snapshot_nested_head, "c34-legacy-presence": legacy_presence,
+         "c35-protected-evidence": protected_collection_evidence, "c36-protected-names": canonical_protected_paths,
+         "c37-unsafe-protected-paths": reject_unsafe_protected_paths, "c38-protected-absence": protected_absence,
+         "c39-protected-directory": protected_directory, "c40-protected-cap": cap_protected_directory,
+         "c41-retry-moved": retry_moved_checkout, "c42-retry-other": retry_other_checkout,
+         "c43-sparse-config": reject_sparse_checkout, "c44-sparse-index": reject_sparse_index,
+         "c45-legacy-collected": legacy_collected_names}
 
 
 def main():

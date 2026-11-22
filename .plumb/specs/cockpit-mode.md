@@ -136,27 +136,58 @@ without mode bits, then `assume-unchanged` and moved worktrees). Replace it with
 - The first `start` records the baseline tree ID and keeps the tree reachable with
   `git update-ref` under `refs/plumb-cockpit/<run>/<lane>` in the lane repository. Delete the
   ref on close or abandon. A missing baseline tree makes collection refuse with `missing-baseline`.
-- The first `start` also fingerprints each existing ignored file named under **Do not touch**.
-  Record its type, mode, size, SHA-256 and symlink target as applicable. `collect` compares those
-  fingerprints, including file removal, with the first start.
+- A retry without `--worktree` finds the last checkout by its recorded Git directory, including
+  after a move. An explicit replacement checkout of the same repository requires
+  `--rebase-baseline`. Without the flag, `start` holds with `other-checkout`. The flag captures
+  a new first-start tree and protection set for this lane and its later retries. The lane keeps
+  its original base commit.
+- `start` refuses a checkout with `core.sparseCheckout` enabled or a sparse index with
+  `sparse-checkout`.
+- When recording a baseline, `start` canonicalizes **Do not touch** paths by removing `.`
+  components and rejects absolute paths and `..` components. It records an explicit absence
+  for missing paths. It fingerprints existing ignored files and protected directories, using
+  type, mode, size, SHA-256 and symlink target as applicable. A directory includes a sorted map
+  of entry fingerprints keyed by paths relative to that directory. Symlinks are recorded by
+  target and are never traversed. A protected directory with over 10,000 entries in scope
+  makes `start` hold with `protected-too-large`.
 - `collect` records the current snapshot. Use `git diff-tree -r --name-only` between the
-  baseline and collected trees to find changed paths, and include changes to the protected
-  ignored files. Set `uncommitted` when the collected tree differs from `HEAD^{tree}` after
-  applying the same exclusions.
-- `observe` and `adjudicate` refuse (`dirty-checkout`) unless the current snapshot equals the
-  collected one.
+  baseline and collected trees to find changed paths. Also record a fingerprint or absence
+  for each baseline protected path and report differences as `out-of-range` even inside
+  an allowed range. A protected directory that grows past the limit counts as a change.
+  Set `uncommitted` when the collected tree differs from `HEAD^{tree}` after applying the same
+  exclusions.
+- `observe` and `adjudicate` refuse with `dirty-checkout` unless both the tree ID and protected
+  fingerprints match collection. An oversized protected directory cannot supply matching
+  evidence.
 - The worktree reservation key is `git rev-parse --absolute-git-dir`, which survives
   `git worktree move`. The recorded worktree pathname is for display.
 - `abandon` ends a running or collected attempt, including a collected scope hold. It releases
   any reservation and preserves any scope miss already recorded for the attempt.
-- Old logs can contain inventory names for presence checks. New events use tree IDs and the
-  protected ignored fingerprints.
+- Legacy collections with a tree ID alone use tree equality. Legacy collections with a name
+  inventory compare additions and removals of non-ignored names under the current ignore rules
+  and reject other tree changes.
+  The weaker **first-start-only fallback** for logs without a collection inventory rejects new
+  names and other tree changes, while allowing names present at first start to disappear.
 
-Collect catches careless lane work. A hostile lane can evade it. Its visibility stops at
-tracked files, non-ignored untracked files, and the ignored files fingerprinted above. Nested
-repositories are visible through their HEAD only. Shared services, other checkouts, network
-activity and other changes outside the worktree are outside collect's visibility. Review
-enforces the [worker rules](../../skills/cockpit/references/worker.md) for these boundaries.
+### Known limits
+
+- Ordinary ignored test caches are outside collection. Tests that write a tracked fixture or
+  leave a non-ignored file outside the allowed range can trigger `out-of-range`.
+- Collection measures net worktree state. Restoring an edit, committing and resetting to the
+  same tree, or committing byte-identical pre-existing untracked content can leave an empty
+  changed-path list. The collected HEAD is recorded separately.
+- Git clean filters and line-ending normalization can map different worktree bytes to the same
+  blob. The tree normally tracks the executable bit. Protected fingerprints retain full mode bits.
+- Ignored files outside the baseline protection set and cockpit artifacts are outside collection.
+  Nested repositories are visible through HEAD only. Shared services, other checkouts, network
+  activity and other changes outside the worktree are outside collection. Snapshot checks assume
+  a quiescent worktree and cannot establish what a test read between checks.
+- The temporary index can miss ignored files force-added to the real index before their first commit.
+- On a case-insensitive checkout, the temporary index can miss a case-only rename until it is committed.
+- With `core.fileMode=false`, the tree can miss an executable-bit change on an otherwise unchanged file.
+
+Collect catches careless lane work. A hostile lane can evade it. Review enforces the
+[worker rules](../../skills/cockpit/references/worker.md) for these boundaries.
 
 ## Later PRs
 

@@ -24,6 +24,7 @@ class Attempt:
     protected_ignored: dict = field(default_factory=dict)
     head: str = ""
     collected_tree: str = ""
+    collected_protected_ignored: dict | None = None
     verdict: str = ""
     observations: dict[str, str] = field(default_factory=dict)
     progress: bool = False
@@ -63,6 +64,11 @@ class Lane:
     @property
     def current(self):
         return self.attempts[-1] if self.attempts else None
+
+    @property
+    def baseline(self):
+        return next((attempt for attempt in reversed(self.attempts) if attempt.baseline_tree),
+                    self.attempts[0] if self.attempts else None)
 
     @property
     def state(self):
@@ -208,6 +214,7 @@ def replay(events):
                         raise Invalid(f"collection requires a running attempt for {name}")
                     attempt.head = nonempty(data["head"], "head")
                     attempt.collected_tree = data.get("collected_tree", "")
+                    attempt.collected_protected_ignored = data.get("collected_protected_ignored")
                     attempt.uncommitted = data.get("uncommitted", False)
                     if "untracked" in data:
                         attempt.legacy_collected_names = set(string_list(data, "untracked"))
