@@ -29,3 +29,9 @@ directory. The command help describes each argument.
 5. Ask `plumb-lane guard` what can proceed and `plumb-lane status` for the run's lanes. Use
    `plumb-lane close` when the acceptance evidence is complete. When a hold needs intervention,
    record the new diagnosis, hypothesis and distinguishing test with `plumb-lane resume`.
+
+Collect catches careless lane work. A hostile lane can evade it. Visibility covers tracked
+files, non-ignored untracked files, and existing ignored files named under **Do not touch** at
+the first start. Nested repositories are visible through their HEAD only. Shared services,
+other checkouts, network activity and other changes outside the worktree are outside collect's
+visibility. Enforce the [worker rules](references/worker.md) for these boundaries during review.

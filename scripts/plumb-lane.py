@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import os
-import stat
 from hashlib import sha256
 from pathlib import Path
 
@@ -13,7 +12,8 @@ from cockpit import (
     next_timestamp, nonempty, parser, positive_int, read_events, resolve, run_cli, run_directory,
     run_root, store_name, subcommand, transaction,
 )
-from cockpit_brief import brief_path, one_line, problems, read_spec, render
+from cockpit_brief import brief_path, do_not_touch_paths, one_line, problems, read_spec, render
+from cockpit_snapshot import artifact_path, fingerprint, snapshot, tree_diff
 from cockpit_state import guard_reasons, outside_range, reconcile, replay, rows, sync_view, tsv, validate_history
 
 
@@ -41,68 +41,64 @@ def require_ancestor(directory, base, head):
         raise Invalid(f"base {base} is not an ancestor of HEAD {head}")
 
 
-def paths_from(output):
-    return {os.fsdecode(path) for path in output.split(b"\0") if path}
+def attempt_checkout(repo, attempt):
+    if not attempt.git_dir:
+        return checkout_for(repo, Path(attempt.worktree))
+    entries = git(repo, "worktree", "list", "--porcelain", "-z").split(b"\0")
+    for entry in entries:
+        if entry.startswith(b"worktree "):
+            path = Path(os.fsdecode(entry[len(b"worktree "):]))
+            if path.is_dir():
+                try:
+                    if str(git_path(path, "--absolute-git-dir")) == attempt.git_dir:
+                        return path.resolve()
+                except Invalid:
+                    continue
+    raise Invalid(f"the lane worktree is unavailable: {attempt.worktree}")
 
 
-def without_artifacts(paths, directory, store):
-    if store != directory and directory in store.parents:
-        relative = store.relative_to(directory).as_posix()
-        return {path for path in paths if path != relative and not path.startswith(relative + "/")}
-    return paths
+def baseline_exists(repo, tree):
+    return tree and git(repo, "cat-file", "-t", "--", tree, allowed=(0, 128)) == b"tree\n"
 
 
-def fingerprint(path):
-    info = path.lstat()
-    file_type = stat.S_IFMT(info.st_mode)
-    value = {"type": file_type, "size": info.st_size}
-    if stat.S_ISLNK(info.st_mode):
-        value["target"] = os.readlink(path)
-    elif stat.S_ISREG(info.st_mode):
-        digest = sha256()
-        with path.open("rb") as handle:
-            for block in iter(lambda: handle.read(128 * 1024), b""):
-                digest.update(block)
-        value["sha256"] = digest.hexdigest()
-    return value
-
-
-def untracked_paths(directory, store):
-    # Without exclusion options, Git includes ignored entries in the untracked listing.
-    paths = paths_from(git(directory, "ls-files", "--others", "-z", "--"))
-    return without_artifacts(paths, directory, store)
-
-
-def checkout_status(directory, store):
-    entries = paths_from(git(directory, "status", "--porcelain=v1", "-z", "--untracked-files=all",
-                             "--no-renames", "--ignore-submodules=none"))
-    tracked = {entry[3:] for entry in entries if not entry.startswith("?? ")}
-    untracked = {entry[3:] for entry in entries if entry.startswith("?? ")}
-    return tracked, without_artifacts(untracked, directory, store)
-
-
-def collected(repo, lane, store):
+def collected(args, repo, lane, store):
     attempt = lane.current
-    directory = checkout_for(repo, Path(attempt.worktree))
+    baseline = lane.attempts[0]
+    if not baseline_exists(repo, baseline.baseline_tree):
+        return hold(args, {"missing-baseline": "the first start's snapshot tree is unavailable"})
+    directory = attempt_checkout(repo, attempt)
     head = revision(directory, "HEAD")
     require_ancestor(directory, attempt.base, head)
-    diff = ("diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", "--ignore-submodules=none")
-    tracked, untracked = checkout_status(directory, store)
-    current = untracked_paths(directory, store)
-    baseline = lane.attempts[0].inventory
-    untracked_changes = current ^ baseline.keys()
-    untracked_changes.update(path for path in current & baseline.keys()
-                             if baseline[path] is not None and baseline[path] != fingerprint(directory / path))
-    changed = git(directory, *diff, f"{attempt.base}..{head}", "--")
-    paths = sorted(paths_from(changed) | tracked | untracked_changes)
+    tree, _ = snapshot(directory, store)
+    artifact = artifact_path(directory, store)
+    changed = tree_diff(directory, baseline.baseline_tree, tree, artifact=artifact)
+    protected = sorted(name for name, before in baseline.protected_ignored.items()
+                       if fingerprint(directory, name) != before)
+    paths = sorted(set(changed).union(protected))
+    uncommitted = bool(tree_diff(directory, f"{head}^{{tree}}", tree, artifact=artifact))
     if revision(directory, "HEAD") != head:
         raise Invalid("the lane worktree head moved during collection")
     data = {"attempt": len(lane.attempts), "head": head, "changed_paths": paths, "report": lane.report,
-            "uncommitted": bool(tracked or untracked), "untracked": sorted(current)}
-    if outside := outside_range(paths, lane.allow_paths):
+            "uncommitted": uncommitted, "collected_tree": tree}
+    if protected:
+        data["protected_changes"] = protected
+    if outside := outside_range(paths, lane.allow_paths, protected):
         # The scope violation and its single route miss are the same durable write.
         data.update(verdict="miss", reason="out-of-range", demote_after=demote_after(), outside_paths=outside)
     return data
+
+
+def matches_collection(worktree, lane, store):
+    attempt = lane.current
+    tree, _ = snapshot(worktree, store)
+    if attempt.collected_tree:
+        return tree == attempt.collected_tree
+    names = attempt.legacy_collected_names
+    if names is None:
+        names = lane.attempts[0].legacy_names
+    changes = tree_diff(worktree, f"{attempt.head}^{{tree}}", tree,
+                        artifact=artifact_path(worktree, store), status=True)
+    return all(status == "A" and name in names for status, name in zip(changes[::2], changes[1::2]))
 
 
 def active_locks(states):
@@ -165,6 +161,7 @@ def apply(args, logs, states, lanes, works, directory):
     if lane.closed:
         raise Invalid(f"lane is closed: {name}")
     store = directory.parent.parent
+    repo = args.repo or Path.cwd()
     if action in ("observe", "adjudicate", "abandon"):
         historical = attempt and (attempt.abandoned or lane.brief_seq > attempt.seq)
         classification = historical and action == "observe" and work.can_classify(
@@ -174,18 +171,18 @@ def apply(args, logs, states, lanes, works, directory):
         if not stale and action != "abandon" and attempt.head:
             stale = args.head not in (None, attempt.head)
             if not stale and not classification:
-                worktree = checkout_for(args.repo, Path(attempt.worktree))
+                worktree = attempt_checkout(repo, attempt)
                 stale = revision(worktree, "HEAD") != attempt.head
         if stale:
             return hold(args, {"stale-attempt": "use the latest attempt and its collected head"},
                         attempt=attempt_number, head=attempt.head if attempt else None)
         if action != "abandon" and attempt.head and not classification:
-            tracked, _ = checkout_status(worktree, store)
-            snapshot = attempt.collected_untracked
-            if snapshot is None:
-                snapshot = lane.attempts[0].inventory.keys()
-            if tracked or untracked_paths(worktree, store) - snapshot:
-                return hold(args, {"dirty-checkout": "the checkout has uncommitted tracked changes or new untracked files"},
+            clean = matches_collection(worktree, lane, store)
+            if revision(worktree, "HEAD") != attempt.head:
+                return hold(args, {"stale-attempt": "the checkout head moved during verification"},
+                            attempt=attempt_number, head=attempt.head)
+            if not clean:
+                return hold(args, {"dirty-checkout": "the checkout differs from the collected snapshot"},
                             attempt=attempt_number, head=attempt.head)
     if action == "close" and reasons:
         return hold(args, reasons)
@@ -195,7 +192,8 @@ def apply(args, logs, states, lanes, works, directory):
         brief_bytes = Path(lane.brief).read_bytes()
         if lane.brief_digest and sha256(brief_bytes).hexdigest() != lane.brief_digest:
             return hold(args, {"stale-brief": "regenerate the brief from the registered spec"})
-        issues = problems(brief_bytes.decode("utf-8"))
+        brief = brief_bytes.decode("utf-8")
+        issues = problems(brief)
         if issues:
             return hold(args, {"invalid-brief": "; ".join(issues)})
         occupied = active_locks(states)
@@ -203,11 +201,15 @@ def apply(args, logs, states, lanes, works, directory):
         if conflicts:
             return hold(args, {"resource-busy": ", ".join(conflicts)})
         route = resolve(lane.kind, logs)
-        worktree = checkout_for(args.repo, args.worktree)
+        worktree = checkout_for(repo, args.worktree)
+        git_dir = str(git_path(worktree, "--absolute-git-dir"))
         for run, (other_lanes, _) in states.items():
             for other in other_lanes.values():
-                if (other.state in ("running", "collected") and other.current.worktree == str(worktree)
-                        and (not route["read_only"] or kind_info(other.kind)["read_only"] != "true")):
+                if other.state not in ("running", "collected"):
+                    continue
+                reserved = (other.current.git_dir == git_dir if other.current.git_dir
+                            else other.current.worktree == str(worktree))
+                if reserved and (not route["read_only"] or kind_info(other.kind)["read_only"] != "true"):
                     return hold(args, {"worktree-busy": f"checkout is in use by {run}/{other.name}"})
         head = revision(worktree, "HEAD")
         base = revision(worktree, args.base) if args.base else attempt.base if attempt else head
@@ -216,22 +218,29 @@ def apply(args, logs, states, lanes, works, directory):
         require_ancestor(worktree, base, head)
         data = {
             "attempt": attempt_number + 1, "role": route["role"], "command": route["command"],
-            "worktree": str(worktree), "base": base,
+            "worktree": str(worktree), "git_dir": git_dir, "base": base,
         }
         if not attempt:
-            data["inventory"] = {path: fingerprint(worktree / path) for path in sorted(untracked_paths(worktree, store))}
+            tree, protected = snapshot(worktree, store, protected=tuple(do_not_touch_paths(brief)))
+            if revision(worktree, "HEAD") != head:
+                raise Invalid("the lane worktree head moved during start")
+            data.update(baseline_tree=tree, protected_ignored=protected)
+        elif not baseline_exists(worktree, lane.attempts[0].baseline_tree):
+            return hold(args, {"missing-baseline": "the first start's snapshot tree is unavailable"})
         if work.last_resume:
             data["resume"] = work.last_resume
         return "attempt-started", lane.work, data
     if action == "collect":
         if lane.state != "running":
             raise Invalid("collect requires a running attempt")
-        return "attempt-collected", lane.work, collected(args.repo, lane, store)
+        data = collected(args, repo, lane, store)
+        return data if isinstance(data, int) else ("attempt-collected", lane.work, data)
     if action == "abandon":
-        if lane.state not in ("running", "collected"):
+        if not attempt.abandonable:
             raise Invalid("abandon requires a running or collected attempt")
-        data = {"attempt": attempt_number, "verdict": "miss" if args.miss else "inconclusive",
-                "reason": nonempty(args.reason, "reason"), "demote_after": demote_after()}
+        data = {"attempt": attempt_number, "reason": nonempty(args.reason, "reason")}
+        if not attempt.verdict:
+            data.update(verdict="miss" if args.miss else "inconclusive", demote_after=demote_after())
         return "abandoned", lane.work, data
     if action == "resume":
         fields = {key: (getattr(args, key) or "").strip() for key in ("diagnosis", "hypothesis", "test")}
@@ -282,7 +291,7 @@ def event_answer(args, event, events):
             outside = data.get("outside_paths")
             if outside is None:
                 lanes, _ = replay(events[:event["seq"] - 1])
-                outside = outside_range(data["changed_paths"], lanes[name].allow_paths)
+                outside = outside_range(data["changed_paths"], lanes[name].allow_paths, data.get("protected_changes", []))
             return hold(args, {"out-of-range": "paths outside the brief: " + ", ".join(outside)},
                         context=context, event=event)
         message += context
@@ -323,6 +332,12 @@ def write(args, root):
             raise Invalid(f"run is not initialized: {args.run}")
         events = logs[args.run]
         lanes, works = states[args.run]
+        repo = args.repo or Path.cwd()
+        ref = f"refs/plumb-cockpit/{args.run}/{args.lane}"
+        lane = lanes.get(args.lane)
+        # Recover a ref left by an interruption after appending a terminal event.
+        if lane and lane.current and (lane.closed or lane.current.abandoned) and lane.attempts[0].baseline_tree:
+            git(repo, "update-ref", "-d", ref)
         if existing := next((event for event in events if event["event_id"] == args.event_id), None):
             return event_answer(args, existing, events)
         result = apply(args, logs, states, lanes, works, directory)
@@ -331,7 +346,12 @@ def write(args, root):
         event_type, work, data = result
         event = new_event(events, next_timestamp(logs), event_type, args.lane, work, data, args.event_id)
         states[args.run] = replay([*events, event])
+        if event_type == "attempt-started":
+            baseline = states[args.run][0][args.lane].attempts[0].baseline_tree
+            git(Path(data["worktree"]), "update-ref", ref, baseline)
         append(directory / "events.jsonl", event)
+        if event_type in ("closed", "abandoned") and lane.attempts[0].baseline_tree:
+            git(repo, "update-ref", "-d", ref)
         sync_view(directory, *states[args.run])
         sync_locks(root, states)
         return event_answer(args, event, events)

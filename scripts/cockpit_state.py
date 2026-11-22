@@ -19,14 +19,18 @@ class Attempt:
     role: str
     worktree: str = ""
     base: str = ""
+    git_dir: str = ""
+    baseline_tree: str = ""
+    protected_ignored: dict = field(default_factory=dict)
     head: str = ""
+    collected_tree: str = ""
     verdict: str = ""
     observations: dict[str, str] = field(default_factory=dict)
     progress: bool = False
     uncommitted: bool = False
     outside: list[str] = field(default_factory=list)
-    inventory: dict = field(default_factory=dict)
-    collected_untracked: set[str] | None = None
+    legacy_names: set[str] = field(default_factory=set)
+    legacy_collected_names: set[str] | None = None
     observation_seq: int = 0
     completion_seq: int = 0
     abandoned: bool = False
@@ -34,6 +38,10 @@ class Attempt:
     @property
     def window_seq(self):
         return self.observation_seq or self.completion_seq
+
+    @property
+    def abandonable(self):
+        return not self.abandoned and (not self.verdict or bool(self.outside))
 
 
 @dataclass
@@ -128,10 +136,10 @@ class Work:
         self.completed.append(attempt)
 
 
-def outside_range(paths, allowed):
-    return sorted(path for path in paths if not any(
+def outside_range(paths, allowed, protected=()):
+    return sorted(set(protected).union(path for path in paths if not any(
         path.startswith(rule) if rule.endswith("/") else path == rule for rule in allowed
-    ))
+    )))
 
 
 def guard_reasons(lane, work):
@@ -182,12 +190,14 @@ def replay(events):
                     raise Invalid("role must be a string")
                 inventory = data.get("inventory", {})
                 if isinstance(inventory, list):
-                    # Older starts recorded path names without content fingerprints.
-                    inventory = dict.fromkeys(string_list(data, "inventory"))
+                    inventory = string_list(data, "inventory")
                 elif not isinstance(inventory, dict):
                     raise Invalid("inventory must be an object")
                 lane.attempts.append(Attempt(event["seq"], data["role"], data.get("worktree", ""),
-                                             data.get("base", ""), inventory=inventory))
+                                             data.get("base", ""), git_dir=data.get("git_dir", ""),
+                                             baseline_tree=data.get("baseline_tree", ""),
+                                             protected_ignored=data.get("protected_ignored", {}),
+                                             legacy_names=set(inventory)))
                 lane.last_check = ""
             elif event_type in ("attempt-collected", "observed", "adjudicated", "abandoned"):
                 attempt = lane.current
@@ -197,20 +207,25 @@ def replay(events):
                     if lane.state != "running":
                         raise Invalid(f"collection requires a running attempt for {name}")
                     attempt.head = nonempty(data["head"], "head")
+                    attempt.collected_tree = data.get("collected_tree", "")
                     attempt.uncommitted = data.get("uncommitted", False)
                     if "untracked" in data:
-                        attempt.collected_untracked = set(string_list(data, "untracked"))
-                    attempt.outside = outside_range(string_list(data, "changed_paths"), lane.allow_paths)
+                        attempt.legacy_collected_names = set(string_list(data, "untracked"))
+                    protected = string_list(data, "protected_changes") if "protected_changes" in data else []
+                    attempt.outside = outside_range(string_list(data, "changed_paths"), lane.allow_paths, protected)
                     if data.get("verdict") != ("miss" if attempt.outside else None):
                         raise Invalid(f"invalid collection verdict for {name}")
                     if attempt.outside:
                         work.holds.setdefault("out-of-range", "paths outside the brief: " + ", ".join(attempt.outside))
                         work.adjudicate(attempt, "miss", event["seq"])
                 elif event_type == "abandoned":
-                    if attempt.verdict or data["verdict"] not in ("miss", "inconclusive"):
+                    verdict = data.get("verdict")
+                    allowed = (None,) if attempt.verdict else ("miss", "inconclusive")
+                    if not attempt.abandonable or verdict not in allowed:
                         raise Invalid(f"invalid abandonment for {name}")
                     attempt.abandoned = True
-                    work.adjudicate(attempt, data["verdict"], event["seq"])
+                    if verdict:
+                        work.adjudicate(attempt, verdict, event["seq"])
                 elif not attempt.head:
                     raise Invalid(f"collect the attempt before adding evidence for {name}")
                 elif data.get("head", attempt.head) != attempt.head:

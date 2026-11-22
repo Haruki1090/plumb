@@ -105,16 +105,18 @@ def invoke(*args, cwd=None):
     return result.stdout
 
 
-def git(repo, *args, allowed=(0,)):
+def git(repo, *args, allowed=(0,), overrides=None):
     # A lane path takes precedence over Git environment overrides inherited from the caller.
     env = {key: value for key, value in os.environ.items() if key not in {
         "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_PREFIX",
+        "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
     }}
     env.update(GIT_NO_LAZY_FETCH="1", GIT_OPTIONAL_LOCKS="0")
+    env.update(overrides or {})
     try:
-        result = subprocess.run(["git", "-C", repo, "-c", "core.fsmonitor=false", *args],
-                                env=env, stdin=subprocess.DEVNULL,
-                                capture_output=True)
+        result = subprocess.run(["git", "-C", repo, "-c", "core.fsmonitor=false",
+                                 "-c", "core.hooksPath=/dev/null", *args],
+                                env=env, stdin=subprocess.DEVNULL, capture_output=True)
     except FileNotFoundError as exc:
         raise Unavailable("git is unavailable") from exc
     if result.returncode not in allowed:

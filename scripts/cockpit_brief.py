@@ -120,13 +120,9 @@ def render(lane, spec):
     return opening + "".join(f"\n## {heading}\n\n{contents[heading]}\n" for heading in SECTIONS)
 
 
-def problems(brief):
+def brief_sections(brief):
     sections = {}
     issues = []
-    opening = WORKER_INSTRUCTION.fullmatch(brief.partition("\n")[0])
-    worker = Path(opening[1]) if opening else None
-    if worker is None or not recognized_worker(worker):
-        issues.append("first line must refer to the cockpit worker.md in a recognized plumb installation")
     heading = None
     # Material can include command transcripts. A heading inside a fenced block is literal.
     fence = None
@@ -145,6 +141,23 @@ def problems(brief):
             continue
         if heading is not None:
             sections[heading].append(line)
+    return sections, issues
+
+
+def do_not_touch_paths(brief):
+    sections, _ = brief_sections(brief)
+    for line in sections.get("Do not touch", []):
+        if line.startswith("- "):
+            value = line[2:].strip()
+            yield value[1:-1] if value.startswith("`") and value.endswith("`") else value
+
+
+def problems(brief):
+    sections, issues = brief_sections(brief)
+    opening = WORKER_INSTRUCTION.fullmatch(brief.partition("\n")[0])
+    worker = Path(opening[1]) if opening else None
+    if worker is None or not recognized_worker(worker):
+        issues.insert(0, "first line must refer to the cockpit worker.md in a recognized plumb installation")
     for heading in SECTIONS:
         if heading not in sections:
             issues.append(f"missing section: {heading}")

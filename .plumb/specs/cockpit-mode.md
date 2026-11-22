@@ -89,9 +89,8 @@ Exit codes: 0 done, 1 refused by a rule (hold), 2 bad input or state, 3 runtime 
   `Kind`, `Report path`, `Forbidden means`. Same spec, same output.
 - `plumb-brief check BRIEF` → lists missing or empty sections, an acceptance item with no check
   command, a missing report path. Exit 1 when anything is missing.
-- `plumb-lane init|add|start|collect|observe|adjudicate|guard|resume|close|status|route-reset`.
-  `start` refuses (exit 1) when `guard` holds. `collect` reads `git diff --name-only <base>..HEAD`
-  plus untracked files in the lane worktree itself; the worker's report is not trusted for paths.
+- `plumb-lane init|add|start|collect|observe|adjudicate|abandon|guard|resume|close|status|route-reset`.
+  `start` refuses (exit 1) when `guard` holds. `collect` checks the lane's worktree snapshots below.
   `status` prints `lanes.tsv` (or JSON) and exits 0 even when lanes are held.
 
 ## worker.md
@@ -99,8 +98,8 @@ Exit codes: 0 done, 1 refused by a rule (hold), 2 bad input or state, 3 runtime 
 The rules every lane reads, short. Works for any runtime. Holds: the brief is the whole bar; no
 shared services (container sockets, databases, other worktrees) unless the brief lists them;
 commit locally, no push; write the report to the given path with the commands actually run and
-their exit codes; stop and report instead of widening the range. Note in the doc that these
-sentences are a courtesy: `collect` and `guard` are what enforce them.
+their exit codes; stop and report instead of widening the range. `collect` checks worktree paths,
+`guard` applies the recorded stop rules, and review enforces the worker rules beyond those checks.
 
 ## Skill
 
@@ -128,21 +127,36 @@ start`, wait through `pane.driver`, `collect`, run the checks yourself, `observe
 Three review rounds kept finding holes in the per-path inventory (names only, then fingerprints
 without mode bits, then `assume-unchanged` and moved worktrees). Replace it with one primitive.
 
-- `snapshot(worktree)` = the tree id from `git write-tree` over a temporary index
-  (`GIT_INDEX_FILE` in the store, seeded with `git read-tree HEAD`, then
-  `git add --all --force -- .` with `core.fileMode` and `core.symlinks` taken from the repository).
-  It covers tracked and untracked files, ignored files, contents, the executable bit and symlink
-  targets, and ignores `assume-unchanged`/`skip-worktree` because the temporary index starts from
-  the commit, not from the worktree's index. Cockpit artifacts are excluded by path.
-- `start` records `snapshot` once per lane (the first start) as the baseline.
-- `collect` records the snapshot at collection. Changed paths = `git diff-tree -r --name-only
-  <baseline tree> <collected tree>`; this replaces the commit diff, the inventory and porcelain
-  status. `uncommitted` = collected tree differs from `HEAD^{tree}` after the same exclusions.
+- `snapshot(worktree)` uses a temporary `GIT_INDEX_FILE` in the store. Seed it with
+  `git read-tree HEAD`, stage with `git add --all -- .`, and get the tree ID with
+  `git write-tree`. The snapshot covers tracked and non-ignored untracked files, including
+  contents, executable bits and symlink targets as Git represents them. It starts from the
+  commit, so `assume-unchanged` and `skip-worktree` in the worktree index have no effect.
+  Exclude cockpit artifacts by path.
+- The first `start` records the baseline tree ID and keeps the tree reachable with
+  `git update-ref` under `refs/plumb-cockpit/<run>/<lane>` in the lane repository. Delete the
+  ref on close or abandon. A missing baseline tree makes collection refuse with `missing-baseline`.
+- The first `start` also fingerprints each existing ignored file named under **Do not touch**.
+  Record its type, mode, size, SHA-256 and symlink target as applicable. `collect` compares those
+  fingerprints, including file removal, with the first start.
+- `collect` records the current snapshot. Use `git diff-tree -r --name-only` between the
+  baseline and collected trees to find changed paths, and include changes to the protected
+  ignored files. Set `uncommitted` when the collected tree differs from `HEAD^{tree}` after
+  applying the same exclusions.
 - `observe` and `adjudicate` refuse (`dirty-checkout`) unless the current snapshot equals the
   collected one.
-- The worktree reservation key is the worktree's git dir (`git rev-parse --absolute-git-dir`),
-  which survives `git worktree move`; the pathname stays for display only.
-- The existing inventory fields are read for old logs only (presence checks), never written.
+- The worktree reservation key is `git rev-parse --absolute-git-dir`, which survives
+  `git worktree move`. The recorded worktree pathname is for display.
+- `abandon` ends a running or collected attempt, including a collected scope hold. It releases
+  any reservation and preserves any scope miss already recorded for the attempt.
+- Old logs can contain inventory names for presence checks. New events use tree IDs and the
+  protected ignored fingerprints.
+
+Collect catches careless lane work. A hostile lane can evade it. Its visibility stops at
+tracked files, non-ignored untracked files, and the ignored files fingerprinted above. Nested
+repositories are visible through their HEAD only. Shared services, other checkouts, network
+activity and other changes outside the worktree are outside collect's visibility. Review
+enforces the [worker rules](../../skills/cockpit/references/worker.md) for these boundaries.
 
 ## Later PRs
 

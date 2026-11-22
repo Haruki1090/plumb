@@ -294,12 +294,12 @@ def locks_and_base(fixture):
     fixture.git(worktree, "add", "--", "checks/new.txt")
     collected = fixture.lane("collect", "left")["data"]["data"]
     assert collected["uncommitted"] and collected["changed_paths"] == ["checks/new.txt"], collected
-    fixture.git(worktree, "reset", "-q", "--", "checks/new.txt")
-    (worktree / "checks/new.txt").unlink()
     fixture.observe("left", "automated", "pass")
     fixture.observe("left", "manual", "pass")
     fixture.adjudicate("left", "hit")
     assert fixture.lane("close", "left", code=1)["reason_codes"] == ["uncommitted-edits"]
+    fixture.git(worktree, "reset", "-q", "--", "checks/new.txt")
+    (worktree / "checks/new.txt").unlink()
     assert not lock.exists()
     fixture.lane("start", "right")
     fixture.lane("collect", "right")
@@ -545,29 +545,54 @@ sys.exit(run_cli(parser("boundary", "fixture"), handler))
     print("  C08 aliases share canonical keys, invalid names and unexpected exceptions return the JSON envelope")
 
 
-def ignored_inventory(fixture):
-    run = "inventory"
+def snapshot_scope(fixture):
+    run = "snapshot-scope"
     ignore = fixture.directory / "global-ignore"
     ignore.write_text("*.local\n")
     fixture.git(fixture.repo, "config", "core.excludesFile", str(ignore))
-    (fixture.repo / ".gitignore").write_text("*.ignored\n")
-    fixture.git(fixture.repo, "add", ".gitignore")
+    (fixture.repo / ".gitignore").write_text("*.ignored\n__pycache__/\n")
+    fixture.file(fixture.repo, "checks/skipped.txt")
+    fixture.file(fixture.repo, "checks/tracked.ignored")
+    artifact = ".plumb/run/cockpit/tracked-artifact"
+    fixture.file(fixture.repo, artifact)
+    fixture.git(fixture.repo, "add", "-f", ".gitignore", "checks/skipped.txt", "checks/tracked.ignored", artifact)
     fixture.git(fixture.repo, "commit", "-qm", "ignore a fixture pattern")
-    for name in ("existing.ignored", "existing.local", "existing.txt"):
-        fixture.file(fixture.repo, name)
+    worker = fixture.repo / "lane_check.py"
+    worker.write_text("value = 1\n")
+    fixture.git(fixture.repo, "add", worker.name)
+    fixture.git(fixture.repo, "commit", "-qm", "add the lane check")
+
+    def run_check():
+        env = {key: value for key, value in fixture.env.items() if key != "PYTHONDONTWRITEBYTECODE"}
+        subprocess.run([sys.executable, "-c", "import lane_check"], cwd=fixture.repo, env=env, check=True)
+        return next((fixture.repo / "__pycache__").glob("*.pyc")).read_bytes()
+
+    before = run_check()
     fixture.setup(run)
     started = fixture.lane("start", run)["data"]["data"]
-    assert sorted(started["inventory"]) == ["existing.ignored", "existing.local", "existing.txt"], started
     fixture.setup("later")
-    for name in ("outside/new.ignored", "outside/new.local"):
+    for name in ("outside/new.ignored", "outside/new.local", ".plumb/run/cockpit/new-artifact"):
         fixture.file(fixture.repo, name)
-        fixture.git(fixture.repo, "check-ignore", "--", name)
-    result = fixture.lane("collect", run, code=1)
-    assert result["reason_codes"] == ["out-of-range"], result
-    data = result["data"]["event"]["data"]
-    assert data["uncommitted"] and data["changed_paths"] == ["outside/new.ignored", "outside/new.local"], data
-    assert data["verdict"] == "miss"
-    print("  C09 repository and global ignores included, pre-existing files and cockpit artifacts excluded")
+    (fixture.repo / artifact).write_text("new artifact content\n")
+    worker.write_text("value = 123\n")
+    assert run_check() != before
+    fixture.git(fixture.repo, "restore", "--", worker.name)
+    data = fixture.lane("collect", run)["data"]["data"]
+    assert data["changed_paths"] == [] and not data["uncommitted"], data
+    assert data["collected_tree"] == started["baseline_tree"], data
+    assert not fixture.git(fixture.repo, "ls-tree", data["collected_tree"], "--", ".plumb")
+    fixture.adjudicate(run, "hit")
+    fixture.lane("start", run)
+    fixture.git(fixture.repo, "update-index", "--assume-unchanged", "checks/record.txt")
+    fixture.git(fixture.repo, "update-index", "--skip-worktree", "checks/skipped.txt")
+    for path in ("checks/record.txt", "checks/skipped.txt", "checks/new.txt", "checks/tracked.ignored"):
+        (fixture.repo / path).write_text("new content\n")
+    index = fixture.repo / ".git/index"
+    before = index.read_bytes()
+    data = fixture.lane("collect", run)["data"]["data"]
+    assert data["changed_paths"] == ["checks/new.txt", "checks/record.txt", "checks/skipped.txt", "checks/tracked.ignored"], data
+    assert data["uncommitted"] and index.read_bytes() == before, data
+    print("  C09 ignored bytecode and cockpit artifacts stay out of scope, index flags cannot hide lane edits")
 
 
 def repeat_collection(fixture):
@@ -696,28 +721,36 @@ def collection_demotes(fixture):
     print("  C14 an explicit miss and a collection miss demote across runs, resend leaves the count unchanged")
 
 
-def fingerprint_inventory(fixture):
+def protected_ignored_files(fixture):
     run = "fingerprint"
+    fixture.spec_data["do_not_touch"] = ["`checks/mode.ignored`", "deleted.ignored", "existing.ignored",
+                                         "link.ignored", "type.ignored", "unchanged.ignored"]
+    fixture.write_spec()
     fixture.setup(run)
     (fixture.repo / ".git/info/exclude").write_text("*.ignored\n")
-    for name in ("existing.ignored", "existing.txt", "deleted.ignored", "unchanged.ignored"):
+    for name in ("checks/mode.ignored", "deleted.ignored", "existing.ignored", "existing.txt", "type.ignored",
+                 "unchanged.ignored", "unlisted.ignored"):
         fixture.file(fixture.repo, name)
     link = fixture.repo / "link.ignored"
     link.symlink_to("old-target")
     fixture.lane("start", run)
-    for name in ("existing.ignored", "existing.txt"):
+    for name in ("existing.ignored", "existing.txt", "unlisted.ignored"):
         (fixture.repo / name).write_text("changed\n")
+    (fixture.repo / "checks/mode.ignored").chmod(0o600)
     (fixture.repo / "deleted.ignored").unlink()
+    (fixture.repo / "type.ignored").unlink()
+    (fixture.repo / "type.ignored").symlink_to("fixture")
     link.unlink()
     link.symlink_to("new-target")
     result = fixture.lane("collect", run, code=1)
     data = result["data"]["event"]["data"]
     assert result["reason_codes"] == ["out-of-range"], result
-    assert data["outside_paths"] == ["deleted.ignored", "existing.ignored", "existing.txt", "link.ignored"], data
-    print("  C16 same-size file and symlink changes and removed paths count towards scope")
+    assert data["outside_paths"] == ["checks/mode.ignored", "deleted.ignored", "existing.ignored", "existing.txt",
+                                     "link.ignored", "type.ignored"], data
+    print("  C16 protected ignored files catch mode, content, deletion, symlink target and type changes")
 
 
-def retry_inventory(fixture):
+def retry_snapshot(fixture):
     run = "retry-scope"
     fixture.setup(run)
     outside = fixture.repo / "outside.txt"
@@ -737,7 +770,7 @@ def retry_inventory(fixture):
     print("  C17 a surviving outside path still misses on retry and removal clears it")
 
 
-def commit_inventory(fixture):
+def commit_baseline_file(fixture):
     run = "commit-untracked"
     fixture.setup(run)
     path = "checks/initially-untracked.txt"
@@ -746,12 +779,12 @@ def commit_inventory(fixture):
     fixture.git(fixture.repo, "add", "--", path)
     fixture.git(fixture.repo, "commit", "-qm", "commit an in-range file")
     data = fixture.lane("collect", run)["data"]["data"]
-    assert data["changed_paths"] == [path] and not data["uncommitted"], data
+    assert data["changed_paths"] == [] and not data["uncommitted"], data
     fixture.observe(run, "automated", "pass")
     fixture.observe(run, "manual", "pass")
     fixture.adjudicate(run, "hit")
     fixture.lane("close", run)
-    print("  C18 an initially untracked file counts towards scope and closes after commit")
+    print("  C18 committing an unchanged baseline file clears uncommitted edits and permits close")
 
 
 def classify_inactive(fixture):
@@ -809,24 +842,26 @@ def reject_dirty_evidence(fixture):
     tracked.write_text("different\n")
     refuse()
     fixture.git(fixture.repo, "add", "--", "checks/record.txt")
-    tracked.write_bytes(original)
     refuse()
+    tracked.write_bytes(original)
     fixture.git(fixture.repo, "reset", "-q", "--", "checks/record.txt")
     new = fixture.repo / "checks/new file.txt"
     fixture.file(fixture.repo, "checks/new file.txt")
     refuse()
     new.unlink()
     fixture.file(fixture.repo, "checks/new.ignored")
-    refuse()
-    (fixture.repo / "checks/new.ignored").unlink()
     fixture.observe(run, "automated", "pass")
     fixture.adjudicate(run, "hit")
     fixture.lane("start", run)
     fixture.file(fixture.repo, "checks/already-collected.txt")
     assert fixture.lane("collect", run)["data"]["data"]["uncommitted"]
+    (fixture.repo / "checks/already-collected.txt").write_text("edited after collection\n")
+    assert fixture.observe(run, "automated", "pass", code=1)["reason_codes"] == ["dirty-checkout"]
+    assert fixture.adjudicate(run, "hit", code=1)["reason_codes"] == ["dirty-checkout"]
+    fixture.file(fixture.repo, "checks/already-collected.txt")
     fixture.observe(run, "automated", "pass")
     fixture.adjudicate(run, "hit")
-    print("  C20 both evidence commands refuse staged, unstaged and newly untracked or ignored paths at the same HEAD")
+    print("  C20 both evidence commands verify collected tracked and untracked content at the same HEAD")
 
 
 def reserve_worktree(fixture):
@@ -856,6 +891,136 @@ def reserve_worktree(fixture):
     busy = fixture.lane("start", "writer", code=1)
     assert busy["reason_codes"] == ["worktree-busy"], busy
     print("  C21 an active writer reserves the canonical checkout across runs with no resource lock")
+
+
+def reserve_moved_worktree(fixture):
+    fixture.setup("writer")
+    fixture.setup("competing")
+    worktree = fixture.worktree()
+    fixture.lane("start", "writer", "--worktree", worktree)
+    moved = fixture.directory / "moved worktree"
+    fixture.git(fixture.repo, "worktree", "move", str(worktree), str(moved))
+    # The former path can even acquire a different checkout.
+    fixture.git(fixture.repo, "worktree", "add", "-q", "--detach", str(worktree))
+    for state in ("running", "collected"):
+        busy = fixture.lane("start", "competing", "--worktree", moved, code=1)
+        assert busy["reason_codes"] == ["worktree-busy"], busy
+        if state == "running":
+            fixture.file(moved, "checks/moved.txt")
+            data = fixture.lane("collect", "writer")["data"]["data"]
+            assert data["changed_paths"] == ["checks/moved.txt"], data
+    fixture.adjudicate("writer", "hit")
+    fixture.lane("start", "competing", "--worktree", moved)
+    print("  C29 moving the lane preserves its reservation and collection follows the moved checkout")
+
+
+def retained_baseline(fixture):
+    run = "retained-tree"
+    ref = f"refs/plumb-cockpit/{run}/lane"
+    fixture.setup(run)
+    fixture.file(fixture.repo, "checks/baseline.txt")
+    started = fixture.lane("start", run)["data"]["data"]
+    refs = fixture.git(fixture.repo, "for-each-ref", "--format=%(objectname) %(objecttype)", ref)
+    assert refs and refs == f"{started['baseline_tree']} tree", (refs, started)
+    (fixture.repo / "checks/baseline.txt").unlink()
+    fixture.git(fixture.repo, "prune", "--expire=now")
+    data = fixture.lane("collect", run)["data"]["data"]
+    assert data["changed_paths"] == ["checks/baseline.txt"] and not data["uncommitted"], data
+    fixture.observe(run, "automated", "pass")
+    fixture.observe(run, "manual", "pass")
+    fixture.adjudicate(run, "hit")
+    fixture.lane("close", run)
+    assert not fixture.git(fixture.repo, "for-each-ref", ref)
+    print("  C30 the first tree survives pruning while pinned and close removes its ref")
+
+
+def missing_baseline(fixture):
+    run = "missing-tree"
+    ref = f"refs/plumb-cockpit/{run}/lane"
+    fixture.setup(run)
+    fixture.file(fixture.repo, "checks/baseline.txt")
+    fixture.lane("start", run)
+    fixture.git(fixture.repo, "update-ref", "-d", ref)
+    fixture.git(fixture.repo, "prune", "--expire=now")
+    before = fixture.events(run)
+    result = fixture.lane("collect", run, code=1)
+    assert result["reason_codes"] == ["missing-baseline"] and fixture.events(run) == before, result
+    fixture.lane("abandon", run, "--attempt", 1, "--reason", "baseline disappeared")
+    print("  C31 a pruned baseline refuses collection without recording a result")
+
+
+def abandon_scope_hold(fixture):
+    run = "held-attempt"
+    ref = f"refs/plumb-cockpit/{run}/lane"
+    fixture.setup(run)
+    fixture.lane("start", run)
+    fixture.file(fixture.repo, "outside.txt")
+    assert fixture.lane("collect", run, code=1)["reason_codes"] == ["out-of-range"]
+    assert fixture.lane("guard", run, code=1)["reason_codes"] == ["out-of-range"]
+    args = ("--attempt", 1, "--reason", "scope review complete", "--miss", "--event-id", "abandon-held")
+    result = fixture.lane("abandon", run, *args)
+    assert result["data"]["type"] == "abandoned", result
+    assert not fixture.git(fixture.repo, "for-each-ref", ref)
+    assert fixture.lane("abandon", run, *args) == result
+    assert not fixture.route()["demoted"]
+    fixture.lane("resume", run, "--diagnosis", "scope crossing", "--hypothesis", "revert outside edit",
+                 "--test", "check collected paths")
+    retry = fixture.lane("start", run)["data"]["data"]
+    assert retry["attempt"] == 2 and fixture.git(fixture.repo, "for-each-ref", ref), retry
+    assert fixture.lane("collect", run, code=1)["reason_codes"] == ["out-of-range"]
+    print("  C32 a collected scope hold can be abandoned without doubling the miss or replacing the baseline")
+
+
+def snapshot_nested_head(fixture):
+    run = "nested-head"
+    nested = fixture.repo / "checks/nested"
+    nested.mkdir()
+    fixture.git(nested, "init", "-q")
+    fixture.file(nested, "tracked.txt")
+    fixture.git(nested, "add", ".")
+    fixture.git(nested, "commit", "-qm", "nested baseline")
+    (fixture.repo / ".git/info/exclude").write_text("*.ignored\n")
+    fixture.file(nested, "cache.ignored")
+    fixture.git(fixture.repo, "add", "--", "checks/nested")
+    fixture.git(fixture.repo, "commit", "-qm", "record nested head")
+    fixture.spec_data["do_not_touch"] = ["checks/nested/cache.ignored"]
+    fixture.write_spec()
+    fixture.setup(run)
+    fixture.lane("start", run)
+    (nested / "tracked.txt").write_text("local nested change\n")
+    (nested / "cache.ignored").write_text("changed cache\n")
+    data = fixture.lane("collect", run)["data"]["data"]
+    assert not data["changed_paths"] and not data["uncommitted"], data
+    fixture.adjudicate(run, "hit")
+    fixture.lane("start", run)
+    fixture.git(nested, "commit", "-qam", "advance nested head")
+    data = fixture.lane("collect", run)["data"]["data"]
+    assert data["changed_paths"] == ["checks/nested"] and data["uncommitted"], data
+    print("  C33 a nested checkout is visible through its HEAD only")
+
+
+def legacy_presence(fixture):
+    run = "old-log"
+    fixture.setup(run)
+    old_path = "checks/known.txt"
+    fixture.file(fixture.repo, old_path)
+    fixture.lane("start", run)
+    fixture.lane("collect", run)
+    added, started, collected = fixture.events(run)
+    assert not {"inventory", "untracked"} & (started["data"].keys() | collected["data"].keys())
+    for field in ("baseline_tree", "git_dir", "protected_ignored"):
+        del started["data"][field]
+    del collected["data"]["collected_tree"]
+    log = fixture.cockpit / run / "events.jsonl"
+    for inventory in ([old_path], {old_path: {"sha256": "obsolete"}}):
+        started["data"]["inventory"] = inventory
+        log.write_text("".join(json.dumps(event) + "\n" for event in (added, started, collected)))
+        (fixture.repo / old_path).write_text("changed legacy file\n")
+        fixture.observe(run, "automated", "pass")
+        fixture.file(fixture.repo, "checks/unknown.txt")
+        assert fixture.observe(run, "manual", "pass", code=1)["reason_codes"] == ["dirty-checkout"]
+        (fixture.repo / "checks/unknown.txt").unlink()
+    print("  C34 old inventory shapes supply path presence only, and new events omit them")
 
 
 def read_only_history(fixture):
@@ -1024,15 +1189,18 @@ CASES = {"replay": replay_fixtures, "routing": routing, "idempotency": idempoten
          "guards": briefs_and_guards, "locks": locks_and_base, "c01-stale": stale_attempt,
          "c02-base": divergent_base, "c03-order": observation_order, "c04-tail": recover_tail,
          "c05-brief": immutable_brief, "c06-repo": repository_scope, "c07-abandon": abandonment,
-         "c08-names": canonical_names, "c09-inventory": ignored_inventory, "c10-resend": repeat_collection,
+         "c08-names": canonical_names, "c09-snapshot-scope": snapshot_scope, "c10-resend": repeat_collection,
          "c11-view": repair_view, "c12-refresh": refresh_brief, "c13-numbers": malformed_numbers,
-         "c14-collection-demotes": collection_demotes, "c16-fingerprints": fingerprint_inventory,
-         "c17-retry-inventory": retry_inventory, "c18-commit-inventory": commit_inventory,
+         "c14-collection-demotes": collection_demotes, "c16-fingerprints": protected_ignored_files,
+         "c17-retry-snapshot": retry_snapshot, "c18-commit-baseline-file": commit_baseline_file,
          "c19-inactive-failure": classify_inactive, "c20-dirty-evidence": reject_dirty_evidence,
          "c21-worktree-busy": reserve_worktree, "c22-read-only": read_only_history,
          "c23-closed-start": refuse_closed_start, "c24-resume-context": reject_reused_resume,
          "c25-invalid-replay": validate_replay, "c26-default-bulk": default_bulk_route,
-         "c27-configured-threshold": configured_demotion, "c28-python-version": unsupported_python}
+         "c27-configured-threshold": configured_demotion, "c28-python-version": unsupported_python,
+         "c29-moved-worktree": reserve_moved_worktree, "c30-retained-baseline": retained_baseline,
+         "c31-missing-baseline": missing_baseline, "c32-abandon-scope-hold": abandon_scope_hold,
+         "c33-nested-head": snapshot_nested_head, "c34-legacy-presence": legacy_presence}
 
 
 def main():
