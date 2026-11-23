@@ -9,6 +9,18 @@
 #   decision-log.sh run.tsv --header id hypothesis change before after delta test verdict notes
 #   decision-log.sh run.tsv 1 "drop X from the startup path" "defer init" 1200 940 -260 green adopted ""
 #
+# Mark where a run begins, so several runs can share one log (needs a header with 2+ columns):
+#   decision-log.sh <logfile> --start "<label>"
+#   One row: ts, the literal `start` in the first caller column, the label in the second, the rest empty.
+#
+# Check the evidence a run wrote down (writes nothing, calls no model):
+#   decision-log.sh <logfile> --audit [--repo DIR] [--all] [--no-remote] [--json]
+#   Looks at the rows after the last `start` row (the whole file with none, or with --all). Every commit,
+#   pull request and file named in a cell is resolved by machine: git cat-file, gh pr view, the file system.
+#   Each reference is resolved, missing or unchecked (no gh, no network, --no-remote, not a repository).
+#   Prints one line per reference, a summary and the count of rows that name nothing. Exit 1 when any
+#   reference is missing. --repo defaults to the git top level of the current directory.
+#
 # Keep it outside the tree (under gitignore), so it survives a revert.
 set -euo pipefail
 
@@ -17,6 +29,12 @@ case "${1:-}" in
 esac
 [ "$#" -ge 2 ] || { printf 'usage: decision-log.sh <logfile> [--header] <value>...\n' >&2; exit 1; }
 logfile="$1"; shift
+
+# The audit only reads. Hand over before the directory is created below.
+if [ "${1:-}" = "--audit" ]; then
+  shift
+  exec python3 -B "$(cd -P "$(dirname "$0")" && pwd)/decision-log-audit.py" "$logfile" "$@"
+fi
 
 logdir="$(dirname "$logfile")"
 [ -n "$logdir" ] && [ "$logdir" != "." ] && [ ! -d "$logdir" ] && mkdir -p "$logdir"
@@ -67,6 +85,20 @@ if [ "${1:-}" = "--header" ]; then
 fi
 
 [ -f "$logfile" ] || { printf '%s has no header. Declare the columns with --header first\n' "$logfile" >&2; exit 1; }
+
+if [ "${1:-}" = "--start" ]; then
+  [ "$#" -eq 2 ] || { printf -- '--start takes exactly one label\n' >&2; exit 1; }
+  # ts + two caller columns at least: the literal `start` and the label.
+  cols=$(ncols "$logfile")
+  [ "$cols" -ge 3 ] || {
+    printf '%s has %d caller column(s). --start needs at least 2 (it writes `start` and the label)\n' "$logfile" "$(( cols - 1 ))" >&2
+    exit 1
+  }
+  args=(start "$2")
+  i=2; while [ "$i" -lt $(( cols - 1 )) ]; do args+=(""); i=$(( i + 1 )); done
+  { printf '%s\t' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; row "${args[@]}"; } >> "$logfile"
+  exit 0
+fi
 
 # A row with the wrong number of columns breaks the TSV. Since the columns are free-form, stop here.
 # The tool adds ts itself, so state the count as the caller sees it.
