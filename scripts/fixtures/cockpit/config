@@ -1,0 +1,7 @@
+role.draft = "worker-cli --tier x" # preferred
+role.complex = worker-cli --tier y
+role.bulk = worker-cli --tier w
+role.implementer = worker-cli --tier z
+route.test-transcription = draft
+route.test-transcription.baseline = complex
+cockpit.demote_after = 2

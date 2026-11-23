@@ -1,0 +1,41 @@
+[
+  {
+    "run": "same-cause",
+    "attempts": [
+      {"observations": [["automated", "fail", "empty-field"]], "verdict": "miss"},
+      {"observations": [["automated", "fail", "empty-field"]], "verdict": "miss"}
+    ],
+    "action": "guard",
+    "reason": "same-cause"
+  },
+  {
+    "run": "missing-manual",
+    "attempts": [
+      {"observations": [["automated", "pass"]], "verdict": "hit"}
+    ],
+    "action": "close",
+    "reason": "acceptance-incomplete",
+    "missing": ["manual"]
+  },
+  {
+    "run": "regression",
+    "attempts": [
+      {"observations": [["automated", "pass"]], "verdict": "hit"},
+      {"observations": [["automated", "fail", "changed-default"]], "verdict": "miss"}
+    ],
+    "action": "guard",
+    "reason": "regression"
+  },
+  {
+    "run": "out-of-range",
+    "attempts": [
+      {
+        "committed": ["shared/owned.txt"],
+        "untracked": ["scratch with space.txt"],
+        "verdict": "miss"
+      }
+    ],
+    "action": "guard",
+    "reason": "out-of-range"
+  }
+]

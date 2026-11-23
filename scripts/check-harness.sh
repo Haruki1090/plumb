@@ -90,7 +90,7 @@ while IFS= read -r f; do
 done < <(targets)
 check "frontmatter with a leftover TODO" "$todo" 0
 
-# 5. The entry point must be openable by the model. Principles must not be skills.
+# 5. The router and its skills must be openable by the model. Cockpit is explicitly user-invoked.
 #    2026-08-29: disable-model-invocation was set on the router, and the whole harness became
 #    unreachable. The Skill tool forbids "reaching it by other means" too, so Read is no detour.
 dead=0
@@ -101,9 +101,15 @@ check "body text carrying a dead setting" "$dead" 0
 
 blocked=0
 while IFS= read -r f; do
-  grep -q '^disable-model-invocation: *true' "$f" && { blocked=$((blocked+1)); note "NG" "the model cannot open it: ${f#$root/}"; }
+  if [ "$f" = "$SKILLS_DIR/cockpit/SKILL.md" ]; then
+    grep -q '^disable-model-invocation: *true' "$f" || {
+      blocked=$((blocked+1)); note "NG" "cockpit must be user-invoked: ${f#$root/}"
+    }
+  elif grep -q '^disable-model-invocation: *true' "$f"; then
+    blocked=$((blocked+1)); note "NG" "the model cannot open it: ${f#$root/}"
+  fi
 done < <(targets)
-check "skills the model cannot open" "$blocked" 0
+check "skills with the wrong invocation setting" "$blocked" 0
 
 # 6. Every principle carries a written description, and no body text is left un-migrated.
 #     This rule used to assert the opposite: a principle's description had to hold a non-ASCII

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+if ! python3 -B -c 'import sys; sys.exit(sys.version_info < (3, 9))' >/dev/null 2>&1; then
+  for arg in "$@"; do
+    if [ "$arg" = --json ]; then
+      printf '%s\n' '{"schema":1,"outcome":"unavailable","reason_codes":[],"data":{"message":"Python 3.9 or newer is required"}}'
+      exit 3
+    fi
+  done
+  printf '%s\n' 'plumb-brief: Python 3.9 or newer is required' >&2
+  exit 3
+fi
+# Follow $0 to the real file even when it is a symlink. macOS has no readlink -f, so resolve it in a loop.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir=$(cd -P "$(dirname "$src")" && pwd)
+  src=$(readlink "$src")
+  case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+exec python3 -B "$(cd -P "$(dirname "$src")/.." && pwd)/scripts/plumb-brief.py" "$@"
