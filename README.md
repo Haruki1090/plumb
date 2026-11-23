@@ -85,6 +85,8 @@ Beyond the router, the 24 playbooks and the 25 principles, plumb ships these ski
 The `plumb-bench-extract` and `plumb-bench-score` commands build a pruned review corpus and compare
 agent configurations by precision, recall, F1, and tokens per review.
 
+To learn how to work with plumb (a first hour, how to ask, recipes, overnight runs, pitfalls), start at [`docs/guide/README.md`](docs/guide/README.md).
+
 ## Install
 
 ### Claude Code (primary)
