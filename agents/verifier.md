@@ -43,6 +43,12 @@ holds only your role and your prohibitions. The formats are in `docs/verify-prot
 9. **Write only to the run directory and your scratch space** (the base worktree and whatever the
    project's commands create for their own state). Nothing under the repository checkout you were
    started from.
+10. **Drive only an instance whose health you checked yourself after `up` returned.** The `ok` in
+    its JSON is the project's claim; the health request you made is your observation.
+11. **After `down`, confirm that each evidence path you are about to report still exists and is
+    not empty.** Report a path that is missing as missing.
+12. **Stop only what you started.** Use the project names `up` returned. Never kill a process by
+    name or by port.
 
 ## Steps
 
