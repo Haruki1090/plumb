@@ -5,8 +5,9 @@ from __future__ import annotations
 import csv
 import io
 from dataclasses import dataclass, field
+from statistics import median
 
-from cockpit import ROUTE_LOG, Invalid, kinds, nonempty, replace_text, store_name
+from cockpit import ROUTE_LOG, Invalid, event_time, kinds, nonempty, replace_text, store_name
 
 COLUMNS = ("lane", "work", "kind", "state", "role", "attempt", "head", "last_check", "stop_code", "next")
 NEXT = {"ready": "start", "running": "collect", "collected": "observe or adjudicate",
@@ -284,9 +285,9 @@ def rows(lanes, works):
     return result
 
 
-def tsv(view):
+def tsv(view, columns=COLUMNS):
     buffer = io.StringIO()
-    table = csv.DictWriter(buffer, fieldnames=COLUMNS, delimiter="\t", lineterminator="\n")
+    table = csv.DictWriter(buffer, fieldnames=columns, delimiter="\t", lineterminator="\n")
     table.writeheader()
     table.writerows(view)
     return buffer.getvalue()
@@ -315,3 +316,45 @@ def validate_history(logs):
                     or not isinstance(kind, str) or kind not in known_kinds):
                 raise Invalid(f"invalid route reset event {event['event_id']}")
     return {run: replay(events) for run, events in logs.items() if run != ROUTE_LOG}
+
+
+def collection_minutes(logs):
+    """Minutes from each attempt's start to its collection, grouped by the lane's kind.
+
+    Collection is the event that ends a worker's attempt. An abandonment cuts one short, so it is no sample.
+    """
+    samples = {}
+    for run, events in logs.items():
+        if run == ROUTE_LOG:
+            continue
+        kind_of, started = {}, {}
+        for event in events:
+            lane, data = event["lane"], event["data"]
+            if event["type"] in ("lane-added", "brief-registered"):
+                kind_of[lane] = data["kind"]
+            elif event["type"] == "attempt-started":
+                started[lane, data["attempt"]] = event_time(event), kind_of[lane]
+            elif event["type"] == "attempt-collected" and (lane, data["attempt"]) in started:
+                begin, kind = started[lane, data["attempt"]]
+                samples.setdefault(kind, []).append((event_time(event) - begin).total_seconds() / 60)
+    return samples
+
+
+def expected_minutes(samples, min_samples, default):
+    """Median of past attempts when there are enough of them, else the default; returns (minutes, basis)."""
+    if len(samples) >= min_samples:
+        return median(samples), f"history({len(samples)})"
+    return default, "default"
+
+
+def last_activity(candidates):
+    """Latest (time, source) among the sources that exist; the first listed wins a tie."""
+    return max(((when, source) for source, when in candidates if when), key=lambda found: found[0])
+
+
+def idle_minutes(now, last):
+    return max((now - last).total_seconds() / 60, 0.0)
+
+
+def is_stale(now, last, expected, factor):
+    return idle_minutes(now, last) > factor * expected
