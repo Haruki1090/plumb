@@ -82,6 +82,11 @@ Playbooks name principles; read a named principle in full when you apply it.
 | See what a session spent its context on | `plumb-session-audit` |
 | Where a running `plumb:lead` queue stands (lanes, what landed by fact, what remains), after compaction or on resume | `plumb-run-view` |
 | What is waiting: every open pull request by how long it has waited and on whom (verified but still draft, ready but unmerged, idle draft), and what merged but was not promoted | `plumb-stalled` |
+| Which running cockpit lanes have probably stopped, judged from their last event, commit and report file | `plumb-lane stale` |
+| The state of one pull request as one word and an exit code (conflicts, threads, failing, pending, draft, ready, merged, closed) | `plumb-pr-watch` |
+| Check a pull request body mechanically before opening it (sections, order, length, long blocks) | `plumb-check-pr-body` |
+| Whether the commits, pull requests and files a decision log cites exist | `plumb-decision-log <log> --audit` |
+| What changed upstream since the commit NOTICE records, and which upstream items have no recorded decision | `plumb-upstream-diff`; the decisions are in `docs/scope.md` |
 | Read the repository's project contract (rework authors, verify commands, ledger classes) | `plumb-project`; the schema and the CI wiring are in `docs/project-contract.md` |
 | Check the `Fixes-PR:` line of a pull request body | `plumb-check-fixes` |
 | Which changes landed, which were fixed later (rework rate), and what each task cost | `plumb-ledger`; records, store and coverage are in `docs/ledger.md` |

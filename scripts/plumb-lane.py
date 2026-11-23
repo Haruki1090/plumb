@@ -3,13 +3,15 @@
 
 from __future__ import annotations
 
+import math
 import os
+from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 
 from cockpit import (
-    ROUTE_LOG, Invalid, answer, append, demote_after, git, git_path, history, kind_info, new_event,
-    next_timestamp, nonempty, parser, positive_int, read_events, resolve, run_cli, run_directory,
+    ROUTE_LOG, Invalid, answer, append, demote_after, event_time, git, git_path, history, kind_info,
+    new_event, next_timestamp, nonempty, parser, positive_int, read_events, resolve, run_cli, run_directory,
     run_root, store_name, subcommand, transaction,
 )
 from cockpit_brief import brief_path, do_not_touch_paths, one_line, problems, read_spec, render
@@ -17,7 +19,10 @@ from cockpit_snapshot import (
     PROTECTED_ENTRY_LIMIT, TOO_LARGE, artifact_path, is_artifact, protected_fingerprints,
     snapshot, sparse_checkout, tree_diff,
 )
-from cockpit_state import guard_reasons, outside_range, reconcile, replay, rows, sync_view, tsv, validate_history
+from cockpit_state import (
+    collection_minutes, expected_minutes, guard_reasons, idle_minutes, is_stale, last_activity, outside_range,
+    reconcile, replay, rows, sync_view, tsv, validate_history,
+)
 
 
 def hold(args, reasons, *, context="", **data):
@@ -398,10 +403,71 @@ def write(args, root):
         return event_answer(args, event, events)
 
 
+STALE_COLUMNS = ("run", "lane", "kind", "state", "idle_minutes", "expected_minutes", "basis", "source", "stale")
+
+
+def moment(text):
+    value = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    if value.tzinfo is None:
+        raise ValueError("a time zone is required")
+    return value
+
+
+def activity_sources(repo, lane, last_event):
+    """Facts about a running lane's progress: its last event, the worktree's HEAD commit and its report file."""
+    sources = [("event", last_event)]
+    try:
+        head = git(attempt_checkout(repo, lane.current), "log", "-1", "--format=%ct", "HEAD")
+        sources.append(("commit", datetime.fromtimestamp(int(head), timezone.utc)))
+    except (Invalid, ValueError):
+        pass
+    try:
+        sources.append(("report", datetime.fromtimestamp(Path(lane.report).stat().st_mtime, timezone.utc)))
+    except OSError:
+        pass
+    return sources
+
+
+def stale(args, root):
+    now = args.now or datetime.now(timezone.utc)
+    if not all(math.isfinite(value) and value > 0 for value in (args.factor, args.default_minutes)):
+        raise Invalid("--factor and --default-minutes must be positive numbers")
+    positive_int(args.min_samples, "--min-samples")
+    logs = history(root)
+    states = validate_history(logs)
+    if args.run and states and args.run not in states:
+        raise Invalid(f"run is not initialized: {args.run}")
+    samples = collection_minutes(logs)
+    repo = args.repo or Path.cwd()
+    view = []
+    for run, (lanes, _) in states.items():
+        if args.run and run != args.run:
+            continue
+        last_event = {event["lane"]: event_time(event) for event in logs[run]}
+        for lane in lanes.values():
+            if lane.state != "running":
+                continue
+            when, source = last_activity(activity_sources(repo, lane, last_event[lane.name]))
+            expected, basis = expected_minutes(samples.get(lane.kind, []), args.min_samples, args.default_minutes)
+            view.append({"run": run, "lane": lane.name, "kind": lane.kind, "state": lane.state,
+                         "idle_minutes": round(idle_minutes(now, when), 1), "expected_minutes": round(expected, 1),
+                         "basis": basis, "source": source, "stale": is_stale(now, when, expected, args.factor)})
+    late = [row for row in view if row["stale"]]
+    shown = view if args.all else late
+    if shown:
+        text = tsv([{**row, "stale": "yes" if row["stale"] else "no"} for row in shown], STALE_COLUMNS).rstrip("\n")
+    else:
+        text = "no lanes in flight" if not view else f"no stale lanes among {len(view)} in flight"
+    data = {"now": now.isoformat(), "in_flight": len(view), "stale": len(late), "lanes": shown}
+    code = ("stale",) if late else ()
+    return answer(args, "stale" if late else "ok", data, codes=code, status=int(bool(late and args.strict)),
+                  message=text)
+
+
 def main(args):
     if args.action == "route-reset":
         kind_info(args.kind)
-    else:
+    elif args.run is not None:
         args.run = run_directory(Path(), args.run).name
     if hasattr(args, "lane"):
         args.lane = store_name(args.lane, "lane")
@@ -410,6 +476,8 @@ def main(args):
     if hasattr(args, "attempt"):
         positive_int(args.attempt, "attempt")
     root = run_root(args.repo)
+    if args.action == "stale":
+        return stale(args, root)
     if args.action not in ("guard", "status"):
         return write(args, root)
     directory = run_directory(root, args.run)
@@ -441,14 +509,15 @@ def command_line():
         "guard": "Read the work's current hold reasons", "resume": "Resume with a new diagnosis, hypothesis and test",
         "close": "Close a lane whose acceptance items passed", "status": "Print the derived lane table",
         "route-reset": "Clear the repository's route demotion for a kind",
+        "stale": "List running lanes with no recorded activity for a multiple of their expected time",
     }
     options = {name: subcommand(commands, name, help_text) for name, help_text in command_help.items()}
     for name, command in options.items():
         if name != "route-reset":
-            command.add_argument("--run", required=True)
-        if name not in ("init", "status", "route-reset"):
+            command.add_argument("--run", required=name != "stale")
+        if name not in ("init", "status", "route-reset", "stale"):
             command.add_argument("--lane", required=True)
-        if name not in ("init", "guard", "status"):
+        if name not in ("init", "guard", "status", "stale"):
             command.add_argument("--event-id", help="idempotency key for this event (default: generated)")
     options["add"].add_argument("--work", required=True, help="stable work identifier, shared by lanes on the same work")
     options["add"].add_argument("--spec", required=True, type=Path)
@@ -473,6 +542,13 @@ def command_line():
     options["resume"].add_argument("--test", help="distinguishing test")
     options["close"].add_argument("--head", help="require this collected commit")
     options["route-reset"].add_argument("kind")
+    stale_options = options["stale"]
+    stale_options.add_argument("--now", type=moment, help="ISO-8601 time to measure from (default: the current time)")
+    stale_options.add_argument("--factor", type=float, default=2.0, help="stale beyond this multiple of the expected time")
+    stale_options.add_argument("--min-samples", type=int, default=3, help="finished attempts needed to use the history")
+    stale_options.add_argument("--default-minutes", type=float, default=60.0, help="expected time without enough history")
+    stale_options.add_argument("--all", action="store_true", help="list every running lane, not only the stale ones")
+    stale_options.add_argument("--strict", action="store_true", help="exit 1 when a lane is stale")
     return cli
 
 
