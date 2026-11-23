@@ -108,6 +108,14 @@ def want_str_list(table: dict, prefix: str, name: str) -> None:
             raise Invalid(f"{key}[{index}]", "expected a string")
 
 
+def want_branch_list(table: dict, prefix: str, name: str) -> None:
+    """An array of branch names: strings, none of them empty."""
+    want_str_list(table, prefix, name)
+    for index, item in enumerate(table.get(name, [])):
+        if item == "":
+            raise Invalid(f"{prefix}.{name}[{index}]", "expected a non-empty string")
+
+
 def want_pairs(table: dict, prefix: str, name: str, first: str, second: str, warnings: list) -> None:
     """An array of tables, each with a string `first` and a string `second`."""
     if name not in table:
@@ -207,7 +215,8 @@ def validate(doc: dict) -> list:
     if "repo" in doc:
         repo = want_table(doc["repo"], "repo")
         want_str(repo, "repo", "base_branch")
-        warnings.extend(f"repo.{k}" for k in sorted(set(repo) - {"base_branch"}))
+        want_branch_list(repo, "repo", "production_branches")
+        warnings.extend(f"repo.{k}" for k in sorted(set(repo) - {"base_branch", "production_branches"}))
 
     if "rework" in doc:
         rework = want_table(doc["rework"], "rework")

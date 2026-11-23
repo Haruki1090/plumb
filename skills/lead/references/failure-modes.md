@@ -14,3 +14,5 @@
 | The coordinator started writing lane code | Seat drift | Seats table |
 | "Done" reported from the lane's self-report | No gate | Loop: separate review, final-commit checks |
 | Progress lost after compaction | State held in memory | Intake: the ledger |
+| Merged on a verdict for an older head | Trusted a verdict after a push or rebase | Stop line: a verdict covers this head |
+| A check was loosened to turn a lane green | The lane decided its own gate | What goes up: loosening a gate |
