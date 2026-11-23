@@ -92,6 +92,23 @@ If nothing fails, that place is not protected.
 
 **If nothing fails at all, either you add a test or one of them is a tautology.**
 
+## When event order changes the outcome
+
+Pick one order that could break the user's workflow. Record the starting state,
+the ordered events, the promise that should still hold, and where the test
+observes it. For example, cancellation before a delayed submit response must
+leave the job cancelled. Look up existing scenarios and run the closest one
+before adding cases. A reducer test observes state and emitted effects. Use the
+driver or UI when the promise concerns an external write or what a user sees.
+For a screen transition, wait for the destination control or content that the
+scenario promises before recording success or taking its screenshot. A loading
+view can already have the expected URL.
+
+If the project already generates event sequences, record the failing seed and
+reduce the sequence to the events needed to reproduce it. Include the command
+and observation in the existing verification record. Use this for changes where
+order matters.
+
 ## Do not grow the count
 
 **A test you do not need is a liability.** Do not write one for anything that carries no

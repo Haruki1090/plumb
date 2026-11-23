@@ -28,6 +28,9 @@ never restates them.
    of: no step told it to, no way to check existed, or it lacked the knowledge.
 3. **Look for the same failure elsewhere.** The same code and the same files in the work ledger
    (`plumb-ledger changes`, `plumb-ledger failures`), and the same pattern left in the code (C06).
+   State the outcome the user or maintainer must be able to rely on. Write down
+   a failing example, a different expression of the same failure, and a legitimate
+   case that looks similar. Use these cases when comparing candidates.
 4. **Choose the layer**, trying the most deterministic first (`docs/failure-taxonomy.md`, "Layers"):
    - the failure can be recognised from the shape of the code or the change → a CI rule of the
      repository (`contract`): specify what it stops and what it does not, its false-positive cases,
@@ -36,6 +39,13 @@ never restates them.
      skill, playbook or agent to change, and the step to add;
    - it is a fact only this repository knows → its contract or documents (`contract`);
    - it is one person's setup → `personal`.
+   Consider eliminating the failure through an API or module boundary first.
+   For a proposed gate, run the examples through its normal entry point. Record
+   misses and false alarms. If only the spelling predicts failure, keep the
+   result advisory until a more reliable signal is available. When two tools
+   cover the same cases, compare their added time on representative changes,
+   where the check runs, and who maintains it. Share fixtures across engines
+   when both serve an existing workflow.
    When unsure, take the higher row: a sentence alone is the hardest change to measure.
 5. **Decide the measurement before the change.** A rule: today's count, and the rework of that code
    afterwards. A harness change: three to five small tasks that reproduce the failure, run with and
