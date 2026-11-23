@@ -1,0 +1,11 @@
+id,prompt,expect
+M1,What did we do on the billing migration last week?,plumb:recall
+M2,Remind me where the search rewrite stands.,plumb:recall
+M3,Pull together everything about the auth refactor from the last two weeks.,plumb:recall
+M4,What's the history of the flaky upload test? We touched it in a few sessions.,plumb:recall
+M5,Where did we leave the cache work? It spanned several sessions.,plumb:recall
+M6,先週の課金まわりの作業で何をやったか思い出させて,plumb:recall
+M7,検索の作り直しについて、ここ 2 週間の経緯を全部まとめて,plumb:recall
+N1,Catch me up on what happened since my last message.,plumb:catch-up
+N2,Pick up the interrupted session and finish the cache work.,-
+N3,What did the agents cost last week?,plumb:retro

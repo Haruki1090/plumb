@@ -1,0 +1,12 @@
+id,prompt,expect
+R1,Reflect on this session.,plumb:reflect
+R2,What did we learn from this session?,plumb:reflect
+R3,What should we change after this so the next session goes better?,plumb:reflect
+R4,What would you do differently next time we work like this?,plumb:reflect
+R5,This session went in circles. What should change in how we set it up?,plumb:reflect
+R6,このセッションを振り返って、次に活かすことを挙げて,plumb:reflect
+R7,今回の反省から、直すべき点を整理して,plumb:reflect
+N1,Turn this agent-failure issue into a rule that stops it next time.,plumb:failure-to-rule
+N2,Give me the weekly retro: rework and cost for last week.,plumb:retro
+N3,Fix the failing test in the parser.,-
+N4,Summarize what this session did.,-
