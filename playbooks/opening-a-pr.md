@@ -54,6 +54,23 @@ If you have a screenshot or a video that proves the claim, attach it after the s
 **Do not use the `## Summary` and `## Test plan` boilerplate.** A commit body does not restate its
 subject.
 
+**Blast Radius is a claim, not a description.** Name the one fact that makes this change safe to
+land, and the rung it was checked to (**principle-gate-claims-on-evidence**). When the rung is ran
+or reproduced, paste the output.
+
+**A text search does not reach everything.** Before you claim nothing else uses a name, check where
+grep stops:
+
+- Serialized data: JSON keys, database columns, stored documents
+- Other languages and generated code
+- Configuration and feature flags
+- Names built by string concatenation
+- External callers
+
+**A change to the harness goes in its own PR.** A hook, a lint rule, a shared script or an agent
+instruction file is never mixed into feature work. Its body carries the before and after of
+whatever measures it.
+
 ## Attaching UI screenshots
 
 If you touched UI, **attach a before and an after screenshot**. Whether it came out right is not
