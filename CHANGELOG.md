@@ -58,6 +58,9 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
   before it writes. `docs/guide/` holds five pages for the person working with plumb: a first hour,
   how to ask, recipes, overnight runs, pitfalls.
 
+- `docs/scope.md` records the second reading of upstream: a decision for every upstream skill,
+  principle, agent and guide page, and dated notes where the first record is no longer true.
+
 ### Changed
 
 - The router asks for each reported claim to be marked measured, inferred or guessed, and for a check

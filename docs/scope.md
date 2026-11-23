@@ -275,7 +275,7 @@ rewrite of 2026-08-31 already covers all of them except the new three.
 |---|---|---|
 | `benchmark-checklist` | folded into `principles/explain-the-number.md` and two playbooks | The seven questions about a measured number live in the principle; `playbooks/perf-issue.md` and `playbooks/hillclimb.md` apply them |
 | `blast-radius` | folded into `principles/gate-claims-on-evidence.md` and `playbooks/opening-a-pr.md` | A safety claim carries a rung (said, pointed, walked, ran, reproduced); the pull-request body asks Blast Radius for the one fact that makes the change safe |
-| `show-me-your-work` | folded into `plumb-decision-log --start/--audit` and the playbooks that use it | A run boundary, and a machine check that every cited commit, pull request and file exists. **The cross-family "Attention" section in long-run reports is not taken yet** |
+| `show-me-your-work` | folded into `plumb-decision-log --start/--audit` and the playbooks that use it | A run boundary, and a machine check that every cited commit, pull request and file exists. The "Attention" section a different family writes at the end of a long run's report is in `playbooks/autonomous-run.md` |
 | `create-verification-skill`, `maintain-verification-skill` | ported as `skills/verify-init` and the map-keeping pass in `skills/verify` | Bound to the project contract (the `[verify]` table and the feature map) instead of a per-app skill, so there is one source of truth for how a repository is verified |
 | `ketchup` | ported as `skills/catch-up` | What changed, and each waiting decision in a form one reply settles |
 | `recall` | ported as `skills/recall` | One topic across sessions, each thread tagged from a checked fact |
