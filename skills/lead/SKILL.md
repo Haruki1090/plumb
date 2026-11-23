@@ -97,6 +97,8 @@ Every ledger line for a lane also goes on that lane's pane label when the driver
 (`docs/role-map.md`, labels and alerts).
 On each wake of a cockpit run, run `plumb-lane stale`: a stale lane is inspected at its worktree and
 replaced, not waited on.
+A lane's pull request is read with `plumb-pr-watch <n>` (one word, one exit code), never by re-reading
+`gh` output; `--wait` replaces a poll loop.
 - *blocked*: read the prompt first. Relay an approval only inside the brief's range and
   reversible; anything else goes up
 - *done*: read the report file, diff from the starting commit

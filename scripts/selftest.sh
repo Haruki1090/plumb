@@ -1449,6 +1449,15 @@ elif command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-stalled.py" >/dev/null \
     && ok "stalled: last real commit (a base merge is not work), verified head (stale SHA, HTML comment), idle threshold, ready_at, unpromoted (ancestor, unknown), unreachable forge" \
     || ng "stalled (run scripts/test-stalled.py)"
+  python3 -B "$root/scripts/test-decision-log.py" >/dev/null \
+    && ok "decision log: run boundary row, audit of commits, pull requests and files (resolved, missing, unchecked), scope after the last start" \
+    || ng "decision log audit (run scripts/test-decision-log.py)"
+  python3 -B "$root/scripts/test-upstream-diff.py" >/dev/null \
+    && ok "upstream diff: recorded commit in NOTICE, grouped changes, unrecorded names, unreachable forge" \
+    || ng "upstream diff (run scripts/test-upstream-diff.py)"
+  python3 -B "$root/scripts/test-pr-tools.py" >/dev/null \
+    && ok "pull request tools: body checks (length, headings, long blocks, empty sections), state as one word and exit code, unknown is pending" \
+    || ng "pull request tools (run scripts/test-pr-tools.py)"
   python3 -B "$root/scripts/test-ledger-failures.py" >/dev/null \
     && ok "failure records: created in the period, blocks in bodies and comments, problems kept, findings" \
     || ng "failure records (run scripts/test-ledger-failures.py)"
