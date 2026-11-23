@@ -11,6 +11,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -1304,6 +1305,119 @@ def read_only_history(fixture):
     print("  C22 readers use the complete prefix with a held or missing lock and leave read-only state untouched")
 
 
+def stale_lanes(fixture):
+    run = "stale"
+    assert fixture.cmd("lane", "stale", as_json=False) == "no lanes in flight\n"
+    assert not fixture.cockpit.parent.exists()
+    fixture.setup(run)
+    assert fixture.cmd("lane", "stale", "--run", run, as_json=False) == "no lanes in flight\n"
+    worktree = fixture.worktree()
+    fixture.lane("start", run, "--worktree", worktree)
+    start = datetime.fromisoformat(fixture.events(run)[-1]["ts"])
+    base = start.replace(microsecond=0)
+
+    def check(*args, now, code=0):
+        return fixture.cmd("lane", "stale", "--now", now.isoformat(), *args, code=code)
+
+    def plain(*args, now):
+        return fixture.cmd("lane", "stale", "--now", now.isoformat(), *args, as_json=False)
+
+    def only(output):
+        (row,) = output["data"]["lanes"]
+        return row
+
+    # One fresh lane: listed only with --all, and a plain run says so instead of printing nothing.
+    now = start + timedelta(minutes=10)
+    assert check(now=now)["data"] == {"now": now.isoformat(), "in_flight": 1, "stale": 0, "lanes": []}
+    assert plain(now=now) == "no stale lanes among 1 in flight\n"
+    row = only(check("--all", now=now))
+    assert row == {"run": run, "lane": "lane", "kind": KIND, "state": "running", "idle_minutes": 10.0,
+                   "expected_minutes": 60.0, "basis": "default", "source": "event", "stale": False}, row
+    table = plain("--all", now=now).splitlines()
+    assert table[0].split("\t") == ["run", "lane", "kind", "state", "idle_minutes", "expected_minutes",
+                                   "basis", "source", "stale"], table
+    assert table[1].split("\t") == [run, "lane", KIND, "running", "10.0", "60.0", "default", "event", "no"], table
+
+    # Stale by event time: strictly beyond factor times the expected time, exit 0 unless --strict.
+    assert check(now=start + timedelta(minutes=120))["outcome"] == "ok"
+    late = check(now=start + timedelta(minutes=121))
+    assert late["outcome"] == "stale" and late["reason_codes"] == ["stale"], late
+    assert only(late)["stale"] and only(late)["idle_minutes"] == 121.0
+    assert plain(now=start + timedelta(minutes=121)).splitlines()[1].split("\t")[-1] == "yes"
+    strict = check("--strict", now=start + timedelta(minutes=121), code=1)
+    assert strict["outcome"] == "stale" and only(strict)["stale"], strict
+    check("--strict", now=start + timedelta(minutes=120))
+
+    # A recent commit in the lane's worktree keeps it fresh.
+    committed = base + timedelta(minutes=100)
+    fixture.env["GIT_COMMITTER_DATE"] = committed.isoformat()
+    fixture.git(worktree, "commit", "--allow-empty", "-qm", "lane work")
+    del fixture.env["GIT_COMMITTER_DATE"]
+    row = only(check("--all", now=base + timedelta(minutes=150)))
+    assert (row["source"], row["idle_minutes"], row["stale"]) == ("commit", 50.0, False), row
+    row = only(check(now=base + timedelta(minutes=221)))
+    assert (row["source"], row["idle_minutes"], row["stale"]) == ("commit", 121.0, True), row
+
+    # So does a recent report file at the brief's report path.
+    reported = base + timedelta(minutes=200)
+    fixture.report_path.write_text("Working.\n", encoding="utf-8")
+    os.utime(fixture.report_path, (reported.timestamp(), reported.timestamp()))
+    row = only(check("--all", now=base + timedelta(minutes=300)))
+    assert (row["source"], row["idle_minutes"], row["stale"]) == ("report", 100.0, False), row
+    row = only(check(now=base + timedelta(minutes=321)))
+    assert (row["source"], row["idle_minutes"], row["stale"]) == ("report", 121.0, True), row
+
+    # Finished lanes are never listed; their start-to-collect times (10, 20, 30 and 20 minutes) set the
+    # expected time for the kind.
+    def retime(other, minutes):
+        log = fixture.cockpit / other / "events.jsonl"
+        events = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+        for event in events:
+            offset = {"attempt-started": 0, "attempt-collected": minutes}.get(event["type"])
+            if offset is not None:
+                event["ts"] = (base + timedelta(minutes=offset)).isoformat()
+        log.write_text("".join(json.dumps(event) + "\n" for event in events), encoding="utf-8")
+
+    for index, minutes in enumerate((10, 20, 30), 1):
+        other = f"history-{index}"
+        fixture.setup(other)
+        fixture.attempt(other, "hit")
+        retime(other, minutes)
+    fixture.setup("collected")
+    fixture.lane("start", "collected")
+    fixture.lane("collect", "collected")
+    retime("collected", 20)
+    row = only(check("--all", now=reported + timedelta(minutes=39)))
+    assert (row["run"], row["expected_minutes"], row["basis"], row["stale"]) == (run, 20.0, "history(4)", False), row
+    row = only(check(now=reported + timedelta(minutes=41)))
+    assert (row["expected_minutes"], row["basis"], row["stale"]) == (20.0, "history(4)", True), row
+    row = only(check("--all", "--min-samples", 5, now=reported + timedelta(minutes=41)))
+    assert (row["expected_minutes"], row["basis"], row["stale"]) == (60.0, "default", False), row
+    row = only(check("--all", "--min-samples", 5, "--default-minutes", 15, now=reported + timedelta(minutes=31)))
+    assert (row["expected_minutes"], row["basis"], row["stale"]) == (15.0, "default", True), row
+    # The factor moves the threshold in both directions.
+    assert only(check("--all", "--factor", 1, now=reported + timedelta(minutes=21)))["stale"]
+    assert not only(check("--all", "--factor", 3, now=reported + timedelta(minutes=41)))["stale"]
+    assert check("--run", run, now=reported + timedelta(minutes=41))["data"]["stale"] == 1
+    assert check("--run", "history-1", now=reported + timedelta(minutes=41))["data"]["in_flight"] == 0
+    check("--run", "missing", now=reported, code=2)
+    for bad in (("--now", "2026-01-01T00:00:00"), ("--now", "soon"), ("--factor", "0"), ("--factor", "nan"),
+                ("--min-samples", "0"), ("--default-minutes", "-1")):
+        fixture.cmd("lane", "stale", *bad, code=2)
+
+    # Reading writes nothing: no event, view, lock or timestamp changes.
+    def tree():
+        return {str(path.relative_to(fixture.cockpit)): (path.read_bytes(), path.stat().st_mtime_ns)
+                for path in sorted(fixture.cockpit.rglob("*")) if path.is_file()}
+
+    before = tree()
+    for args in ((), ("--all",), ("--strict",), ("--run", run)):
+        check(*args, now=reported + timedelta(minutes=41), code=1 if "--strict" in args else 0)
+    fixture.cmd("lane", "stale", "--all", as_json=False)
+    assert tree() == before
+    print("  C46 stale lists running lanes idle past a multiple of the expected time, from recorded facts only")
+
+
 def refuse_closed_start(fixture):
     run = "closed"
     fixture.setup(run)
@@ -1446,7 +1560,8 @@ CASES = {"replay": replay_fixtures, "routing": routing, "idempotency": idempoten
          "c39-protected-directory": protected_directory, "c40-protected-cap": cap_protected_directory,
          "c41-retry-moved": retry_moved_checkout, "c42-retry-other": retry_other_checkout,
          "c43-sparse-config": reject_sparse_checkout, "c44-sparse-index": reject_sparse_index,
-         "c45-legacy-collected": legacy_collected_names}
+         "c45-legacy-collected": legacy_collected_names,
+         "c46-stale": stale_lanes}
 
 
 def main():

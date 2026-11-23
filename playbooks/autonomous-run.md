@@ -33,6 +33,8 @@ a machine, do not run it overnight.** Nobody is awake to judge it.
    forward). Put a long time-based heartbeat behind it as backup. If there is nothing to watch,
    use a fixed heartbeat at **the interval that makes going to look worth it**.
    That is `/loop` and `ScheduleWakeup`'s territory.
+   On each wake with lanes running, run `plumb-lane stale`; inspect a stale lane at its worktree
+   and replace it. Do not wait on it.
 3. **Each iteration makes only the smallest change the evidence justifies.** Verify it against the
    predicate; commit if it moved forward, and **revert every change** if it did not.
    **"This might work" is a hypothesis, not a fix.** Do not let it ride along.
