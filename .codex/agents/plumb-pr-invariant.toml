@@ -1,3 +1,4 @@
+# source: agents/pr-invariant.md sha256:049a89dd8fed1cace97a7ec8c4e32e74a854ae82fce9271b8bcd7d8dc7b23c36
 name = "plumb_pr_invariant"
 description = "Cross-file reviewer for uniqueness, idempotency, atomicity, monotonicity, and totality."
 model = "gpt-5.6-sol"

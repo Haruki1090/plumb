@@ -1,3 +1,4 @@
+# source: none
 name = "plumb_explorer"
 description = "Read-only explorer for mapping code paths and collecting compact evidence before implementation."
 model = "gpt-5.6-luna"
