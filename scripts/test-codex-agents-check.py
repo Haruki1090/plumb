@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression suite for `plumb-codex-agents-check`, on synthetic checkouts in temp dirs plus one run on the real one.
+"""Regression suite for `plumb-sidecar-agents-check`, on synthetic checkouts in temp dirs plus one run on the real one.
 
     python3 -B scripts/test-codex-agents-check.py
 
@@ -20,7 +20,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PLUGIN = HERE.parent
 SCRIPT = HERE / "codex-agents-check.py"
-BIN = PLUGIN / "bin" / "plumb-codex-agents-check"
+BIN = PLUGIN / "bin" / "plumb-sidecar-agents-check"
 ROOT = Path(tempfile.mkdtemp(prefix="plumb-codex-agents-test-"))
 FAILED: list[str] = []
 _counter = [0]

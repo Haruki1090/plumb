@@ -63,7 +63,7 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
 
 - `plumb-enforcement` and `docs/enforcement.tsv`: each hard rule, where it is stated, and whether a
   check, a hook, a command or only prose holds it. `plumb-doctor` prints the counts.
-- `plumb-codex-agents-check`: each Codex agent file names its `agents/*.md` source and that file's
+- `plumb-sidecar-agents-check`: each Codex agent file names its `agents/*.md` source and that file's
   hash; the harness check fails when a source changed and its condensed copy did not.
 
 ### Changed

@@ -380,7 +380,7 @@ else
     if codex_agents_out=$(python3 -B "$codex_agents_check" --root "$root" 2>&1); then
       note "ok" "Codex agent files agree with their agents/ sources"
     else
-      note "NG" "Codex agent files out of step with agents/ (plumb-codex-agents-check):"
+      note "NG" "Codex agent files out of step with agents/ (plumb-sidecar-agents-check):"
       printf '%s\n' "$codex_agents_out" | grep -v -e '^ok	' -e '^none	' | sed 's/^/       /'
       fail=1
     fi

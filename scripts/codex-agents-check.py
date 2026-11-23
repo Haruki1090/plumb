@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""plumb-codex-agents-check: say which Codex agent files are stale against the agents/*.md they condense.
+"""plumb-sidecar-agents-check: say which Codex agent files are stale against the agents/*.md they condense.
 
-    plumb-codex-agents-check [--root DIR] [--update]
+    plumb-sidecar-agents-check [--root DIR] [--update]
 
 Every `.codex/agents/*.toml` starts with one comment line naming its source and the hash of that source:
 
@@ -64,14 +64,14 @@ def rewrite_first_line(toml: Path, source: str, digest: str) -> None:
 
 def main(argv: list[str]) -> int:
     default_root = Path(__file__).resolve().parent.parent
-    parser = argparse.ArgumentParser(prog="plumb-codex-agents-check", description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="plumb-sidecar-agents-check", description=__doc__.split("\n\n")[0])
     parser.add_argument("--root", type=Path, default=default_root, help="repository root (default: this checkout)")
     parser.add_argument("--update", action="store_true", help="rewrite the first line of each stale file to the current hash")
     args = parser.parse_args(argv)
     root = args.root
     agents_dir = root / ".codex" / "agents"
     if not agents_dir.is_dir():
-        print(f"plumb-codex-agents-check: not a directory: {agents_dir}", file=sys.stderr)
+        print(f"plumb-sidecar-agents-check: not a directory: {agents_dir}", file=sys.stderr)
         return 2
 
     bad = False
