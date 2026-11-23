@@ -19,6 +19,10 @@ are compared with their `principle-` prefix stripped). That is how a new upstrea
 decision is found. The match is a whole-name match anywhere in the text, so a name that is also an ordinary
 word ("how") counts as recorded as soon as the word appears.
 
+A compare lists at most 300 files: at that count the summary line and the JSON (`"truncated": true`) say the list
+was truncated by the forge and the rest has to be read in a clone, and a list that may be cut short is never
+shown as complete.
+
 `--json` prints JSON for either view. It never writes, never edits NOTICE (moving the recorded commit forward
 is a person's edit after reading) and never fails the caller: a missing, unreachable or rate-limited gh gives
 `remote: unavailable` and exit 0. Exit 2 is for a missing or malformed NOTICE line, or an unreadable file.
@@ -44,7 +48,9 @@ from run_view import run_gh  # noqa: E402
 
 BUDGET_SECONDS = 30.0
 PAGE_SIZE = 100
-MAX_PAGES = 30  # the compare endpoint serves at most 3000 files
+MAX_PAGES = 30
+FILES_CAP = 300  # the compare endpoint lists at most 300 files, however many changed, and in practice on the first page
+TRUNCATED_NOTE = f"list truncated by the forge at {FILES_CAP} files; read the rest in a clone"
 MARKER = "Upstream last read:"
 NOTICE_LINE = re.compile(
     r"Upstream last read: (?P<repo>[A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*)@(?P<commit>[0-9a-f]{7,40})"
@@ -144,13 +150,17 @@ def build_changes(notice: dict[str, str], head: str | None, files: list[Any] | N
     doc["changes"] = rows
     doc["counts"] = {group: sum(1 for r in rows if r["group"] == group) for group in GROUPS}
     doc["total"] = len(rows)
+    doc["truncated"] = len(files or []) >= FILES_CAP  # the forge stops listing here: what is missing is unknown
     return doc
 
 
 def render_changes(doc: dict[str, Any]) -> str:
     if doc["remote"] != "ok":
         return "remote: unavailable"
+    note = f"; {TRUNCATED_NOTE}" if doc["truncated"] else ""
     if not doc["changes"]:
+        if doc["truncated"]:
+            return f"upstream: no changes under {doc['path']} since {doc['since']} in the files listed{note}"
         return f"upstream: no changes under {doc['path']} since {doc['since']}"
     lines: list[str] = []
     for group in GROUPS:
@@ -162,7 +172,7 @@ def render_changes(doc: dict[str, Any]) -> str:
             shown = f"{plain(r['previous_path'])} -> {plain(r['path'])}" if r["previous_path"] else plain(r["path"])
             lines.append(f"{r['status']}\t{shown}")
     counts = ", ".join(f"{group} {doc['counts'][group]}" for group in GROUPS)
-    lines.append(f"upstream: {doc['total']} files changed under {doc['path']} since {doc['since']} ({counts}); head {doc['head']}")
+    lines.append(f"upstream: {doc['total']} files changed under {doc['path']} since {doc['since']} ({counts}); head {doc['head']}{note}")
     return "\n".join(lines)
 
 
@@ -249,15 +259,22 @@ def fetch_head(repo: str, deadline: float, gh=run_gh) -> str:
 
 
 def fetch_files(repo: str, base: str, head: str, deadline: float, gh=run_gh) -> list[Any]:
-    """Every file of the compare `base...head`, page by page; ValueError when any page fails."""
+    """The files of the compare `base...head`; ValueError when the first page fails or is not a file list. The
+    forge serves the list on the first page and stops at FILES_CAP files, so a later page with no `files` (or an
+    empty list) is the normal end, not a failure. At FILES_CAP files it stops asking: whatever is missing is
+    unknowable here, and `build_changes` says the list is truncated."""
     files: list[Any] = []
     for page in range(1, MAX_PAGES + 1):
         data = api_json(gh, [f"repos/{repo}/compare/{base}...{head}?per_page={PAGE_SIZE}&page={page}"], deadline)
-        chunk = data.get("files") if isinstance(data, dict) else None
+        if not isinstance(data, dict):
+            raise ValueError("the compare answer is not an object")
+        chunk = data.get("files")
+        if page > 1 and (chunk is None or chunk == []):
+            break
         if not isinstance(chunk, list):
             raise ValueError("no files in the compare answer")
         files += chunk
-        if len(chunk) < PAGE_SIZE:
+        if len(chunk) < PAGE_SIZE or len(files) >= FILES_CAP:
             break
     return files
 

@@ -60,7 +60,12 @@ CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 EXIT = {"merged": 0, "closed": 6, "conflicts": 3, "threads": 4, "failing": 5, "pending": 7, "draft": 8, "ready": 0,
         "unavailable": 9}
-MERGEABLE = {"MERGEABLE", "CONFLICTING", "UNKNOWN"}
+# Closed sets: only a value listed here is understood. Anything else (a new value, a wrong type) is unknown.
+STATES = {"OPEN", "MERGED", "CLOSED"}
+MERGEABLE = {"MERGEABLE", "CONFLICTING"}  # UNKNOWN is the forge saying it has not computed it yet: not understood
+MERGE_STATES = {"CLEAN", "BLOCKED", "BEHIND", "DIRTY", "DRAFT", "HAS_HOOKS", "UNSTABLE"}
+REVIEW_DECISIONS = {"APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"}
+CHECK_STATUSES = {"QUEUED", "IN_PROGRESS", "WAITING", "PENDING", "REQUESTED"}
 FAILED_CONCLUSIONS = {"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"}
 PASSED_CONCLUSIONS = {"SUCCESS", "NEUTRAL", "SKIPPED"}
 FAILED_STATES = {"FAILURE", "ERROR"}
@@ -73,6 +78,12 @@ def clock() -> float:
 
 def pause(seconds: float) -> None:
     time.sleep(seconds)
+
+
+def one_of(value: Any, allowed: set[str]) -> bool:
+    """`value` is a string in `allowed`. A list or an object is simply not in it (it is not hashable, so `in`
+    would raise)."""
+    return isinstance(value, str) and value in allowed
 
 
 def plain(text: Any) -> str:
@@ -88,20 +99,23 @@ def check_outcome(entry: Any) -> tuple[str, str]:
     pending until it completes; a completed one with a conclusion this tool does not know is `unknown`."""
     if not isinstance(entry, dict):
         return "?", "unknown"
+    label = entry.get("context") if "context" in entry or entry.get("__typename") == "StatusContext" else entry.get("name")
+    if label is not None and not isinstance(label, str):
+        return "?", "unknown"  # a name that is not text means the entry is not what the forge documents
     if "context" in entry or entry.get("__typename") == "StatusContext":
         name, state = str(entry.get("context") or "?"), entry.get("state")
         if state == "SUCCESS":
             return name, "passed"
-        if state in FAILED_STATES:
+        if one_of(state, FAILED_STATES):
             return name, "failed"
-        return name, "pending" if state in PENDING_STATES else "unknown"
+        return name, "pending" if one_of(state, PENDING_STATES) else "unknown"
     name, status = str(entry.get("name") or "?"), entry.get("status")
     if status != "COMPLETED":
-        return name, "pending" if status in {"QUEUED", "IN_PROGRESS", "WAITING", "PENDING", "REQUESTED"} else "unknown"
+        return name, "pending" if one_of(status, CHECK_STATUSES) else "unknown"
     conclusion = entry.get("conclusion")
-    if conclusion in PASSED_CONCLUSIONS:
+    if one_of(conclusion, PASSED_CONCLUSIONS):
         return name, "passed"
-    return name, "failed" if conclusion in FAILED_CONCLUSIONS else "unknown"
+    return name, "failed" if one_of(conclusion, FAILED_CONCLUSIONS) else "unknown"
 
 
 def classify(pr: Any, threads: Any = None) -> tuple[str, list[str]]:
@@ -122,19 +136,23 @@ def classify(pr: Any, threads: Any = None) -> tuple[str, list[str]]:
 
     mergeable, merge_state = pr.get("mergeable"), pr.get("mergeStateStatus")
     if mergeable == "CONFLICTING" or merge_state == "DIRTY":
-        return "conflicts", [f"mergeable={str(mergeable).lower()}", f"merge={str(merge_state).lower()}"]
-    if mergeable not in MERGEABLE or mergeable == "UNKNOWN":
+        return "conflicts", [f"mergeable={plain(mergeable).lower()}", f"merge={plain(merge_state).lower()}"]
+    if mergeable != "MERGEABLE":
         unknown.append("mergeable")
-    if not isinstance(merge_state, str) or merge_state in ("", "UNKNOWN"):
-        unknown.append("mergeStateStatus")
+    if not one_of(merge_state, MERGE_STATES):
+        unknown.append("merge")
+    review = pr.get("reviewDecision", ...)
+    if review is ... or not (review in ("", None) or one_of(review, REVIEW_DECISIONS)):
+        unknown.append("review")
 
     unresolved = None
     nodes = threads.get("nodes") if isinstance(threads, dict) else None
     if isinstance(nodes, list) and all(isinstance(n, dict) and isinstance(n.get("isResolved"), bool) for n in nodes):
         unresolved = sum(1 for n in nodes if not n["isResolved"])
-        more = bool((threads.get("pageInfo") or {}).get("hasNextPage")) if isinstance(threads.get("pageInfo"), dict) else True
-        if not unresolved and more:
-            unresolved = None  # a second page may hold one
+        page_info = threads.get("pageInfo")
+        more = page_info.get("hasNextPage") if isinstance(page_info, dict) else None
+        if not unresolved and (more is not False):
+            unresolved = None  # a second page may hold one, or we were not told whether there is one
     if unresolved:
         return "threads", [f"unresolved={unresolved}"]
     if unresolved is None:
@@ -160,7 +178,6 @@ def classify(pr: Any, threads: Any = None) -> tuple[str, list[str]]:
     detail = [f"checks_passed={count['passed']}"]
     if pr.get("isDraft") is not False:
         return ("draft", detail) if pr.get("isDraft") is True else ("pending", ["unknown=isDraft"])
-    review = pr.get("reviewDecision")
     if review:
         detail.append(f"review={plain(review).lower()}")
     if merge_state != "CLEAN":
