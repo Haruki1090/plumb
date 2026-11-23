@@ -25,7 +25,7 @@ writing the tests, and landing the result. It depends on no other plugin.
   reviewer of it: it shares the blind spots that produced the bug. plumb routes
   the adversarial pass to a different model family and treats a same-family-only
   verdict as unreviewed.
-- **A principle index you call by name.** 23 principles, each with a
+- **A principle index you call by name.** 25 principles, each with a
   name. A principle is read in full when its decision criterion applies, and
   cited alongside the specific decision it changed rather than narrated rule by
   rule. Naming turns "be careful" into something a reviewer can check. Each
@@ -44,7 +44,7 @@ writing the tests, and landing the result. It depends on no other plugin.
 
 ## What's bundled
 
-Beyond the router, the 24 playbooks and the 23 principles, plumb ships these skills
+Beyond the router, the 24 playbooks and the 25 principles, plumb ships these skills
 (all called under the `plumb:` namespace) and their supporting agents:
 
 - **`plumb:pr-review`** — adversarial PR review: cross-checks the PR body against
@@ -223,7 +223,7 @@ the layer that should stop it, with the number that will show whether it did.
 
 ## Language
 
-plumb is written in English throughout — SKILL.md, the 24 playbooks, the 23
+plumb is written in English throughout — SKILL.md, the 24 playbooks, the 25
 principles, the bundled skills and agents, the scripts and the docs/ files.
 
 It was written in Japanese through v0.5.0 and rewritten in English for release.

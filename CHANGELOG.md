@@ -2,6 +2,28 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.31.0] - 2026-11-23
+
+### Added
+
+- Two principles, read through the index like the rest: `principle-explain-the-number` (the decision a
+  measured number is for, seven questions about it, and what a reported number carries) and
+  `principle-attack-the-premise` (a second fix on the same assumption refused by the same gate stops
+  the fixing and tests the assumption). `playbooks/perf-issue.md`, `playbooks/hillclimb.md` and
+  `playbooks/fixing-a-bug.md` name them where they apply. The principle count is 25.
+
+### Changed
+
+- The router asks for each reported claim to be marked measured, inferred or guessed, and for a check
+  the session can run to be run rather than handed to the owner.
+- `principle-fix-root-causes`: a guard is a fix only when the state it handles is legitimate; a cause
+  that took digging gets a proposed always-on signal.
+- Playbooks gained short rules: `investigation` (answer "why" from the record), `fixing-a-bug` (two
+  independent failures make a repro; the repro is committed before the fix; no test beats a bad one),
+  `writing-tests` (assert an error's kind; pair a negative with a positive), `fan-out` (results carry
+  the commit and the method; a gap is not a pass), `writing-a-plan` (unit / live / perf boxes and four
+  parallelism questions) and `autonomous-run` (four conditions before a loop runs unattended).
+
 ## [0.30.0] - 2026-11-23
 
 ### Added

@@ -21,6 +21,12 @@ discipline for crossing a night.**
 The wake-up mechanism belongs to `/loop` and `ScheduleWakeup`. **What this playbook holds is the
 discipline.**
 
+**Before you trust a loop to run unattended, four things hold.** You have done the task once by hand.
+A tool exists that checks the result. Every step can be stopped. You have read the transcripts of
+earlier runs, or of the by-hand pass when this is the first, and turned the failure that repeated
+into a tool. **If the predicate cannot be judged by
+a machine, do not run it overnight.** Nobody is awake to judge it.
+
 1. **Before the first iteration, write the termination predicate in a checkable form.**
    "The tests are green." "The repro is fixed." "All N of them landed." "The diff is zero."
    **A vague goal never stops. You can stop because there is a predicate.**

@@ -34,6 +34,10 @@ got there.
 1. **That cause explains every symptom you observed.** Any remainder it does not explain means you are still short of it
 2. **Fixing the cause makes the symptom go away without touching the symptom side.** If you have to touch the symptom side too, you did not hit the cause
 
+**A guard is a fix only when the state it handles is legitimate.** If the value may really
+be absent there, handling absence is the design. If it may not, the guard hides the path that
+produced it, and that path is the cause.
+
 **Whether to put in a workaround comes after that test.** A workaround you cannot justify
 without writing a paragraph on why it makes the symptom go away is **the mark of code that is
 itself wrong.** Do not settle for adding a comment.
@@ -43,6 +47,8 @@ itself wrong.** Do not settle for adding a comment.
 - **Go looking for the same shape.** Once you fix one site, count by machine how many other places are written the same way. Fix the one and close it out, and the rest come back as the next bug
 - **If a re-run fixes it, suspect state, not code.** Code does not change between runs. What changes is configuration, caches, lockfiles, stored state. **"I deleted it and it worked" is the discovery that state can break, not a fix**
 - **When you get stuck, go back to measuring.** Adding a log and looking at the actual value is cheaper than stacking guesses
+- **If it took deep digging to see, propose the signal that would have shown it at a glance.** A counter, an assertion, a log line that is always on and costs nearly nothing. The next person starts where you finished
+- **Two fixes on the same assumption, refused by the same check: stop and test the assumption** (**principle-attack-the-premise**)
 
 **When the cause is outside what you control** (an upstream defect, an environment you cannot
 change), stopping there is allowed. **But record how far you traced it and where you stopped.**

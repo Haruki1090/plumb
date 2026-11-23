@@ -33,9 +33,14 @@ source stand in for measuring.
    (**principle-sequence-verifiable-units**).
 4. Put the artifacts side by side. **"Cannot be judged" and a measurement on a different surface are
    not a pass.** Write that down as such.
+   Before the delta goes anywhere, take it through the seven questions of
+   **principle-explain-the-number**: the limiter, like-for-like setup, the ceiling, the error
+   count, alternated repeats, the end-to-end share, the work done inside the window. The verdict
+   is one of faster, slower, no measurable difference, inconclusive.
 5. Close out with `playbooks/closing-a-branch.md`. **Once a PR is decided on**, go to
    `playbooks/opening-a-pr.md`. Put the measured numbers in the body.
 
 If it is not one fix but pushing one metric down continuously, `playbooks/hillclimb.md`.
 
-**What you return:** the baseline, the value after the fix, the delta, the paths to the artifacts.
+**What you return:** the baseline, the value after the fix, the delta with its run count, spread
+and error count, the limiter, the verdict, the paths to the artifacts.
