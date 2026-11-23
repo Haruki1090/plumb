@@ -16,6 +16,8 @@ Each PR is a lane whose seat is a reviewer, not an implementer.
 - **Verdicts go to files**, one per PR. The coordinator reads the verdicts, not the transcripts.
 - **Do not fix the PR under review.** Findings go back to its author. When the owner is the author
   and asked for fixes, open a separate implementer lane on that branch.
+- **Reviewing is not merging.** These PRs belong to their authors; the stop line's merge rule does
+  not reach them, and the verdict goes to the owner.
 - **Posting is outward-facing.** Post review comments only if this request asked; otherwise the
   report carries the verdict table and the owner posts.
 

@@ -75,6 +75,7 @@ schema = 1
 
 [repo]
 base_branch = "develop"
+production_branches = ["main"]
 
 [rework]
 required_authors = ["some-login"]
@@ -112,6 +113,7 @@ pattern = '\buse(Layout)?Effect\s*\('
 |---|---|---|
 | `schema` | integer, must be `1` | Required. Any other value is `invalid` |
 | `repo.base_branch` | string | The branch pull requests target |
+| `repo.production_branches` | array of non-empty strings | Branch names (exact match) whose merges belong to the owner. See below |
 | `rework.required_authors` | array of strings | GitHub logins (compared case-insensitively) who must write the `Fixes-PR:` line |
 | `rework.lookahead_days` | integer, at least 1 | How long after landing a later fix still counts as rework |
 | `ledger.classify` | array of tables `{glob, class}` | Ordered path-glob to class rules for the work ledger |
@@ -125,6 +127,14 @@ pattern = '\buse(Layout)?Effect\s*\('
 | `code_policy.exceptions` | string | A TSV file, one `rule<TAB>path<TAB>reason` row per exception, with an optional 4th column `expires` (`YYYY-MM-DD`) and 5th `approved_by` (free text); a row suppresses that rule in that path until its expiry day, and a row whose reason is empty, whose date is malformed, with an empty `approved_by`, or with more than 5 columns is `invalid` |
 | `code_policy.allow_directives` | array of strings (default `["prettier-ignore"]`) | Standalone comments containing exactly one listed directive are allowed. An empty array disables the allowance |
 | `code_policy.rule` | array of tables `{id, kind}` | IDs must be unique. The checker reserves `non-regular` and `expired-exception`. Use `kind = "comment"` or `kind = "pattern"` with a valid regular expression in `pattern` |
+
+`repo.production_branches` names the branches whose merges belong to the owner. **When the key is
+absent, every merge belongs to the owner**, and an agent stops at a ready pull request. When it is
+present, `plumb:lead` may merge a lane's pull request into a branch the list leaves out, under the
+conditions in its skill (an independent verdict on the current head, `plumb-pr-watch` printing `ready`, a
+ledger row). An empty list means no branch is production; the repository's default branch still
+counts as one for that skill. The value is read from the base branch's contract, never from the
+pull request's head, so a head cannot grant itself merge rights.
 
 `plumb-doctor` prints a `contract` block: `none` when the file is absent, `ok` or `--` for each key,
 one `NG` line naming the key and reason when the file is invalid, an `NG` for a verify command

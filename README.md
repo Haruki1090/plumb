@@ -56,7 +56,9 @@ Beyond the router, the 24 playbooks and the 25 principles, plumb ships these ski
 - **`plumb:lead`** — runs a queue as the coordinator: takes "review the open PRs"
   or "implement the issues assigned to me", drops what already landed, gives each
   unit its own worktree and visible pane, and drives implement → independent
-  review → local checks → ready PR. Stops at a ready PR; the owner merges.
+  review → local checks → ready PR. Stops at a ready PR and the owner merges; with
+  `repo.production_branches` in the base branch's contract it may merge into a branch outside that
+  list once a verdict names the PR's current head.
   `plumb-run-view` prints where its lanes stand (ledger plus pull request facts) as JSON.
   `plumb-stalled` lists every open pull request by how long it has waited and on whom (read-only).
   `plumb-lane stale` lists running lanes that have gone quiet for longer than that kind of work takes;
