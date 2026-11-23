@@ -40,6 +40,12 @@ A test you cannot say that about carries no information whether it passes or fai
 - **Do not retrace someone else's tool's specification.** What you verify is the contract of
   the surface you built. Only when you have stepped on unexpected behavior, put down one test
   that **names that assumption**
+- **Assert the kind of an error, not its message text.** Wording gets edited for readers, and the
+  test fails on a change that broke nothing
+- **Pair every "this does not happen" with a case where it does.** An assertion that was never shown
+  able to fail passes whether or not the guard works
+- **What an outside service receives from us is behavior; assert it.** How we got there inside is not
+  (the transcript, above)
 
 ## 3. Name the tests that protect nothing, and forbid them
 

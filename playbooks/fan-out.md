@@ -34,6 +34,9 @@ Every brief carries:
 - **The material to judge on, itself.** The failing output, the repro steps, the lines involved. Do not settle for "that bug"
 - **What must not be touched.** Leave it out and a refactor of the surroundings comes back
 - **The shape of the answer.** What you want back, and at what granularity
+- **The commit and the method.** The exact SHA the work is against and how it is measured. The result
+  comes back as one of PASS / ISSUES / BLOCKED and **repeats that SHA and method**, so two results can
+  be compared
 
 ## 2a. Hand it to the cheapest role that can do it
 
@@ -60,6 +63,9 @@ The time to read what comes back is a finite resource on your side too.
 
 **A summary is a claim, not evidence** (**principle-prove-it-works**).
 What comes back is a write-up of what they meant to do, so **look at what actually changed yourself**.
+
+**A result that does not state its SHA and method is discarded, and that job runs once more.**
+If the second one lacks them too, record the job as a gap. **A gap is never counted as a pass.**
 
     git status --porcelain -uall
     git diff --stat <the commit before you fanned out>

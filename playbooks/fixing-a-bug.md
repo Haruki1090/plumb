@@ -20,6 +20,9 @@ It is a hypothesis, and it holds not one piece of evidence yet.
 **Take the shot and you are left with no way to judge whether it hit.**
 The symptom goes away and you never learn whether that change is what removed it.
 
+**If the report is long or vague, restate it in your own words first**: what fails, and what would
+count as fixed. Then read code.
+
 ## 2. Pin the repro in a form a machine judges
 
 **"I checked it by hand" is not a repro** (**principle-gate-claims-on-evidence**).
@@ -33,9 +36,14 @@ A failing test, a short failing script, an exit code that comes out every time f
 - **If it survives a restart or a deploy, suspect leftover state before you suspect the code.**
   Running again does not change the code, but caches, config, locks and saved partial progress do change
 - **Look at when it started.** If a change landed recently, the suspect range shrinks to there
+- **A repro counts once it has failed twice, each from a fresh start.** One failure can be leftover
+  state, and you would be fixing the leftover
 
 Do not throw the pinned repro away. **After the fix, keep it as a test**
 (`playbooks/writing-tests.md`).
+
+**Commit the failing repro before the fix.** The order red, then green is then in the history, and a
+reviewer sees it without taking your word.
 
 ## 3. Trace back from where it fell to where it broke
 
@@ -62,6 +70,8 @@ same repository, the diff between the two is your list of suspects.
 - **If the same shape exists elsewhere, count those too.** Fix one and you will run the same
   investigation a second time
 
+**At the second miss built on the same assumption, write the assumption down and test it before
+the next fix** (**principle-attack-the-premise**).
 **Miss three times running and doubt the premise, not the fix.**
 If every miss moves a new symptom somewhere else, that is not a failed hypothesis but a structural
 problem. **Do not try a fourth one yourself.** Stop, and hand it to the judge role
@@ -79,6 +89,9 @@ problem. **Do not try a fourth one yourself.** Stop, and hand it to the judge ro
 The moment it is fixed, think about the next one (**principle-encode-lessons-in-structure**).
 
 - **Keep the repro as a test.** This is the floor. Leave it out and the same bug comes back
+- **If no good test can be built, add none, and say so.** A test that is mostly mocks, hangs on
+  wall-clock time, or would be deleted right after the fix protects nothing. No test is better than a
+  bad one
 - **Tighten the boundary the bad value came in through.** If it can be rejected at the entrance, reject
   it at the entrance (**principle-boundary-discipline**: guards concentrate at the boundary.
   Scattering checks along the whole path is the inverse of that principle, and afterwards nobody can

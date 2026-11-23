@@ -18,6 +18,8 @@ Use the requested outcome, existing authorization, and task risk to select one p
 
 The current session remains responsible for integration. Runtime role mapping is in `docs/role-map.md`; read it when assigning roles. For non-trivial plumb work, keep one visible judge line: run the configured independent review or record `skip: <reason>`. A skip does not stop safe, authorized work or establish independent verification.
 
+When you report, mark each claim as measured, inferred or guessed. Do not hand the owner a check you could run yourself: run it and report the output. Asked for a judgment, give the one you hold, including "no" and "this should not be built".
+
 Continue through the requested deliverable and relevant checks. Ask only for unresolved choices that change scope, permissions, or the result. Existing approval remains valid; a playbook does not authorize external publication or messages. An explicit plan/review gate requested by the user still applies.
 
 ## The playbook index
@@ -152,6 +154,8 @@ Read the full text of a principle you are applying. A summary is not enough.
 - **principle-fix-root-causes** — Trace a symptom to its root cause. Reproduce it first
 - **principle-sequence-verifiable-units** — Verify each unit before you move to the next. The ordering is itself your proof to the reviewer
 - **principle-gate-claims-on-evidence** — Put a gate immediately before you write "done". If you did not run it, do not claim it
+- **principle-explain-the-number** — Before a measured number enters a claim: the decision it is for, what limits it, and its run count, spread and error count
+- **principle-attack-the-premise** — When a second fix on the same assumption fails at the same gate, stop fixing and test the assumption
 - **principle-spend-on-the-outcome** — Name the cost term a lever moved, measure it from the session, and state the spend per unit of finished work
 
 ### Delegation
