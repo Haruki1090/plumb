@@ -95,6 +95,8 @@ started through the driver under `lane-<item>`, and the brief written as a file 
 `plumb-run-view` gives the lanes, what is done by fact, and what remains, from the ledger and the tracker.
 Every ledger line for a lane also goes on that lane's pane label when the driver has one
 (`docs/role-map.md`, labels and alerts).
+A lane's pull request is read with `plumb-pr-watch <n>` (one word, one exit code), never by re-reading
+`gh` output; `--wait` replaces a poll loop.
 - *blocked*: read the prompt first. Relay an approval only inside the brief's range and
   reversible; anything else goes up
 - *done*: read the report file, diff from the starting commit
