@@ -117,6 +117,12 @@ def run_cli(cwd: Path, *args: str):
     return subprocess.run([str(CLI), *args], cwd=str(cwd), capture_output=True, text=True, timeout=300)
 
 
+def run_today(cwd: Path, today: str, *args: str):
+    """Run the report with PLUMB_TODAY pinned, so expiry never depends on the real date."""
+    return subprocess.run([str(CLI), *args], cwd=str(cwd), capture_output=True, text=True, timeout=300,
+                          env={**os.environ, "PLUMB_TODAY": today})
+
+
 def project_cli(cwd: Path, *args: str):
     return subprocess.run([str(PROJECT_CLI), *args], cwd=str(cwd), capture_output=True, text=True, timeout=60)
 
@@ -722,6 +728,116 @@ def _():
         assert "non-empty reason" in done.stderr, done.stderr
 
 
+EXCEPTIONS = ".plumb/code-policy-exceptions.tsv"
+TODAY = "2026-06-15"
+COMMENT_ROWS = {row for row in EXPECTED if row[0] == "no-new-comment"}
+
+
+def exceptions_repo(name: str, text: str, mode: str = "report") -> Path:
+    repo = fixture_repo(name)
+    write(repo, ".plumb/project.toml", contract_with(f'exceptions = "{EXCEPTIONS}"', mode=mode))
+    write(repo, EXCEPTIONS, text)
+    return repo
+
+
+@case("a 3-column exceptions file keeps its meaning whatever today is")
+def _():
+    repo = exceptions_repo("exceptions-3", "no-new-comment\tsrc/app.tsx\thistoric comments\n")
+    for today in (TODAY, "2999-12-31"):
+        done = run_today(repo, today, "report")
+        assert done.returncode == 0, (done.returncode, done.stderr)
+        assert findings_of(done.stdout) == EXPECTED - COMMENT_ROWS, findings_of(done.stdout)
+        assert "expired-exception" not in done.stdout, done.stdout
+
+
+@case("4- and 5-column rows are accepted and suppress until their expiry day inclusive")
+def _():
+    rows = ("no-new-comment\tsrc/app.tsx\thistoric\t2099-01-01\n",
+            "no-new-comment\tsrc/app.tsx\thistoric\t2099-01-01\trelease owner\n",
+            "no-new-comment\tsrc/app.tsx\thistoric\t\trelease owner\n",
+            "no-new-comment\tsrc/app.tsx\thistoric\t2026-06-16\trelease owner\n",
+            "no-new-comment\tsrc/app.tsx\thistoric\t2026-06-15\trelease owner\n")
+    for row in rows:
+        repo = exceptions_repo("exceptions-5", row)
+        done = run_today(repo, TODAY, "report")
+        assert done.returncode == 0, (row, done.returncode, done.stderr)
+        assert findings_of(done.stdout) == EXPECTED - COMMENT_ROWS, (row, done.stdout)
+
+
+@case("an expired row stops suppressing and adds one expired-exception finding")
+def _():
+    repo = exceptions_repo("exceptions-expired",
+                           "no-new-comment\tsrc/app.tsx\thistoric\t2026-06-14\trelease owner\n")
+    done = run_today(repo, TODAY, "report", "--json")
+    payload = json.loads(done.stdout)
+    assert done.returncode == 0, (done.returncode, done.stdout, done.stderr)
+    assert payload["schema"] == 1 and payload["outcome"] == "findings", payload
+    assert {(f["rule"], f["path"], f["line"]) for f in payload["findings"]} == (
+        EXPECTED | {("expired-exception", "src/app.tsx", 0)}), payload["findings"]
+    assert payload["counts"] == EXPECTED_COUNTS | {"expired-exception": 1}, payload["counts"]
+    (expired,) = [f for f in payload["findings"] if f["rule"] == "expired-exception"]
+    assert sorted(expired) == ["excerpt", "line", "path", "rule"], expired
+    assert "no-new-comment" in expired["excerpt"] and "2026-06-14" in expired["excerpt"], expired
+    text = run_today(repo, TODAY, "report")
+    assert "summary: expired-exception 1" in text.stdout.splitlines(), text.stdout
+
+
+@case("an expired row is reported even when its rule has no finding on added lines")
+def _():
+    repo = exceptions_repo("exceptions-expired-quiet", "no-new-comment\tsrc/untouched.ts\tgone\t2026-01-01\n")
+    done = run_today(repo, TODAY, "report", "--json")
+    rows = json_findings(done)
+    assert [(f["rule"], f["path"], f["line"]) for f in rows
+            if f["rule"] == "expired-exception"] == [("expired-exception", "src/untouched.ts", 0)], rows
+    assert len(rows) == len(EXPECTED) + 1, rows
+
+
+@case("enforce mode exits 1 on an expired row and 0 once the row is still current")
+def _():
+    clean = make_repo("exceptions-enforce")
+    write(clean, ".plumb/project.toml", contract_with(f'exceptions = "{EXCEPTIONS}"', mode="enforce"))
+    write(clean, "src/clean.tsx", "export const clean = 1;\n")
+    commit(clean, "base")
+    git(clean, "checkout", "-q", "-b", "feature")
+    write(clean, "src/clean.tsx", "export const clean = 1;\nexport const more = 2;\n")
+    commit(clean, "head")
+    write(clean, EXCEPTIONS, "no-new-comment\tsrc/clean.tsx\thistoric\t2026-06-14\trelease owner\n")
+    rows = json_findings(run_today(clean, TODAY, "report", "--json"), exit_code=1)
+    assert [(f["rule"], f["path"], f["line"]) for f in rows] == [("expired-exception", "src/clean.tsx", 0)], rows
+    done = run_today(clean, "2026-06-14", "report")
+    assert done.returncode == 0 and done.stdout.splitlines()[0] == "clean", (done.returncode, done.stdout)
+
+
+@case("a malformed date, a 6th column or an empty approver makes the exceptions file invalid")
+def _():
+    repo = exceptions_repo("exceptions-invalid", "")
+    for row, reason in (
+        ("no-new-comment\tsrc/app.tsx\thistoric\t2026-13-01\n", "YYYY-MM-DD"),
+        ("no-new-comment\tsrc/app.tsx\thistoric\t2026-02-30\n", "YYYY-MM-DD"),
+        ("no-new-comment\tsrc/app.tsx\thistoric\t2026-6-1\n", "YYYY-MM-DD"),
+        ("no-new-comment\tsrc/app.tsx\thistoric\tsoon\n", "YYYY-MM-DD"),
+        ("no-new-comment\tsrc/app.tsx\thistoric\t 2099-01-01\n", "YYYY-MM-DD"),
+        ("no-new-comment\tsrc/app.tsx\thistoric\t2099-01-01\trelease owner\textra\n", "at most 5 columns"),
+        ("no-new-comment\tsrc/app.tsx\thistoric\t2099-01-01\t\n", "approved_by"),
+        ("no-new-comment\tsrc/app.tsx\thistoric\t\t  \n", "approved_by"),
+        ("no-new-comment\tsrc/app.tsx\n", "non-empty reason"),
+    ):
+        write(repo, EXCEPTIONS, "no-new-comment\tsrc/other.ts\tfine\n" + row)
+        done = run_today(repo, TODAY, "report")
+        assert (done.returncode, done.stdout) == (2, ""), (row, done.returncode, done.stdout)
+        assert "line 2" in done.stderr and reason in done.stderr, (row, done.stderr)
+
+
+@case("PLUMB_TODAY is read only when a row has an expiry, and must then be a date")
+def _():
+    repo = exceptions_repo("exceptions-today", "no-new-comment\tsrc/app.tsx\thistoric\n")
+    assert run_today(repo, "not-a-date", "report").returncode == 0
+    write(repo, EXCEPTIONS, "no-new-comment\tsrc/app.tsx\thistoric\t2099-01-01\n")
+    done = run_today(repo, "not-a-date", "report")
+    assert (done.returncode, done.stdout) == (2, ""), (done.returncode, done.stdout)
+    assert "PLUMB_TODAY" in done.stderr, done.stderr
+
+
 @case("no contract, no [code_policy] table and mode = off are a visible skip with exit 0")
 def _():
     repo = make_repo("skip")
@@ -875,6 +991,7 @@ def _():
     for suffix, key, reason in (
         ('id = "no-new-comment"\nkind = "comment"\n', "code_policy.rule[3].id", "no-new-comment"),
         ('id = "non-regular"\nkind = "comment"\n', "code_policy.rule[3].id", "reserved"),
+        ('id = "expired-exception"\nkind = "comment"\n', "code_policy.rule[3].id", "reserved"),
         ('id = "overflow"\nkind = "pattern"\npattern = "a{5000000000}"\n',
          "code_policy.rule[3].pattern", "regular expression"),
     ):
