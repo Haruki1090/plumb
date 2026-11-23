@@ -1,3 +1,4 @@
+# source: agents/pr-refuter.md sha256:d422380549f92b2b015f72b35ed242c46888d868db7ac618e0617feda2169a28
 name = "plumb_pr_refuter"
 description = "Max-effort bounded refuter that tries to kill one proposed PR finding."
 model = "gpt-5.6-luna"

@@ -1,3 +1,4 @@
+# source: agents/pr-blindspot.md sha256:708134ae31823e728d805d2364394c8ad1b61c5aad1b538418776d19f8504118
 name = "plumb_pr_blindspot"
 description = "Read-only final pass that identifies impact areas omitted from both PR body and diff review."
 model = "gpt-5.6-luna"

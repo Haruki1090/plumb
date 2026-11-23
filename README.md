@@ -12,7 +12,7 @@ judgment pass leaves a visible `skip: <reason>` line.
 
 ## What it adds
 
-plumb is self-contained: 24 playbooks covering the whole arc of a unit of work —
+plumb is self-contained: 26 playbooks covering the whole arc of a unit of work —
 shaping it, planning it, running the plan task by task, fixing what breaks,
 writing the tests, and landing the result. It depends on no other plugin.
 
@@ -25,7 +25,7 @@ writing the tests, and landing the result. It depends on no other plugin.
   reviewer of it: it shares the blind spots that produced the bug. plumb routes
   the adversarial pass to a different model family and treats a same-family-only
   verdict as unreviewed.
-- **A principle index you call by name.** 23 principles, each with a
+- **A principle index you call by name.** 25 principles, each with a
   name. A principle is read in full when its decision criterion applies, and
   cited alongside the specific decision it changed rather than narrated rule by
   rule. Naming turns "be careful" into something a reviewer can check. Each
@@ -44,7 +44,7 @@ writing the tests, and landing the result. It depends on no other plugin.
 
 ## What's bundled
 
-Beyond the router, the 24 playbooks and the 23 principles, plumb ships these skills
+Beyond the router, the 26 playbooks and the 25 principles, plumb ships these skills
 (all called under the `plumb:` namespace) and their supporting agents:
 
 - **`plumb:pr-review`** — adversarial PR review: cross-checks the PR body against
@@ -56,9 +56,13 @@ Beyond the router, the 24 playbooks and the 23 principles, plumb ships these ski
 - **`plumb:lead`** — runs a queue as the coordinator: takes "review the open PRs"
   or "implement the issues assigned to me", drops what already landed, gives each
   unit its own worktree and visible pane, and drives implement → independent
-  review → local checks → ready PR. Stops at a ready PR; the owner merges.
+  review → local checks → ready PR. Stops at a ready PR and the owner merges; with
+  `repo.production_branches` in the base branch's contract it may merge into a branch outside that
+  list once a verdict names the PR's current head.
   `plumb-run-view` prints where its lanes stand (ledger plus pull request facts) as JSON.
   `plumb-stalled` lists every open pull request by how long it has waited and on whom (read-only).
+  `plumb-lane stale` lists running lanes that have gone quiet for longer than that kind of work takes;
+  `plumb-pr-watch` gives one pull request's state as a word and an exit code.
 - **`plumb:graph`** — pre-work execution-graph design for goals that are large,
   parallelizable, or need to stay aligned with a source-of-truth doc.
 - **`plumb:decision-brief`** — hands a branching decision back to the owner as
@@ -68,9 +72,24 @@ Beyond the router, the 24 playbooks and the 23 principles, plumb ships these ski
   prose.
 - **`plumb:doctor`** — checks whether the environment plumb's docs claim (routed
   tools, bundled agents, paths, plugin loading) actually exists on this machine.
+- **`plumb:verify-init`** — gives a repository with no `[verify]` contract its first one: finds how
+  the repository starts, drives and observes itself, writes the table and one feature, and claims
+  nothing it did not see run. `plumb:verify` also keeps the feature map true on request.
+- **`plumb:catch-up`** — for an owner coming back: what changed, every decision waiting on them in
+  a form one reply settles, what keeps moving, and what could not be read. Read-only.
+- **`plumb:recall`** — rebuilds a topic that spans several sessions, each thread tagged with a state
+  checked against git and the forge.
+- **`plumb:reflect`** — after a session, at most five changes that will still hold in six months,
+  each routed to the layer that owns it; nothing is applied until approved.
+- **`plumb:help`** — answers how to use plumb and hands back the prompt to send; it never starts
+  the work.
+- **`plumb:configure`** — settles roles, pane driver and stack tool in the config file, showing the
+  diff before it writes.
 
 The `plumb-bench-extract` and `plumb-bench-score` commands build a pruned review corpus and compare
 agent configurations by precision, recall, F1, and tokens per review.
+
+To learn how to work with plumb (a first hour, how to ask, recipes, overnight runs, pitfalls), start at [`docs/guide/README.md`](docs/guide/README.md).
 
 ## Install
 
@@ -223,7 +242,7 @@ the layer that should stop it, with the number that will show whether it did.
 
 ## Language
 
-plumb is written in English throughout — SKILL.md, the 24 playbooks, the 23
+plumb is written in English throughout — SKILL.md, the 26 playbooks, the 25
 principles, the bundled skills and agents, the scripts and the docs/ files.
 
 It was written in Japanese through v0.5.0 and rewritten in English for release.

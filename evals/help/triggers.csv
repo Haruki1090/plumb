@@ -1,0 +1,12 @@
+id,prompt,expect
+H1,How do I use plumb to track down a memory leak?,plumb:help
+H2,Which playbook should I use to split a big refactor across agents?,plumb:help
+H3,What does plumb actually do?,plumb:help
+H4,plumb isn't running the review step I expected. Why?,plumb:help
+H5,What should I send to get plumb to shape a feature before building it?,plumb:help
+H6,plumb で夜間に走らせ続けるにはどう頼めばいい？,plumb:help
+H7,どの playbook を使えばいいか教えて,plumb:help
+N1,Fix the crash in the login form when the email field is empty.,-
+N2,Is plumb healthy? Check the install.,plumb:doctor
+N3,Review https://github.com/octo/app/pull/42,plumb:pr-review
+N4,Run the unit tests.,-

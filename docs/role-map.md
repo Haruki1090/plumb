@@ -34,11 +34,19 @@ A subagent runs on the first of these that is set:
 The built-in `Explore` agent skips step 3: the variable does not change it, so a setup that sets only
 the variable still runs `Explore` on the main session's model. That is why `role.explorer.model` is
 enforced by a hook rather than by a sentence here. The hook (`scripts/agent-route.py`, a PreToolUse
-hook on the `Agent` tool) adds `model` to the input of an `Explore` call that has none and does
-nothing else: other agent types, a call that already names a model, an unset key, a value that is
-not an alias, or any error leave the call as it was. It writes no permission decision, so it never
-changes whether the call is allowed. The `Agent` tool accepts only aliases for `model`, which is why
-the key does too.
+hook on the `Agent` tool) adds `model` to the input of an `Explore` call that has none and, unless
+`worker.rules.types` is set (next section), does nothing else: other agent types, a call that already
+names a model, an unset key, a value that is not an alias, or any error leave the call as it was. It
+writes no permission decision, so it never changes whether the call is allowed. The `Agent` tool
+accepts only aliases for `model`, which is why the key does too.
+
+**`worker.rules.types` is off unless it is set.** It lists subagent types, separated by commas
+(`worker.rules.types = implementer, general-purpose`). For a call whose `subagent_type` is listed
+exactly, the same hook puts one line first in the prompt: `Read <plugin root>/docs/worker-rules.md
+first; it binds this task.` Running it twice adds nothing. That file holds the rules every
+delegate shares (`docs/worker-rules.md`). It is a hook and not a sentence in a playbook because a rule
+the delegate must follow cannot depend on the coordinator remembering to paste it. A missing rules
+file, an unlisted type or any error leaves the prompt as it was.
 
 To see which kind of agent ran on which model, read the agents table of `plumb-ledger views`.
 
@@ -153,6 +161,9 @@ unfinished streak. An inconclusive verdict leaves it as it was. The threshold at
 applies to that verdict. A demoted route uses the baseline until the owner runs
 `plumb-lane route-reset KIND`. The log retains route history across runs and linked worktrees.
 Separate Git repositories have separate cockpit stores, including under a shared artifact root.
+
+**Work goes up to a stronger tier in two cases only**: the owner names it, or the same brief has
+failed twice at the same check on the configured tier. Say which of the two it was, and record it.
 
 A brief spec is JSON. Paths in `allow_paths` are literal and repository-relative. A trailing
 slash allows everything under that directory. Use an empty list for read-only kinds. Put the lane

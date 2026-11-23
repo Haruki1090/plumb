@@ -63,6 +63,8 @@ keys warn on stderr and do not fail. A usage error exits 2.
 
 TOP_LEVEL = ("schema", "repo", "rework", "ledger", "verify", "failure", "code_policy")
 VERIFY_KEYS = ("lookup", "up", "down", "scenarios", "thresholds")
+CODE_POLICY_RESERVED = {"non-regular": "the built-in file type finding",
+                        "expired-exception": "the built-in expired exception finding"}
 CODE_POLICY_KEYS = ("mode", "include", "exclude", "exceptions", "allow_directives", "rule")
 CODE_POLICY_MODES = ("off", "report", "enforce")
 CODE_POLICY_KINDS = ("comment", "pattern")
@@ -104,6 +106,14 @@ def want_str_list(table: dict, prefix: str, name: str) -> None:
     for index, item in enumerate(value):
         if not isinstance(item, str):
             raise Invalid(f"{key}[{index}]", "expected a string")
+
+
+def want_branch_list(table: dict, prefix: str, name: str) -> None:
+    """An array of branch names: strings, none of them empty."""
+    want_str_list(table, prefix, name)
+    for index, item in enumerate(table.get(name, [])):
+        if item == "":
+            raise Invalid(f"{prefix}.{name}[{index}]", "expected a non-empty string")
 
 
 def want_pairs(table: dict, prefix: str, name: str, first: str, second: str, warnings: list) -> None:
@@ -163,8 +173,8 @@ def check_code_policy(table: dict, warnings: list) -> None:
             raise Invalid(f"{here}.id", "missing")
         if not isinstance(item["id"], str) or not item["id"]:
             raise Invalid(f"{here}.id", "expected a non-empty string")
-        if item["id"] == "non-regular":
-            raise Invalid(f"{here}.id", "non-regular is reserved for the built-in file type finding")
+        if item["id"] in CODE_POLICY_RESERVED:
+            raise Invalid(f"{here}.id", f"{item['id']} is reserved for {CODE_POLICY_RESERVED[item['id']]}")
         if item["id"] in seen:
             raise Invalid(f"{here}.id", f"duplicate rule id {item['id']!r}")
         seen.add(item["id"])
@@ -205,7 +215,8 @@ def validate(doc: dict) -> list:
     if "repo" in doc:
         repo = want_table(doc["repo"], "repo")
         want_str(repo, "repo", "base_branch")
-        warnings.extend(f"repo.{k}" for k in sorted(set(repo) - {"base_branch"}))
+        want_branch_list(repo, "repo", "production_branches")
+        warnings.extend(f"repo.{k}" for k in sorted(set(repo) - {"base_branch", "production_branches"}))
 
     if "rework" in doc:
         rework = want_table(doc["rework"], "rework")

@@ -56,6 +56,12 @@ command fails, stop there and report the command and the first line of its stder
 the missing number. Records and bodies stay in `$OUT`: the review carries numbers and pull request
 numbers only.
 
+Labelled failure records are not the whole picture. Mine the period's history for repeated failures
+nobody labelled: reverts, review comments asking for the same kind of change, and comments in code
+that explain a workaround. **Two occurrences of the same mechanism make a pattern; one is an
+anecdote.** Apply **principle-explain-the-number** to the rework rate and the cost figures before
+they drive a change.
+
 ## 2. Read last week's proposals
 
 Open the previous week's note: `retro/<owner>/<name>/<previous ISO week>.md` in the store, this

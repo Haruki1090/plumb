@@ -21,6 +21,12 @@ discipline for crossing a night.**
 The wake-up mechanism belongs to `/loop` and `ScheduleWakeup`. **What this playbook holds is the
 discipline.**
 
+**Before you trust a loop to run unattended, four things hold.** You have done the task once by hand.
+A tool exists that checks the result. Every step can be stopped. You have read the transcripts of
+earlier runs, or of the by-hand pass when this is the first, and turned the failure that repeated
+into a tool. **If the predicate cannot be judged by
+a machine, do not run it overnight.** Nobody is awake to judge it.
+
 1. **Before the first iteration, write the termination predicate in a checkable form.**
    "The tests are green." "The repro is fixed." "All N of them landed." "The diff is zero."
    **A vague goal never stops. You can stop because there is a predicate.**
@@ -28,6 +34,8 @@ discipline.**
    forward). Put a long time-based heartbeat behind it as backup. If there is nothing to watch,
    use a fixed heartbeat at **the interval that makes going to look worth it**.
    That is `/loop` and `ScheduleWakeup`'s territory.
+   On each wake with lanes running, run `plumb-lane stale`; inspect a stale lane at its worktree
+   and replace it. Do not wait on it.
 3. **Each iteration makes only the smallest change the evidence justifies.** Verify it against the
    predicate; commit if it moved forward, and **revert every change** if it did not.
    **"This might work" is a hypothesis, not a fix.** Do not let it ride along.
@@ -52,6 +60,8 @@ discipline.**
    **Exactly one line per iteration.** Line 0 is the predicate, and stopping adds one more line.
    If you skipped an iteration, **write the reason on that iteration's line**. Do not skip without
    making the line. **A run with no trace can neither be audited nor resumed.**
+   **Open each run with `plumb-decision-log <log> --start "<label>"`** so a log shared with an earlier
+   run still says where this one begins.
    When you judge that context compaction is close, run step 4 of `playbooks/pause-safely.md`
    and then continue.
 6. **Stop when the predicate is met. Stalled is not stopped.**
@@ -73,6 +83,15 @@ discipline.**
    **A stop missing any of the four invalidates the predicate without rewriting it.**
    "I feel like I'm out of ideas" is not a reason to stop.
    If it is a real dead end, say so instead of circling.
+
+**Audit the log before you report.** Run `plumb-decision-log <log> --audit` and carry every `missing`
+line into the report. A commit, PR or file the log names that is not there is not evidence.
+
+**End a long run's report with an Attention section written by the judge role** (`docs/role-map.md`).
+Hand that role the log and the report, not your reading of them, and ask one thing: which three
+lines should the owner check first, and why. Paste the answer unedited under `Attention`. With no
+judge role, write `Attention: skip: role.judge unset`; do not write the section yourself, because
+the author is the one reader who cannot see what the report leaves out.
 
 **What you return:** the termination predicate, **the path to the decision log**, how many
 iterations you ran (**and the log holds a line with each of those numbers**), what landed,

@@ -5,6 +5,10 @@
 "How does X work." "Why was Y built this way." "Is Z really safe." "Which of X and Y do we take."
 Work that returns an explanation or a recommendation with grounds, without changing code.
 
+**If what you were handed is a long thread or a vague report, restate it in your own words before you
+read any code**: what is being asked, and what would count as answered. Read first and you answer the
+question you happened to find.
+
 1. Declare up front that this is a read-only investigation. Do not let it run on into a code change.
 2. If you need broad coverage, hand it to the explorer role in `Explore`. **Do not pull the full text
    into the main session** (**principle-guard-the-context-window**). What comes back is pointers to
@@ -15,6 +19,10 @@ Work that returns an explanation or a recommendation with grounds, without chang
    how it moves / where it lives / the traps". For a decision: a comparison table of the options, and
    one recommendation of your own with the reason attached.
 5. Always cite as `path:line`. **Do not write a claim nobody can trace.**
+6. **On "why is it this way", the answer comes from the record**: the commit that introduced it and the
+   review discussion around it. Quote the author's words, and mark an inference as an inference.
+   **If the record does not answer, say that it does not.** A plausible reason you supplied is a guess
+   wearing a citation.
 
 No design happens here, so you do not call `playbooks/shaping-the-work.md`.
 If the investigation ends in a code change, stop your hands there, hand it back to the owner, and

@@ -35,6 +35,12 @@ directory. The command help describes each argument.
    `plumb-lane close` when the acceptance evidence is complete. When a hold needs intervention,
    record the new diagnosis, hypothesis and distinguishing test with `plumb-lane resume`.
 
+While waiting on running lanes, run `plumb-lane stale` on each wake. It reads the latest of the
+lane's last event, its worktree's HEAD commit and its report file, and lists a lane when that
+is older than `--factor` times the median start-to-collect time of the kind (`--default-minutes`
+until `--min-samples` attempts exist). Inspect a stale lane at its worktree, then
+`abandon` and start a replacement. Do not wait on it. `--strict` exits 1 when any lane is stale.
+
 Use relative paths under **Do not touch**. `start` removes `.` components and rejects absolute
 paths and `..` components. Collection checks existing ignored files, missing paths that later
 appear, and protected directories against the lane's baseline. Directories are checked entry by

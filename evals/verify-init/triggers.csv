@@ -1,0 +1,13 @@
+id,prompt,expect
+I1,このリポジトリで、変更前後を比べる確認の仕組みをまず 1 本作って,plumb:verify-init
+I2,Set up verification for this repo.,plumb:verify-init
+I3,verify の契約がまだ無い。最初の 1 本を書いて,plumb:verify-init
+I4,We have no verify contract yet. Can you write one so the base-vs-head check works here?,plumb:verify-init
+I5,Make the compare-against-base check work in this project; nothing is configured for it.,plumb:verify-init
+I6,このプロジェクトに [verify] の設定を足して、base と比べる確認が回るようにして,plumb:verify-init
+I7,Get verification working in this repository from scratch.,plumb:verify-init
+V7,この変更が壊れていないか base と比べて確認して,plumb:verify
+V8,The feature map is out of date. Refresh it against the app.,plumb:verify
+N7,この関数のユニットテストを書いて,-
+N8,Add a retry to the upload client.,-
+N9,PR の説明文を書き直して,-

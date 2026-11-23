@@ -43,6 +43,14 @@ Start a fresh session for each item and configuration. Give the candidate only `
 `number`, and `sha`, and require the review to stay pinned to that SHA.
 Truth ranges are line numbers in the tree at `pr.json.sha`, so findings and labels share coordinates.
 
+**Check the blind by machine, not by intention.** Before a trial, search the paths and the prompt a
+candidate will see for words that reveal the trial (`evaluation`, `eval`, `judge`, `rubric`,
+`candidate`, `benchmark`, `baseline`, `trial`), and remove or rename every hit. Write the prompt the
+way a real request reads.
+
+**Score whether a candidate followed a required procedure from the files its transcript shows it
+opened**, never from its own account.
+
 The candidate must not see:
 
 - `truth.json`
@@ -85,6 +93,9 @@ Compare runs in one command:
 plumb-bench-score --corpus <corpus-directory> \
   --run depth-a=<run-directory> --run depth-b=<run-directory>
 ```
+
+**A score is a measured number**, so apply **principle-explain-the-number**: did every trial attempt
+the task, how many errored, and does the gap survive a different sample.
 
 Read precision and recall before F1, then read the Pareto line. Move to a configuration on that
 frontier: no other measured run gives it at least as much F1 for no more tokens per review.

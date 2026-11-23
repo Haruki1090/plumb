@@ -18,6 +18,8 @@ Use the requested outcome, existing authorization, and task risk to select one p
 
 The current session remains responsible for integration. Runtime role mapping is in `docs/role-map.md`; read it when assigning roles. For non-trivial plumb work, keep one visible judge line: run the configured independent review or record `skip: <reason>`. A skip does not stop safe, authorized work or establish independent verification.
 
+When you report, mark each claim as measured, inferred or guessed. Do not hand the owner a check you could run yourself: run it and report the output. Asked for a judgment, give the one you hold, including "no" and "this should not be built".
+
 Continue through the requested deliverable and relevant checks. Ask only for unresolved choices that change scope, permissions, or the result. Existing approval remains valid; a playbook does not authorize external publication or messages. An explicit plan/review gate requested by the user still applies.
 
 ## The playbook index
@@ -45,9 +47,11 @@ Playbooks name principles; read a named principle in full when you apply it.
 | **Turn an approved shape into steps someone else can execute** | `playbooks/writing-a-plan.md` |
 | **Land those steps, one task at a time** | `playbooks/running-a-plan.md` |
 | Write tests, or repair existing ones | `playbooks/writing-tests.md` |
+| Establish a promise tests cannot reach: an ordering, an invariant over every state, a protocol, a whole input space | `playbooks/properties-tests-cannot-reach.md` |
 | Buy a design decision with an implementation you throw away | `playbooks/prototype.md` |
 | Hand independent work out to parallel roles | `playbooks/fan-out.md` |
 | Call a tool that needs several calls per answer, or the same call over many items | `playbooks/batching-chatty-tools.md` |
+| **Work that fits no row in this index**: frame it, build and baseline the verifier, then run it as a loop | `playbooks/designing-a-run.md` |
 
 ### Ship
 
@@ -63,6 +67,8 @@ Playbooks name principles; read a named principle in full when you apply it.
 |---|---|
 | **Work a queue as the coordinator** (review the open PRs; implement the assigned issues one by one) | `plumb:lead` |
 | Keep it running overnight; run until it is done | `playbooks/autonomous-run.md` |
+| Come back to a run that kept going: what changed, every decision waiting on the owner, what moves without them (read-only) | `plumb:catch-up` |
+| Rebuild a topic that spans several sessions, each thread's state checked against git and the forge (read-only) | `plumb:recall` |
 | Stop safely; compaction is close | `playbooks/pause-safely.md` |
 | Pick up where another session left off | `playbooks/session-pickup.md` |
 | Set up an isolated workspace | `playbooks/worktree-setup.md` |
@@ -76,16 +82,26 @@ Playbooks name principles; read a named principle in full when you apply it.
 | **Ask for review and answer what comes back** (as the author) | `playbooks/being-reviewed.md` |
 | Add a different model family's axis to that review | `plumb:interrogate` |
 | Check whether the environment plumb claims still exists | `plumb:doctor` |
+| Set plumb up on this machine: settle roles, pane driver and stack tool in the config file, after showing the diff | `plumb:configure` |
 | **Check that a change works in the running app, or has not regressed against its base** ("verify this", "does it still work", "compare against base"; a dosa-kakunin request in Japanese is the same request) | `plumb:verify` (the repository's own verification through its contract; formats in `docs/verify-protocol.md`) |
+| **Give a repository with no `[verify]` contract its first working one** ("set up verification for this repo", "we have no verify contract") | `plumb:verify-init` |
 | See what a session spent its context on | `plumb-session-audit` |
 | Where a running `plumb:lead` queue stands (lanes, what landed by fact, what remains), after compaction or on resume | `plumb-run-view` |
 | What is waiting: every open pull request by how long it has waited and on whom (verified but still draft, ready but unmerged, idle draft), and what merged but was not promoted | `plumb-stalled` |
+| Which running cockpit lanes have probably stopped, judged from their last event, commit and report file | `plumb-lane stale` |
+| The state of one pull request as one word and an exit code (conflicts, threads, failing, pending, draft, ready, merged, closed) | `plumb-pr-watch` |
+| Check a pull request body mechanically before opening it (sections, order, length, long blocks) | `plumb-check-pr-body` |
+| Whether the commits, pull requests and files a decision log cites exist | `plumb-decision-log <log> --audit` |
+| What changed upstream since the commit NOTICE records, and which upstream items have no recorded decision | `plumb-upstream-diff`; the decisions are in `docs/scope.md` |
+| Which rules a check, a hook or a command holds, and which rest on prose alone | `plumb-enforcement`; a new hard rule gets a row in `docs/enforcement.tsv` in the same change |
+| Whether a sidecar agent file fell behind its `agents/*.md` source | `plumb-sidecar-agents-check` |
 | Read the repository's project contract (rework authors, verify commands, ledger classes) | `plumb-project`; the schema and the CI wiring are in `docs/project-contract.md` |
 | Check the `Fixes-PR:` line of a pull request body | `plumb-check-fixes` |
 | Which changes landed, which were fixed later (rework rate), and what each task cost | `plumb-ledger`; records, store and coverage are in `docs/ledger.md` |
 | The weekly look back: rework, cost, failures, and at most three changes | `plumb:retro` |
 | Set plumb up for a cloud session (setup script, config, cost export) | `docs/cloud-setup.md`; the script it runs is `plumb-bootstrap` |
 | Turn one agent failure into the change that stops it next time | `plumb:failure-to-rule`; codes and layers are in `docs/failure-taxonomy.md` |
+| After a session: what should change so the next one goes better (applies nothing until approved) | `plumb:reflect` |
 | Decide which configuration of a playbook to run, with a number | `playbooks/evaluating-an-agent.md` |
 
 ### Decide, and design
@@ -93,6 +109,7 @@ Playbooks name principles; read a named principle in full when you apply it.
 | Job | Playbook |
 |---|---|
 | Coordinate dependencies, parallel work, or multiple sources of truth with an execution graph | `plumb:graph` |
+| How to use plumb, which playbook fits, why it did not do something (answers and hands back a prompt; never starts the work) | `plumb:help` |
 | **Hand a branching decision back to the owner** (2+ options, and the choice changes what gets built) | `plumb:decision-brief` |
 
 ### What plumb has no playbook for
@@ -152,6 +169,8 @@ Read the full text of a principle you are applying. A summary is not enough.
 - **principle-fix-root-causes** — Trace a symptom to its root cause. Reproduce it first
 - **principle-sequence-verifiable-units** — Verify each unit before you move to the next. The ordering is itself your proof to the reviewer
 - **principle-gate-claims-on-evidence** — Put a gate immediately before you write "done". If you did not run it, do not claim it
+- **principle-explain-the-number** — Before a measured number enters a claim: the decision it is for, what limits it, and its run count, spread and error count
+- **principle-attack-the-premise** — When a second fix on the same assumption fails at the same gate, stop fixing and test the assumption
 - **principle-spend-on-the-outcome** — Name the cost term a lever moved, measure it from the session, and state the spend per unit of finished work
 
 ### Delegation

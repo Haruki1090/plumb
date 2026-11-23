@@ -49,6 +49,18 @@ else
   bad "the cross-cutting rules are failing. Run scripts/check-harness.sh directly to see what"
 fi
 
+# 1b. Which rules rest on prose alone (docs/enforcement.tsv, read by scripts/enforcement.py).
+#     A missing or invalid table is broken, because the counts it prints would be a guess.
+if ! command -v python3 >/dev/null 2>&1; then
+  note "--" "rule enforcement table: cannot check (python3 is not on PATH)"
+elif [ ! -f "$root/scripts/enforcement.py" ]; then
+  bad "scripts/enforcement.py is missing (it reads docs/enforcement.tsv)"
+elif enf_problems=$(python3 -B "$root/scripts/enforcement.py" --root "$root" --check 2>&1); then
+  note "ok" "$(python3 -B "$root/scripts/enforcement.py" --root "$root" 2>/dev/null | head -1)"
+else
+  bad "docs/enforcement.tsv is missing or invalid: $(printf '%s\n' "$enf_problems" | head -1). Run plumb-enforcement --check to see all"
+fi
+
 # When selftest called us, do not call back. That is mutual recursion.
 if [ -n "${PLUMB_IN_SELFTEST:-}" ]; then
   note "--" "script behaviour: skipped, called from selftest"
@@ -149,7 +161,7 @@ fi
 #     repository top level (absolute paths as-is) and must be executable; without one it must be on
 #     PATH, which is how it will be run. verify.thresholds is a path and must be a file.
 echo "— contract"
-contract_keys="repo.base_branch rework.required_authors rework.lookahead_days ledger.classify ledger.timezone verify.lookup verify.up verify.down verify.scenarios verify.thresholds failure.extra_codes"
+contract_keys="repo.base_branch repo.production_branches rework.required_authors rework.lookahead_days ledger.classify ledger.timezone verify.lookup verify.up verify.down verify.scenarios verify.thresholds failure.extra_codes"
 cmd_resolves() { # <command line> <repository top level>
   local first path
   read -r first _ <<<"$1"

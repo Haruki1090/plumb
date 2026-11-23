@@ -8,6 +8,11 @@ agent definitions. Codex support is an additive execution adapter: `.codex-plugi
 and return-value mechanics without forking the shared behavior. A Sol/Luna split is explicitly kept
 separate from the genuinely different-family judge requirement.
 
+**The upstream commit last read is recorded in `NOTICE`** (the `Upstream last read:` line). `plumb-upstream-diff`
+lists the files that changed upstream since then; `plumb-upstream-diff --unrecorded` lists the upstream
+skills, playbooks, agents and guide pages whose name appears nowhere in this document, which is how a new
+item with no recorded decision gets found. Moving the recorded commit forward is a person's edit, after reading.
+
 plumb starts from the playbooks in pstack (`pstack/` in `github.com/cursor/plugins`, MIT).
 **13 playbooks come from pstack**, broken down in the table below. **The rest did not come
 from pstack** (see "Written outside pstack" below).
@@ -26,6 +31,9 @@ its body and prints a table of that many, but the directory itself,
 the README's table (measured against `github.com/cursor/plugins` on 2026-08-30). The breakdown
 below — 11 ported + 3 folded + 9 not ported = 23 — counts **what is actually in the
 directory**, so it matches 23, not the README's 22.
+
+*Note, 2026-11-23: the directory now holds 22 files. `orchestrate` and its scripts are gone, and
+`autopilot-full` and `autopilot-stack` are there. See "Read again at 0.15.46" below.*
 
 **Keep the record of the difference.** "Not gotten to yet" and "deliberately left out" are
 different things, and without a record they stop being distinguishable later. **This document
@@ -46,13 +54,18 @@ have. The bodies were rewritten for this environment.
 | Upstream | plumb | Why |
 |---|---|---|
 | `opening-a-pr` | `playbooks/opening-a-pr.md` | The PR-writing convention (Why / Scope / Tradeoffs / Blast Radius / Verification) is not in the existing assets. The Graphite dependency was replaced with `gh` |
-| `babysit` + `shipping` | `playbooks/landing-a-stack.md` | **`gh stack merge` is atomic (all-or-nothing)**, so the whole back half of the upstream text disappears. Watching a queue drain in order, the discipline of not touching it midway, checking that merge-when-ready was armed, the warning against reading `autoMergeRequest` as evidence: **all of it comes from Graphite's sequential merge**. What is left collapses into picking the ceiling correctly |
+| `babysit` + `shipping` | `playbooks/landing-a-stack.md` | **`gh stack merge` is atomic (all-or-nothing)**, so the whole back half of the upstream text disappears. Watching a queue drain in order, the discipline of not touching it midway, checking that merge-when-ready was armed, the warning against reading `autoMergeRequest` as evidence: **all of it comes from Graphite's sequential merge**. What is left collapses into picking the ceiling correctly. *Note, 2026-11-23: the "no watcher" half of this decision is revised. `plumb-pr-watch` now reads one pull request's state as one word and one exit code. It is a single read, not a queue watcher, and it is how `plumb:lead` and `landing-a-stack` read a pull request* |
 
 ## Not ported (9)
 
 ### Ride machinery that is not here (6)
 
 `autopilot-full` `autopilot-stack` `orchestrate` `multi-phase-plan` `eval` `visual-parity`
+
+*Note, 2026-11-23: this list is the 2026-08-30 reading. `orchestrate` no longer exists upstream.
+Three of the others gave plumb something small without being ported as playbooks (the rows below
+for `eval`, and "Read again at 0.15.46" for `autopilot-full`, `autopilot-stack` and
+`multi-phase-plan`). `visual-parity` is still not taken.*
 
 They assume Cursor cloud agents, Graphite, a review bot, the `cursor-team-kit` operating
 skills, and dedicated CLIs and watchers. **They are also the six longest files upstream**, so
@@ -67,7 +80,7 @@ down here on purpose.
 
 | Playbook | What carried over, what was dropped |
 |---|---|
-| `eval` | What now exists is the **blinding rule and corpus/score loop** in `playbooks/evaluating-an-agent.md`, on top of putting the judge role in a different family (`docs/role-map.md`, `plumb:interrogate`). A candidate sees only the repository, PR number, and pinned SHA; truth, fixing PR, evaluation wording, and rival verdicts stay out. **What is still missing is hiding repository history after that SHA.** The run instruction forbids reading later history and discards a verdict that cites it, but plumb cannot make those commits invisible |
+| `eval` | What now exists is the **blinding rule and corpus/score loop** in `playbooks/evaluating-an-agent.md`, on top of putting the judge role in a different family (`docs/role-map.md`, `plumb:interrogate`). A candidate sees only the repository, PR number, and pinned SHA; truth, fixing PR, evaluation wording, and rival verdicts stay out. **What is still missing is hiding repository history after that SHA.** The run instruction forbids reading later history and discards a verdict that cites it, but plumb cannot make those commits invisible. *Note, 2026-11-23: the blind is now also checked by machine, by searching the paths and prompt a candidate sees for words that reveal the trial, before it runs (`playbooks/evaluating-an-agent.md`). The hiding of later history is still missing* |
 | `visual-parity` | What carried over is only **taking the before shot first** and **not touching the baseline** (the UI section of `playbooks/opening-a-pr.md`). **There is no pixel-diff regression harness and no zero-diff pass condition.** An eyeballed screenshot is not proof that nothing changed visually. **plumb stops at eyeballing, knowing that** |
 
 **Do not delete these two rows.** Delete them and the gap starts to read as handed off.
@@ -104,6 +117,10 @@ carried no discipline.
 
 ## Written outside pstack (11 playbooks + 2 principles + 5 tools)
 
+*Note, 2026-11-23: this heading counts the batch it was written for. plumb now has 26 playbooks, 25
+principles, 19 skills and many more commands. The counts that stay checked are in README and
+NOTICE (harness rules 13 and 14).*
+
 **Problems pstack did not have, and that the existing assets held in another form**, written
 from scratch in plumb's vocabulary. These are not ports, so they sit outside the breakdown
 above.
@@ -128,7 +145,7 @@ above.
 claims how many files in `principles/` are verbatim copies of pstack, and rule 13 of
 `scripts/check-harness.sh` checks that number against the directory. **Forget the mark or
 forget to fix NOTICE, and either one goes red**
-(**principle-encode-lessons-in-structure**). The count is now 23 / 0.
+(**principle-encode-lessons-in-structure**). The count is now 23 / 0. *(2026-11-23: 25 / 0.)*
 
 **The same rot had reached README.** "the 13 playbooks" (actually 22), "Twenty-one principles"
 (actually 22). Rule 13 guarded NOTICE, but nobody was watching README. **Rule 14 was added,
@@ -203,20 +220,128 @@ breakdown.
 
 | Asset | Lines | Who it is for |
 |---|---|---|
-| `scripts/orch/` | 2,819 | `orchestrate`. **A playbook decided against porting** |
-| `scripts/watch-pr/` | 3,392 | `babysit`'s queue watcher. **Unnecessary once `gh stack merge` is atomic** |
+| `scripts/orch/` | 2,819 | `orchestrate`. **A playbook decided against porting** (*2026-11-23: gone upstream*) |
+| `scripts/watch-pr/` | 3,392 | `babysit`'s queue watcher. **Unnecessary once `gh stack merge` is atomic.** *2026-11-23: the TypeScript watcher stays out; `plumb-pr-watch` is plumb's own single read, in Python* |
 | `scripts/check-plan.mjs` | 186 | `multi-phase-plan`. **A playbook decided against porting** |
 | `scripts/worktree-audit.sh` | 86 | `worktree-cleanup`. **A ported playbook** |
 | `show-me-your-work/scripts/log.sh` | 40 | The decision log. `hillclimb` requires it |
 
 **All ~6,400 lines of TypeScript served playbooks this document had already decided not to
 port.** What is alive is 2 shell files, 126 lines, and both run under bash. **No reason is
-left to install a runtime nobody uses.**
+left to install a runtime nobody uses.** *(Still true on 2026-11-23: plumb's new commands are
+Python and shell.)*
 
 Both were rewritten and put in `scripts/`. `worktree-audit.sh` stopped hardwiring the default
 branch, had its transcript path fitted to this environment, and now **excludes ignored files
 that can be regenerated** — without that it says "go check" on every run, and a real `.env`
 gets lost among 34 `__pycache__` directories.
+
+## Read again at 0.15.46 (2026-11-23)
+
+**The upstream was read a second time on 2026-11-23, at the commit `NOTICE` records (version
+0.15.46).** The first reading covered playbooks and principles only. This one also took the
+skills, the agents, the guide pages and the automations, and plumb then took a number of things
+(`CHANGELOG.md` 0.31.0). The text was read for what failure each item exists to prevent and then
+closed; what plumb carries is written in its own words, so the claim in `NOTICE` that nothing is
+reproduced verbatim keeps holding.
+
+### What changed upstream since the first reading
+
+- **The playbook directory now holds 22 files** (it held 23). `orchestrate` and its scripts are gone;
+  `autopilot-full` and `autopilot-stack` are there.
+- **There are 24 principles, three of them new**: `attack-the-premise`, `explain-the-number` and
+  `test-behavior-not-implementation`.
+- **The skills, the agents, the guide pages and the automations had no record in this document at
+  all.** The first reading never opened them, so nothing here said whether they were left out or
+  simply not looked at. The tables below are that record.
+
+`plumb-upstream-diff --unrecorded` lists the upstream names this document does not mention. After
+this section it lists none.
+
+### Decisions
+
+**Principles.** Every principle name is recorded here, so the command stops listing it. The
+rewrite of 2026-08-31 already covers all of them except the new three.
+
+| Upstream | Decision | Where in plumb, or why not |
+|---|---|---|
+| `explain-the-number`, `attack-the-premise` | ported | `principles/explain-the-number.md`, `principles/attack-the-premise.md`, rewritten as every principle is. `playbooks/perf-issue.md`, `playbooks/hillclimb.md` and `playbooks/fixing-a-bug.md` name them where they apply |
+| `test-behavior-not-implementation` | folded into `playbooks/writing-tests.md` | Its named worthless-test shapes already carried it; three lines were added rather than a principle that would repeat the playbook |
+| every other principle: `boundary-discipline`, `build-the-lever`, `encode-lessons-in-structure`, `exhaust-the-design-space`, `experience-first`, `fix-root-causes`, `foundational-thinking`, `guard-the-context-window`, `laziness-protocol`, `make-operations-idempotent`, `migrate-callers-then-delete-legacy-apis`, `minimize-reader-load`, `model-the-domain`, `never-block-on-the-human`, `outcome-oriented-execution`, `redesign-from-first-principles`, `separate-before-serializing-shared-state`, `sequence-verifiable-units`, `subtract-before-you-add` | already recorded | Ported by the principle rewrite above (`principles/`, one file each, same names) |
+
+**Skills.**
+
+| Upstream | Decision | Where in plumb, or why not |
+|---|---|---|
+| `benchmark-checklist` | folded into `principles/explain-the-number.md` and two playbooks | The seven questions about a measured number live in the principle; `playbooks/perf-issue.md` and `playbooks/hillclimb.md` apply them |
+| `blast-radius` | folded into `principles/gate-claims-on-evidence.md` and `playbooks/opening-a-pr.md` | A safety claim carries a rung (said, pointed, walked, ran, reproduced); the pull-request body asks Blast Radius for the one fact that makes the change safe |
+| `show-me-your-work` | folded into `plumb-decision-log --start/--audit` and the playbooks that use it | A run boundary, and a machine check that every cited commit, pull request and file exists. The "Attention" section a different family writes at the end of a long run's report is in `playbooks/autonomous-run.md` |
+| `create-verification-skill`, `maintain-verification-skill` | ported as `skills/verify-init` and the map-keeping pass in `skills/verify` | Bound to the project contract (the `[verify]` table and the feature map) instead of a per-app skill, so there is one source of truth for how a repository is verified |
+| `ketchup` | ported as `skills/catch-up` | What changed, and each waiting decision in a form one reply settles |
+| `recall` | ported as `skills/recall` | One topic across sessions, each thread tagged from a checked fact |
+| `reflect` | ported as `skills/reflect` | At most five changes from one session, routed to the layer that owns them, applied only after approval |
+| `poteto-help` | ported as `skills/help` | Answers and hands back the prompt; never starts the work |
+| `setup-pstack` | ported as `skills/configure` (roles and drivers) | **The effort-budget part is not taken**: effort is a per-call setting by role (`docs/role-map.md`, "Where effort goes up"), and a stored budget would be a second source for it |
+| `correct` | folded | Optional `expires` and `approved_by` columns on code-policy exceptions (`docs/project-contract.md`); history mining in `skills/retro`. **The table that maps each rule to its enforcing mechanism is not taken yet** |
+| `arena` | folded into `playbooks/prototype.md` | Racing one brief across model families, a judge from another family, and grafting |
+| `swarm` | folded into `playbooks/fan-out.md` | Every result carries the SHA and the method it was measured with; a result without them is discarded and run once more; a gap is not a pass |
+| `figure-it-out` | ported as `playbooks/designing-a-run.md` | Work no playbook fits: a predicate a command decides, the verifier and its baseline before the work |
+| `create-formal-verification-skill`, `maintain-formal-verification-skill` | folded into `playbooks/properties-tests-cannot-reach.md` | The discipline (one promise, a mutation seen to fail, a coverage record). **No toolchain** |
+| `statechart` | not taken | A toolchain and runtime plumb does not carry |
+| `why`, `how`, `in-your-own-words`, `sharpen` | folded as lines in `playbooks/investigation.md` and `playbooks/fixing-a-bug.md` | Answer "why" from the record and say what the record does not answer; restate a long or vague report in your own words before reading code. **The four sharpening questions as a separate skill are not taken** |
+| `tdd` | folded into `playbooks/fixing-a-bug.md` | The failing repro is committed before the fix; no test beats a bad test |
+| `no-comments` | not taken as a skill | `plumb-code-policy` reports the comments and effect hooks a branch adds, and `docs/project-contract.md` says how to clear one: encode the constraint, then delete the comment |
+| `unslop`, `technical-writing` | not taken yet | `plumb-check-pr-body` covers only the mechanical part of a pull request body (sections, order, length, fenced blocks) |
+| `interrogate` | already `plumb:interrogate` | It exists as an axis of the pull-request review; the standalone form is not taken |
+| `architect` | not taken | plumb has `playbooks/shaping-the-work.md` and the principles; a second entry point would split the source of truth |
+| `teach`, `bro`, `automate-me`, `ketchup-video`, `make-bot-ui`, `typescript-best-practices` | not taken | Personal style, another product's features, or one language; plumb is language-neutral |
+| `poteto-mode` | the router itself (root `SKILL.md`) | Its worker file became `docs/worker-rules.md`, delivered by the Agent hook when `worker.rules.types` is set |
+
+**Agents.**
+
+| Upstream | Decision | Where in plumb, or why not |
+|---|---|---|
+| `poteto-agent` | not taken | plumb delegates through role keys in `docs/role-map.md`, not through a named agent |
+| `comment-sicko` | not taken as an agent | A reviewer that only hunts comments is a rule, and `plumb-code-policy` is where plumb keeps rules (see `no-comments` above) |
+
+**Playbooks that were already in the first reading.**
+
+| Upstream | Decision | Where in plumb, or why not |
+|---|---|---|
+| `autopilot-full`, `autopilot-stack` | not ported as playbooks | Taken from them: stale-lane detection (`plumb-lane stale`); re-verification by the kind of change and the reach check in `playbooks/landing-a-stack.md`; in `skills/lead`, the countersign for loosening a gate and a conditional merge. **The merge is allowed only below the production branch named by `repo.production_branches`; the production branch stays the owner's** |
+| `babysit`'s watcher | `plumb-pr-watch` | plumb's own single read with an exit code; this revises the "no watcher" decision recorded above |
+| `eval` | blinding by machine | Lines in `playbooks/evaluating-an-agent.md` (see the note on that row above) |
+| `multi-phase-plan` | folded | The per-pull-request unit, live and perf boxes in `playbooks/writing-a-plan.md` |
+| `visual-parity` | still not taken | The reasons recorded above still hold |
+
+**Guide pages.** Not ported page by page. `docs/guide/` is plumb's own five pages for the person
+working with plumb (a first hour, how to ask, recipes, overnight runs, pitfalls). The upstream
+pages, in one line so the command stops listing them: `01-setup`, `02-poteto-mode`, `03-understand`,
+`04-design`, `05-build-and-clean`, `06-verify-and-ship`, `07-overnight`, `08-principles`,
+`09-make-it-yours`, `10-recipes-and-pitfalls`.
+
+**Automations.** The pack of chat-triggered triage and repair is **not taken**. It depends on another
+product's automation service and posts outside the machine. One idea is kept: an existing fix is
+verified, not rebuilt (`skills/lead`: an item that already has a fix is reproduced on the baseline
+and on the fix, and no competing pull request is opened).
+
+### Still decided against
+
+- **Principles as skills.** The incident of 2026-08-29 still decides this: stopping a principle with
+  a flag sealed the path that opens it, and the router index is the only way in (root `SKILL.md`,
+  "Principles are not skills").
+- **A merge into the production branch by an agent.** A merge cannot be taken back, so the production
+  branch stays the owner's whatever evidence an agent holds. Merging below it needs
+  `repo.production_branches` in the base branch's contract.
+- **A fixed cheapest-first order for performance levers.** plumb's families of levers
+  (`playbooks/perf-issue.md`) are sources of hypotheses, not a checklist, and elimination beats the
+  others whenever it applies.
+- **Always replacing the worker on a fix round.** The recorded choice is the ceiling in
+  `playbooks/running-a-plan.md`: rounds 1-2 the same role, round 3 a different role, then stop.
+- **Cheaper models for verification.** Verification is a `high` row in `docs/role-map.md`, and
+  lowering it lets verification slip. Compare by ledger before changing it.
+- **bun and TypeScript tooling.** Unchanged from "No bun" above: plumb's commands are Python and
+  shell, and a runtime nobody else uses is not worth installing.
 
 ## When to revisit this
 
@@ -224,7 +349,8 @@ gets lost among 34 `__pycache__` directories.
   on the machine
 - If the scale being run passes "does not finish in one session", the brief template and the
   liveness section of `orchestrate` are worth coming back for — those two sections only, not
-  the ritual
+  the ritual (*2026-11-23: `orchestrate` is gone upstream; the stale-lane check and the brief
+  commands in cockpit mode now cover those two sections*)
 
 ## Cockpit mode
 

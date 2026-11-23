@@ -2,6 +2,95 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.31.0] - 2026-11-23
+
+### Added
+
+- Two principles, read through the index like the rest: `principle-explain-the-number` (the decision a
+  measured number is for, seven questions about it, and what a reported number carries) and
+  `principle-attack-the-premise` (a second fix on the same assumption refused by the same gate stops
+  the fixing and tests the assumption). `playbooks/perf-issue.md`, `playbooks/hillclimb.md` and
+  `playbooks/fixing-a-bug.md` name them where they apply. The principle count is 25.
+
+- `plumb-lane stale`: lists running cockpit lanes whose latest recorded activity (last event, worktree
+  HEAD commit, report file) is older than `--factor` times the median start-to-collect time of that
+  kind of work (`--default-minutes` until `--min-samples` attempts exist). Read-only; `--strict` exits
+  1 when a lane is stale.
+- `plumb-decision-log <log> --start "<label>"` marks where a run begins in a shared log, and
+  `--audit` resolves every commit, pull request and file the log cites: `resolved`, `missing` or
+  `unchecked`, exit 1 on any `missing`. A word with a slash and no known extension is a reference only
+  when it exists.
+- `plumb-check-pr-body`: mechanical checks on a pull request body (required sections and their
+  order, length, fenced blocks over 15 lines, empty sections). `plumb-pr-watch <n>`: one pull
+  request's state as one word and one exit code; unknown data is `pending`, never `ready`.
+- `plumb-upstream-diff`: NOTICE records the upstream commit last read; the command lists what
+  changed under the upstream path since then, and `--unrecorded` lists upstream items `docs/scope.md`
+  does not name.
+- Code-policy exceptions take two optional columns, `expires` (`YYYY-MM-DD`) and `approved_by`. An
+  expired row stops suppressing and is reported as `expired-exception`. Three-column files behave as
+  before.
+
+- `plumb:verify-init` gives a repository its first `[verify]` contract: it finds how the repository
+  starts, drives and observes itself, writes the table and one feature of the map, and claims nothing
+  it did not see run. `plumb:verify` gains a map-keeping pass (on the trusted base only; every
+  `unowned` path gets an owner or a reason; each feature ends `clean`, `changed` or `blocked`), and
+  the `verifier` agent gains three constraints (drive only an instance seen answering, confirm
+  evidence after `down`, stop only what it started).
+- Four skills for the owner's side of the work: `plumb:catch-up` (what changed, every waiting
+  decision in a form one reply settles), `plumb:recall` (a topic across sessions, each thread tagged
+  from a checked fact), `plumb:reflect` (at most five changes from one session, routed by layer,
+  applied only after approval) and `plumb:help` (answers and hands back the prompt; never starts the
+  work). Each has trigger-eval rows.
+
+- Two playbooks, bringing the count to 26: `playbooks/designing-a-run.md` (work no playbook fits:
+  a predicate a command decides, the verifier and its baseline before the work, units that end
+  VERIFIED, NOT VERIFIED or INCONCLUSIVE) and `playbooks/properties-tests-cannot-reach.md` (one
+  promise, the tool the question chooses, a mutation seen to fail, a coverage record).
+- `repo.production_branches` in the project contract names the branches whose merges belong to the
+  owner. With the key in the base branch's contract, `plumb:lead` may merge a lane's pull request
+  into a branch that is neither listed nor the default branch, once an independent verdict names the
+  current head and `plumb-pr-watch` reads `ready`; it reads the merge back and records it. Without
+  the key it stops at a ready pull request, as before.
+- `worker.rules.types`: when set, the Agent hook starts the prompt of each listed subagent type with
+  a line pointing at `docs/worker-rules.md` (the brief is the bar, block only on what can be shown,
+  never loosen a check, report commands and exit statuses). Unset, the hook changes nothing new.
+- `plumb:configure` settles roles, pane driver and stack tool in the config file, showing the diff
+  before it writes. `docs/guide/` holds five pages for the person working with plumb: a first hour,
+  how to ask, recipes, overnight runs, pitfalls.
+
+- `docs/scope.md` records the second reading of upstream: a decision for every upstream skill,
+  principle, agent and guide page, and dated notes where the first record is no longer true.
+
+- `plumb-enforcement` and `docs/enforcement.tsv`: each hard rule, where it is stated, and whether a
+  check, a hook, a command or only prose holds it. `plumb-doctor` prints the counts.
+- `plumb-sidecar-agents-check`: each Codex agent file names its `agents/*.md` source and that file's
+  hash; the harness check fails when a source changed and its condensed copy did not.
+
+### Changed
+
+- The router asks for each reported claim to be marked measured, inferred or guessed, and for a check
+  the session can run to be run rather than handed to the owner.
+- `principle-fix-root-causes`: a guard is a fix only when the state it handles is legitimate; a cause
+  that took digging gets a proposed always-on signal.
+- Playbooks gained short rules: `investigation` (answer "why" from the record), `fixing-a-bug` (two
+  independent failures make a repro; the repro is committed before the fix; no test beats a bad one),
+  `writing-tests` (assert an error's kind; pair a negative with a positive), `fan-out` (results carry
+  the commit and the method; a gap is not a pass), `writing-a-plan` (unit / live / perf boxes and four
+  parallelism questions) and `autonomous-run` (four conditions before a loop runs unattended).
+- `principle-gate-claims-on-evidence` gives a safety claim a rung (said, pointed, walked, ran,
+  reproduced). `opening-a-pr` asks Blast Radius for the one fact that makes the change safe and its
+  rung, lists where a text search does not reach, and puts a harness change in its own pull request.
+  `landing-a-stack` adds re-verification by kind of change, a definition of noise, a reach check
+  before merging, and a per-repository ledger of review-bot patterns. `prototype` describes racing one
+  brief across model families with a judge and grafting. `evaluating-an-agent` checks blinding by
+  machine and scores procedure from the transcript. `docs/role-map.md` says when work goes up a tier.
+  `plumb:retro` mines reverts and review comments for unlabelled repeats.
+- `autonomous-run` ends a long run's report with an Attention section written by the judge role
+  from the log and the report, or a `skip:` line when there is none.
+- `plumb:lead`: the reviewer seat blocks only on a problem it can show at the head; loosening a gate
+  needs the verifying seat's proof and the coordinator's countersign; an item that already has a fix
+  is verified, not rebuilt.
+
 ## [0.30.0] - 2026-11-23
 
 ### Added

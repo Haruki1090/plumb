@@ -31,6 +31,19 @@ When you are about to write "done", pass these four first.
 - **Before you move to the next task.** Moving on declares the previous task verified
 - **When you take back work you delegated.** A self-report is a claim, not output. Look at the diff or the artifact yourself
 
+## How far a safety claim was checked
+
+**A claim that something is safe carries a rung saying how far it was checked.** Weakest first:
+
+1. **said**: asserted from memory
+2. **pointed**: named the line that makes it so
+3. **walked**: traced the failing path and showed it cannot reach
+4. **ran**: executed the real code and read the output
+5. **reproduced**: saw it in the running application
+
+**State the rung with the claim.** A claim on the first two rungs is written as inferred, not as
+checked.
+
 ## Excuses that do not pass
 
 - **"It passed a minute ago"** — what passed was the tree as it was then, not the tree as it is

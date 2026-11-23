@@ -1,3 +1,4 @@
+# source: none
 name = "plumb_judge"
 description = "High-effort adversarial judge for challenging a completed change in a separate thread."
 model = "gpt-5.6-luna"

@@ -34,6 +34,11 @@ each one is responsible for.**
 
 ## 2. Size a task by the unit of review
 
+**Before you slice, answer four questions about parallelism**, each answered or written `n/a: <reason>`:
+what gate must pass before anything else starts; which workstreams are independent; what mutable
+state they share; what is the smallest decomposition that is safe. Slice first and the sharing shows
+up in merge conflicts.
+
 A task is **the smallest unit that carries one lap of its own checks and can fail independently
 of its neighbors** (**principle-sequence-verifiable-units**).
 
@@ -42,6 +47,9 @@ of its neighbors** (**principle-sequence-verifiable-units**).
 - **Split only when one side can fail while the neighbor still passes.** If it cannot, it is
   one job
 - Every task ends with **an artifact that can be checked on its own**
+- **Each pull request carries three boxes: unit, live, perf.** Perf names the metric, how it is
+  measured, the baseline taken on trunk beforehand, and the number that fails it. **A box that does
+  not apply is written `n/a: <reason>`, never left out**, so a skipped check is visible as a choice
 
 ## 3. Break the steps down to single actions
 

@@ -1,0 +1,12 @@
+id,prompt,expect
+C1,Catch me up.,plumb:catch-up
+C2,What happened while I was away?,plumb:catch-up
+C3,What's waiting on me right now?,plumb:catch-up
+C4,What do I need to decide before the lanes can go on?,plumb:catch-up
+C5,I was out all afternoon. Where are we?,plumb:catch-up
+C6,離れている間に何があったか教えて,plumb:catch-up
+C7,私の判断待ちになっているものを全部出して,plumb:catch-up
+N1,Pick up where the last session stopped on the billing branch.,-
+N2,Give me the weekly retro for last week.,plumb:retro
+N3,Resume the work from the interrupted session and finish the migration.,-
+N4,Merge everything that is ready.,-
