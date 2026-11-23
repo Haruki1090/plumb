@@ -1,0 +1,14 @@
+id,prompt,expect
+C1,Set up plumb on this machine.,plumb:configure
+C2,Configure plumb for me; I have not touched its config yet.,plumb:configure
+C3,Which models should plumb use for the judge and the implementer?,plumb:configure
+C4,plumb setup for this machine - pick the roles and write the config.,plumb:configure
+C5,plumb をこのマシン用に設定したい。ジャッジと実装役のモデルを決めて。,plumb:configure
+C6,plumb の初期設定をして。足りないキーだけ聞いて config に書いてほしい。,plumb:configure
+N1,Install plumb's optional Codex profile and custom agents for the sidecar.,plumb:setup
+N2,Set up the plumb Codex sidecar in this project.,plumb:setup
+N3,Run doctor and tell me whether the plumb install is healthy.,plumb:doctor
+N4,Is the harness broken? Check plumb's routing health.,plumb:doctor
+N5,Set up the CI pipeline for this repository.,-
+N6,Which model is best for writing SQL migrations?,-
+N7,Configure my editor to format on save.,-

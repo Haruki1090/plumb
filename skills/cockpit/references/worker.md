@@ -1,5 +1,7 @@
 # Working a cockpit lane
 
+The rules every delegate shares are in `docs/worker-rules.md`; this page adds what a lane needs.
+
 - Use the brief as the whole acceptance bar. Stay inside its range.
 - Use shared services only when the brief lists them. This includes container sockets, databases
   and other worktrees. Follow the brief's forbidden means.
