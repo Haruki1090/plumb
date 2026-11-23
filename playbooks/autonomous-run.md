@@ -87,6 +87,12 @@ a machine, do not run it overnight.** Nobody is awake to judge it.
 **Audit the log before you report.** Run `plumb-decision-log <log> --audit` and carry every `missing`
 line into the report. A commit, PR or file the log names that is not there is not evidence.
 
+**End a long run's report with an Attention section written by the judge role** (`docs/role-map.md`).
+Hand that role the log and the report, not your reading of them, and ask one thing: which three
+lines should the owner check first, and why. Paste the answer unedited under `Attention`. With no
+judge role, write `Attention: skip: role.judge unset`; do not write the section yourself, because
+the author is the one reader who cannot see what the report leaves out.
+
 **What you return:** the termination predicate, **the path to the decision log**, how many
 iterations you ran (**and the log holds a line with each of those numbers**), what landed,
 what you reverted, the final state of the predicate.

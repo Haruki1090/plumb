@@ -77,6 +77,8 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
   brief across model families with a judge and grafting. `evaluating-an-agent` checks blinding by
   machine and scores procedure from the transcript. `docs/role-map.md` says when work goes up a tier.
   `plumb:retro` mines reverts and review comments for unlabelled repeats.
+- `autonomous-run` ends a long run's report with an Attention section written by the judge role
+  from the log and the report, or a `skip:` line when there is none.
 - `plumb:lead`: the reviewer seat blocks only on a problem it can show at the head; loosening a gate
   needs the verifying seat's proof and the coordinator's countersign; an item that already has a fix
   is verified, not rebuilt.
