@@ -46,8 +46,8 @@ fact you checked now with git or the forge. **Never set a tag from what a transc
 | `[merged #N]` | The pull request is merged, and its merge commit is on the base branch |
 | `[open PR #N]` | The pull request is open |
 | `[reverted #N]` | A later commit or pull request reverts it |
-| `[branch only]` | Commits exist on a branch with no pull request |
-| `[abandoned]` | A pull request closed unmerged, or a branch with no activity since the period and no pull request |
+| `[branch only]` | Commits exist on a branch with no pull request, and the branch has a commit after the period ended |
+| `[abandoned]` | A pull request closed unmerged, or a branch with no pull request and no commit after the period ended |
 | `[unknown]` | The transcript names it and neither git nor the forge shows it |
 
 An `[unknown]` stays `[unknown]`. Do not promote it to a finished thread because the transcript

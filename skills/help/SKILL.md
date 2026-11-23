@@ -47,7 +47,7 @@ Find the symptom, run the command, read what it says. Say which command you ran 
 
 | Symptom | Where to look |
 |---|---|
-| A skill did not fire | `plumb-trigger-eval` against the skill's cases in `evals/<skill>/triggers.csv`, then the skill's `description` (`plumb:failure-to-rule` for the change) |
+| A skill did not fire | Read the skill's `description` and its cases in `evals/<skill>/triggers.csv`; hand back the `plumb-trigger-eval --cases ... --skill ... --out <dir>` command for the person to run (it starts sessions and writes to `<dir>`, so it is not run from here), and `plumb:failure-to-rule` for the change |
 | Context filled early | `plumb-session-audit` for the sessions, `plumb-prompt-weight` for the fixed prompt you control |
 | Cost is unknown | `plumb-ledger` (`docs/ledger.md`); the weekly view is `plumb:retro` |
 | A lane went quiet | `plumb-run-view` for the lanes, `plumb-stalled` for what waits and on whom |

@@ -29,8 +29,8 @@ back a timeline of the events above, each with its place in the transcript
 
 A candidate stays only if **all three** hold. Record the first that fails.
 
-1. **Still true in six months.** Not a fact about this branch, this week's tool version or this
-   owner's mood.
+1. **Not tied to something that will be gone in six months.** It names no branch, no ticket, no
+   tool version and no one-off circumstance. That is checkable now; whether it stays true is not.
 2. **Changes what the next agent does.** A different action, not a different tone. "Be careful" fails.
 3. **Lands in a file that agent will read at the moment it matters.** A skill that loads on the
    task, a check that runs, a playbook the router sends it to. A note in a file no step opens fails.
@@ -49,7 +49,8 @@ with what it must check and where it would run (**principle-build-the-lever**).
 
 A skill that should have fired is a routing failure, and the change is two things: its `description`,
 and a new row in that skill's `evals/<skill>/triggers.csv` holding the prompt that missed. Measure it
-with `plumb-trigger-eval --cases evals/<skill>/triggers.csv --skill plumb:<skill> --out <dir>`
+with `plumb-trigger-eval --cases evals/<skill>/triggers.csv --skill plumb:<skill> --plugin-dir <source checkout> --out <dir>`
+(without `--plugin-dir` it measures the installed plugin, not the edit)
 before and after. A description change with no new row is not accepted.
 
 A lesson that belongs to one failure with a label is handed to `plumb:failure-to-rule`; a lesson about

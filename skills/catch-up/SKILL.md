@@ -12,8 +12,8 @@ needs them in front of them, each one answerable in a word.**
 
 - **Read-only.** Change no file, start no lane, merge nothing, post nothing, answer no review
   comment. If the report shows work worth starting, name it under "Waiting on you" and stop.
-- **The window** is everything since the owner's last message in this conversation, or the time
-  they name. State the window's start in the first line. If neither can be read, say so under "Not
+- **The window** is everything since the owner's last message before the one that asked for this,
+  or the time they name. The request itself is not the start: a window that opens now is empty. State the window's start in the first line. If neither can be read, say so under "Not
   known" and use the last 12 hours.
 - **A self-report is a claim.** A lane saying "done" is not a change until you have matched it to a
   commit or a pull request. Report the claim and the match side by side; an unmatched claim goes under
@@ -25,10 +25,14 @@ Run each from inside the repository. The window's length in hours is `H`.
 
 ```bash
 plumb-run-view --since H      # lanes of the running queues, what landed by fact, what remains
+plumb-run-view --since <a week or more, in hours>   # a second pass, for what waits only
 plumb-stalled                 # every open pull request, by how long it has waited and on whom
 git log --since="<window start>" --first-parent --format='%h %an %s' <base>
 ```
 
+- **A decision that was already waiting when the window opened is still waiting.** `--since H`
+  drops a queue whose last row is older than `H`, so take `needs_owner` from the wider second pass
+  and what changed from the first. A queue older than both passes is named under "Not known".
 - The run's decision log is the ledger `plumb-run-view` read; its `ledger` field names the file.
   Open it for the rows behind a state: the `ref` column points at a branch or a pull request. Start
   from the lanes with `needs_owner` true, then read the rest. A `remote` other than `ok` means every

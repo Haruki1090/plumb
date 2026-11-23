@@ -100,11 +100,19 @@ return the outcome. Run no project command: no `lookup`, `up`, `down` or scenari
 **A map nobody keeps true turns every later run into a comparison of the wrong things.** Do this
 when asked to maintain or refresh the verification, or when `lookup` reports `unowned` paths.
 
+0. **Run it on the trusted base only.** The revision is the base branch's head, resolved as in
+   step 0 of the Steps above. Never start a pull request head for this pass; the trust boundary
+   is the same one.
 1. **Read first, one reader per feature.** Each reader compares its feature's map entry with the
    current source and reports what differs. Start them together; they write nothing.
 2. **Then one live pass.** One agent drives every entry the readers found changed, through the
    project's own `up`, scenarios and `down`, on one revision.
-3. **End each feature as exactly one of:**
+3. **Give every `unowned` path an owner or a reason.** A path that belongs to an existing feature
+   is added to it; paths that make a feature the map does not have get a new entry, written from
+   the template the map already uses and driven in the live pass; a path no scenario can reach is
+   listed with why. Entries that all read `clean` while `lookup` still returns the same `unowned`
+   paths mean this step was skipped.
+4. **End each feature as exactly one of:**
    - `clean`: the map matches the source;
    - `changed`: the map entry was updated, and the update was exercised live;
    - `blocked`: it could not be driven; say why. An entry that was edited but not driven is

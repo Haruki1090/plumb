@@ -18,7 +18,8 @@ write that table, the commands behind it and one feature in the feature map. The
 
 - **Write only the contract's `[verify]` table and files under one verification directory.** Propose
   `scripts/feature-map/` (the layout `docs/project-contract.md` shows) and write there only once the
-  owner has agreed to that directory or named another. Ask nothing else.
+  owner has agreed to that directory or named another. Beyond that, the only questions are the
+  one batched question of step 1.
 - **Never edit product code or tests.** A command that needs the product to change is a gap in the
   report, not a patch.
 - **Never write a command you did not run.** Each entry in the contract is one you executed and
@@ -39,7 +40,7 @@ write that table, the commands behind it and one feature in the feature map. The
    | Find | Found when |
    |---|---|
    | **Surface**: what a user touches (web UI, CLI, API, TUI) | you named it and can point to the entry file or command that starts it |
-   | **Run**: the exact command that starts it on a given revision, on a free port | you ran it from a worktree of one commit, and a health request you made yourself answered |
+   | **Run**: the exact command that starts it on a given revision, on a free port | you ran it from a worktree of one commit, and a check you made yourself showed it answering (a request to a served surface; for a CLI, one invocation that exits as documented) |
    | **Drive**: how a scenario is exercised (the browser driver, HTTP client or CLI invocation the repository already uses) | you ran one action through it and read what came back |
    | **Observe**: the numbers or rows that come out, and where artifacts are written | you saw a row or a metric produced, with the path of a file it left |
    | **Isolate**: how two revisions run side by side without sharing state (ports, data directories, seeds) | you started two at once and each answered, without one changing the other's state |
