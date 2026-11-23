@@ -65,6 +65,8 @@ Playbooks name principles; read a named principle in full when you apply it.
 |---|---|
 | **Work a queue as the coordinator** (review the open PRs; implement the assigned issues one by one) | `plumb:lead` |
 | Keep it running overnight; run until it is done | `playbooks/autonomous-run.md` |
+| Come back to a run that kept going: what changed, every decision waiting on the owner, what moves without them (read-only) | `plumb:catch-up` |
+| Rebuild a topic that spans several sessions, each thread's state checked against git and the forge (read-only) | `plumb:recall` |
 | Stop safely; compaction is close | `playbooks/pause-safely.md` |
 | Pick up where another session left off | `playbooks/session-pickup.md` |
 | Set up an isolated workspace | `playbooks/worktree-setup.md` |
@@ -79,6 +81,7 @@ Playbooks name principles; read a named principle in full when you apply it.
 | Add a different model family's axis to that review | `plumb:interrogate` |
 | Check whether the environment plumb claims still exists | `plumb:doctor` |
 | **Check that a change works in the running app, or has not regressed against its base** ("verify this", "does it still work", "compare against base"; a dosa-kakunin request in Japanese is the same request) | `plumb:verify` (the repository's own verification through its contract; formats in `docs/verify-protocol.md`) |
+| **Give a repository with no `[verify]` contract its first working one** ("set up verification for this repo", "we have no verify contract") | `plumb:verify-init` |
 | See what a session spent its context on | `plumb-session-audit` |
 | Where a running `plumb:lead` queue stands (lanes, what landed by fact, what remains), after compaction or on resume | `plumb-run-view` |
 | What is waiting: every open pull request by how long it has waited and on whom (verified but still draft, ready but unmerged, idle draft), and what merged but was not promoted | `plumb-stalled` |
@@ -88,6 +91,7 @@ Playbooks name principles; read a named principle in full when you apply it.
 | The weekly look back: rework, cost, failures, and at most three changes | `plumb:retro` |
 | Set plumb up for a cloud session (setup script, config, cost export) | `docs/cloud-setup.md`; the script it runs is `plumb-bootstrap` |
 | Turn one agent failure into the change that stops it next time | `plumb:failure-to-rule`; codes and layers are in `docs/failure-taxonomy.md` |
+| After a session: what should change so the next one goes better (applies nothing until approved) | `plumb:reflect` |
 | Decide which configuration of a playbook to run, with a number | `playbooks/evaluating-an-agent.md` |
 
 ### Decide, and design
@@ -95,6 +99,7 @@ Playbooks name principles; read a named principle in full when you apply it.
 | Job | Playbook |
 |---|---|
 | Coordinate dependencies, parallel work, or multiple sources of truth with an execution graph | `plumb:graph` |
+| How to use plumb, which playbook fits, why it did not do something (answers and hands back a prompt; never starts the work) | `plumb:help` |
 | **Hand a branching decision back to the owner** (2+ options, and the choice changes what gets built) | `plumb:decision-brief` |
 
 ### What plumb has no playbook for

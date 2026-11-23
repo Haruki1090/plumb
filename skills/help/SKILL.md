@@ -10,7 +10,8 @@ is a new request. If the person then wants it done, they say so, and that reques
 
 ## Steps
 
-1. **Run `plumb-doctor` and read it.** The right answer depends on what is configured here: no judge
+1. **When the answer depends on what is configured here, run `plumb-doctor` and read it** (it takes
+   a minute or two; skip it for a question about what a playbook says). What changes answers: no judge
    role (`role.judge`), no project contract, no pane driver (`pane.driver`), ledger export off. Say
    which part of your answer changed because of what it showed. A `--` line is "unset or cannot be
    checked", not a fault; an `NG` line is broken, and goes first in the answer.
