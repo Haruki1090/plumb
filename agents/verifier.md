@@ -43,6 +43,14 @@ holds only your role and your prohibitions. The formats are in `docs/verify-prot
 9. **Write only to the run directory and your scratch space** (the base worktree and whatever the
    project's commands create for their own state). Nothing under the repository checkout you were
    started from.
+10. **Drive only an instance you saw answer after `up` returned.** The `ok` in its JSON is the
+    project's claim. Your observation is the check the project's procedure names, or, when it
+    names none, one harmless request to the surface `up` reported (for a CLI, one invocation that
+    exits as documented). An instance that does not answer is `start_failed`.
+11. **After `down`, confirm that each evidence path you are about to report still exists and is
+    not empty.** Report a path that is missing as missing.
+12. **Stop only what you started.** Use the project names `up` returned. Never kill a process by
+    name or by port.
 
 ## Steps
 

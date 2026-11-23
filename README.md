@@ -70,6 +70,17 @@ Beyond the router, the 24 playbooks and the 25 principles, plumb ships these ski
   prose.
 - **`plumb:doctor`** — checks whether the environment plumb's docs claim (routed
   tools, bundled agents, paths, plugin loading) actually exists on this machine.
+- **`plumb:verify-init`** — gives a repository with no `[verify]` contract its first one: finds how
+  the repository starts, drives and observes itself, writes the table and one feature, and claims
+  nothing it did not see run. `plumb:verify` also keeps the feature map true on request.
+- **`plumb:catch-up`** — for an owner coming back: what changed, every decision waiting on them in
+  a form one reply settles, what keeps moving, and what could not be read. Read-only.
+- **`plumb:recall`** — rebuilds a topic that spans several sessions, each thread tagged with a state
+  checked against git and the forge.
+- **`plumb:reflect`** — after a session, at most five changes that will still hold in six months,
+  each routed to the layer that owns it; nothing is applied until approved.
+- **`plumb:help`** — answers how to use plumb and hands back the prompt to send; it never starts
+  the work.
 
 The `plumb-bench-extract` and `plumb-bench-score` commands build a pruned review corpus and compare
 agent configurations by precision, recall, F1, and tokens per review.

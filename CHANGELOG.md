@@ -30,6 +30,18 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
   expired row stops suppressing and is reported as `expired-exception`. Three-column files behave as
   before.
 
+- `plumb:verify-init` gives a repository its first `[verify]` contract: it finds how the repository
+  starts, drives and observes itself, writes the table and one feature of the map, and claims nothing
+  it did not see run. `plumb:verify` gains a map-keeping pass (on the trusted base only; every
+  `unowned` path gets an owner or a reason; each feature ends `clean`, `changed` or `blocked`), and
+  the `verifier` agent gains three constraints (drive only an instance seen answering, confirm
+  evidence after `down`, stop only what it started).
+- Four skills for the owner's side of the work: `plumb:catch-up` (what changed, every waiting
+  decision in a form one reply settles), `plumb:recall` (a topic across sessions, each thread tagged
+  from a checked fact), `plumb:reflect` (at most five changes from one session, routed by layer,
+  applied only after approval) and `plumb:help` (answers and hands back the prompt; never starts the
+  work). Each has trigger-eval rows.
+
 ### Changed
 
 - The router asks for each reported claim to be marked measured, inferred or guessed, and for a check
