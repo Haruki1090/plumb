@@ -1,3 +1,4 @@
+# source: agents/pr-cutover.md sha256:19f2100ef9b01fd9098f21de84fab8015b12a943cc06d8654ce115788e6eb317
 name = "plumb_pr_cutover"
 description = "Operational reviewer that reconstructs deployment order, half-finished states, and rollback gaps."
 model = "gpt-5.6-sol"

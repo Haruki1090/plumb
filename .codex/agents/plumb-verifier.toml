@@ -1,3 +1,4 @@
+# source: agents/verifier.md sha256:ff1f9eba5cc81111df72a2165769c2be8bfa6c6853118259ff6c177da754cfff
 name = "plumb_verifier"
 description = "Runs the project's own verification on a base and a head and records observation rows; never judges or says pass."
 model = "gpt-5.6-luna"

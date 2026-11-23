@@ -1,3 +1,4 @@
+# source: agents/pr-diff-reader.md sha256:2f508b78566785d1a28fdd1f8908bfc947347d8e6a0cbd3bf3ed914741f50359
 name = "plumb_pr_diff_reader"
 description = "Read-only blind diff reader that reconstructs behavior without seeing the PR explanation."
 model = "gpt-5.6-luna"

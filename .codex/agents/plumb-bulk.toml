@@ -1,3 +1,4 @@
+# source: none
 name = "plumb_bulk"
 description = "Fast worker for independent, repetitive, low-ambiguity edits or classifications."
 model = "gpt-5.6-luna"

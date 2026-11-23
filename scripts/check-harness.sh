@@ -374,6 +374,20 @@ else
     note "NG" "Codex custom agent count (expected 11 / measured ${codex_agent_count})"; fail=1
   fi
 
+  # Each .codex/agents/*.toml names the agents/*.md it condenses and that file's hash on its first line.
+  codex_agents_check="$(cd "$(dirname "$0")" && pwd)/codex-agents-check.py"
+  if command -v python3 >/dev/null 2>&1 && [ -f "$codex_agents_check" ]; then
+    if codex_agents_out=$(python3 -B "$codex_agents_check" --root "$root" 2>&1); then
+      note "ok" "Codex agent files agree with their agents/ sources"
+    else
+      note "NG" "Codex agent files out of step with agents/ (plumb-codex-agents-check):"
+      printf '%s\n' "$codex_agents_out" | grep -v -e '^ok	' -e '^none	' | sed 's/^/       /'
+      fail=1
+    fi
+  else
+    note "--" "Codex agent staleness: skipped, python3 or scripts/codex-agents-check.py is unavailable"
+  fi
+
   if command -v python3 >/dev/null 2>&1 && python3 -c 'import tomllib' >/dev/null 2>&1; then
     codex_bad=0
     python3 -c 'import json, pathlib, sys, tomllib
