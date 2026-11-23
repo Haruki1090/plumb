@@ -12,7 +12,7 @@ judgment pass leaves a visible `skip: <reason>` line.
 
 ## What it adds
 
-plumb is self-contained: 24 playbooks covering the whole arc of a unit of work —
+plumb is self-contained: 26 playbooks covering the whole arc of a unit of work —
 shaping it, planning it, running the plan task by task, fixing what breaks,
 writing the tests, and landing the result. It depends on no other plugin.
 
@@ -44,7 +44,7 @@ writing the tests, and landing the result. It depends on no other plugin.
 
 ## What's bundled
 
-Beyond the router, the 24 playbooks and the 25 principles, plumb ships these skills
+Beyond the router, the 26 playbooks and the 25 principles, plumb ships these skills
 (all called under the `plumb:` namespace) and their supporting agents:
 
 - **`plumb:pr-review`** — adversarial PR review: cross-checks the PR body against
@@ -83,6 +83,8 @@ Beyond the router, the 24 playbooks and the 25 principles, plumb ships these ski
   each routed to the layer that owns it; nothing is applied until approved.
 - **`plumb:help`** — answers how to use plumb and hands back the prompt to send; it never starts
   the work.
+- **`plumb:configure`** — settles roles, pane driver and stack tool in the config file, showing the
+  diff before it writes.
 
 The `plumb-bench-extract` and `plumb-bench-score` commands build a pruned review corpus and compare
 agent configurations by precision, recall, F1, and tokens per review.
@@ -240,7 +242,7 @@ the layer that should stop it, with the number that will show whether it did.
 
 ## Language
 
-plumb is written in English throughout — SKILL.md, the 24 playbooks, the 25
+plumb is written in English throughout — SKILL.md, the 26 playbooks, the 25
 principles, the bundled skills and agents, the scripts and the docs/ files.
 
 It was written in Japanese through v0.5.0 and rewritten in English for release.

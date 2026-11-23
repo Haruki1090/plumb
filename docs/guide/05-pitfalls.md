@@ -23,6 +23,7 @@ The commands are on your agent's path, not your shell's. Ask the agent to run th
 | Pull requests are waiting and nobody knows | Nothing reports what waits on whom | `plumb-stalled`; for one pull request, `plumb-pr-watch <number>` answers in one word |
 | Worktrees and disk pile up | Lanes leave a checkout each and nothing removes them | `plumb-worktree-audit` lists each with size, age and merge state, read-only. Then `playbooks/worktree-cleanup.md` |
 | A test passes alone and fails in the set | State left behind by an earlier test | `plumb-isolate-pollution '<detect residue>' '<run one>' <target>...` stops at the first polluter. Fix the side that left it, not the side that fell |
+| A review bot keeps flagging the same thing | Each comment is judged from scratch every time | `playbooks/landing-a-stack.md`: classify it fix / dismiss / ask, and keep the pattern in `.plumb/review-patterns.md` with a confidence that repeated outcomes raise |
 | A pull request body says more than the diff does | The body is the author's belief, not fact | `plumb-check-pr-body` checks sections and length mechanically before opening; `plumb:pr-review` checks the claims against the diff |
 
 ## Before you look anything up

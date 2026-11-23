@@ -16,10 +16,11 @@ each item says which.
 - **A budget.** plumb has no meter that cuts a run off. You set the limit in the predicate: a number of
   iterations, a deadline, a count of lanes (a queue run keeps at most three or four live). Afterwards,
   `plumb-ledger report --since <day> --until <day>` shows what it cost, if `ledger.capture = on`.
-- **What may be merged and what must wait.** `plumb:lead` stops at a ready pull request and merges
-  nothing; that is the default and it holds without being asked. Everything else is yours to say: name the
-  production branch, write that nothing is merged or pushed into it, and say whether a green, reviewed pull
-  request may merge to any other branch. The production branch is always the owner's.
+- **What may be merged and what must wait.** By default `plumb:lead` stops at a ready pull request and
+  merges nothing. It merges on its own only when the base branch's contract lists
+  `repo.production_branches` (`docs/project-contract.md`), the pull request's base is neither on that list
+  nor the default branch, an independent verdict names the current head, and `plumb-pr-watch` reads
+  `ready`. A merge into a production branch is always yours.
 - **Where the decision log is.** Ask for the path in the request. Queue runs write theirs under
   `plumb-path run`, as `lead-<issues|prs>-<time>-<pid>.tsv`; a plan run writes `<plan name>.tsv` there. That
   directory is untracked and survives removing a worktree.

@@ -207,8 +207,8 @@ verdict.
 **Immediately before merging, ask whether what landed on the trunk since the verdict can reach this
 patch**: the same files, a shared lockfile (settle it with a frozen or locked install, not by
 reading), a migration order, an interface the patch calls that changed. If it can, run one verifier
-on the merge result first. **A third rebase of the same pull request is a hold**: stop and report,
-do not rebase again.
+on the merge result first. **A pull request that needs rebasing a third time is a hold**: stop and report.
+Step 1 already hands a rebase back to the owner; this is the count at which you stop asking.
 
 ```bash
 gh stack view --json    # order, PR numbers, head SHAs, state

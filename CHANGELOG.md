@@ -42,6 +42,22 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
   applied only after approval) and `plumb:help` (answers and hands back the prompt; never starts the
   work). Each has trigger-eval rows.
 
+- Two playbooks, bringing the count to 26: `playbooks/designing-a-run.md` (work no playbook fits:
+  a predicate a command decides, the verifier and its baseline before the work, units that end
+  VERIFIED, NOT VERIFIED or INCONCLUSIVE) and `playbooks/properties-tests-cannot-reach.md` (one
+  promise, the tool the question chooses, a mutation seen to fail, a coverage record).
+- `repo.production_branches` in the project contract names the branches whose merges belong to the
+  owner. With the key in the base branch's contract, `plumb:lead` may merge a lane's pull request
+  into a branch that is neither listed nor the default branch, once an independent verdict names the
+  current head and `plumb-pr-watch` reads `ready`; it reads the merge back and records it. Without
+  the key it stops at a ready pull request, as before.
+- `worker.rules.types`: when set, the Agent hook starts the prompt of each listed subagent type with
+  a line pointing at `docs/worker-rules.md` (the brief is the bar, block only on what can be shown,
+  never loosen a check, report commands and exit statuses). Unset, the hook changes nothing new.
+- `plumb:configure` settles roles, pane driver and stack tool in the config file, showing the diff
+  before it writes. `docs/guide/` holds five pages for the person working with plumb: a first hour,
+  how to ask, recipes, overnight runs, pitfalls.
+
 ### Changed
 
 - The router asks for each reported claim to be marked measured, inferred or guessed, and for a check
@@ -53,6 +69,17 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
   `writing-tests` (assert an error's kind; pair a negative with a positive), `fan-out` (results carry
   the commit and the method; a gap is not a pass), `writing-a-plan` (unit / live / perf boxes and four
   parallelism questions) and `autonomous-run` (four conditions before a loop runs unattended).
+- `principle-gate-claims-on-evidence` gives a safety claim a rung (said, pointed, walked, ran,
+  reproduced). `opening-a-pr` asks Blast Radius for the one fact that makes the change safe and its
+  rung, lists where a text search does not reach, and puts a harness change in its own pull request.
+  `landing-a-stack` adds re-verification by kind of change, a definition of noise, a reach check
+  before merging, and a per-repository ledger of review-bot patterns. `prototype` describes racing one
+  brief across model families with a judge and grafting. `evaluating-an-agent` checks blinding by
+  machine and scores procedure from the transcript. `docs/role-map.md` says when work goes up a tier.
+  `plumb:retro` mines reverts and review comments for unlabelled repeats.
+- `plumb:lead`: the reviewer seat blocks only on a problem it can show at the head; loosening a gate
+  needs the verifying seat's proof and the coordinator's countersign; an item that already has a fix
+  is verified, not rebuilt.
 
 ## [0.30.0] - 2026-11-23
 
