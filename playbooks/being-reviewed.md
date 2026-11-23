@@ -42,6 +42,12 @@ Ask on two axes: **confidence** (confirmed, or suspected) and **blocking** (does
 It is the same shape `plumb:pr-review` returns, so **whichever side it comes back from, it goes on
 the same table.**
 
+### Block only on what you can show
+
+**Block only on a problem you can show at this head**: a run that fails here, or a line the change
+made false. A problem the base already had goes in one line, and blocks only if this change copied
+it or newly made it reachable.
+
 ## Answering
 
 ### Read all of it before you move on any of it

@@ -154,6 +154,9 @@ applies to that verdict. A demoted route uses the baseline until the owner runs
 `plumb-lane route-reset KIND`. The log retains route history across runs and linked worktrees.
 Separate Git repositories have separate cockpit stores, including under a shared artifact root.
 
+**Work goes up to a stronger tier in two cases only**: the owner names it, or the same brief has
+failed twice at the same check on the configured tier. Say which of the two it was, and record it.
+
 A brief spec is JSON. Paths in `allow_paths` are literal and repository-relative. A trailing
 slash allows everything under that directory. Use an empty list for read-only kinds. Put the lane
 report outside the worktree to keep it out of the collection inventory. Use the same spec file

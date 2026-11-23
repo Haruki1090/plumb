@@ -38,6 +38,24 @@ cheaply.** Be bold. Produce variants nobody asked for. Throw one away and try an
    a disposable implementation, not shippable code.** Hand the chosen direction to
    `playbooks/writing-a-plan.md` and build it again for real.
 
+## Racing implementations of one brief
+
+**Only for a decision that is expensive to reverse.** Anything cheaper is a prototype above, not a
+race.
+
+1. **Frame the brief and the rubric before anyone starts.** Scoring against a rubric written after
+   the candidates exist bends to fit them
+2. **Hand the identical brief to several workers of different model families.** None is told the
+   others exist
+3. **A judge from a family other than the main session's scores each against the rubric**
+4. **Pick one as the base.** Graft at most one or two specific things from the losers, each named
+5. **Verify the grafted result as new code.** The winner's verdict does not cover it
+
+**If the candidates converge, that is agreement, and you stop.** If they diverge on what the problem
+is, the brief was ambiguous: rewrite it, do not pick.
+
+State what the race cost (`plumb-ledger`) next to the decision.
+
 **What you return:** the variants you explored, the evidence (screenshots for visuals, observed
 output or timings for behavior), the trade-offs, the recommendation, and the path to the
 scratch work. **Say plainly that the prototype is meant to be thrown away.**
