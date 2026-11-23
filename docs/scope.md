@@ -8,6 +8,11 @@ agent definitions. Codex support is an additive execution adapter: `.codex-plugi
 and return-value mechanics without forking the shared behavior. A Sol/Luna split is explicitly kept
 separate from the genuinely different-family judge requirement.
 
+**The upstream commit last read is recorded in `NOTICE`** (the `Upstream last read:` line). `plumb-upstream-diff`
+lists the files that changed upstream since then; `plumb-upstream-diff --unrecorded` lists the upstream
+skills, playbooks, agents and guide pages whose name appears nowhere in this document, which is how a new
+item with no recorded decision gets found. Moving the recorded commit forward is a person's edit, after reading.
+
 plumb starts from the playbooks in pstack (`pstack/` in `github.com/cursor/plugins`, MIT).
 **13 playbooks come from pstack**, broken down in the table below. **The rest did not come
 from pstack** (see "Written outside pstack" below).
