@@ -12,7 +12,7 @@ judgment pass leaves a visible `skip: <reason>` line.
 
 ## What it adds
 
-plumb is self-contained: 24 playbooks covering the whole arc of a unit of work —
+plumb is self-contained: 26 playbooks covering the whole arc of a unit of work —
 shaping it, planning it, running the plan task by task, fixing what breaks,
 writing the tests, and landing the result. It depends on no other plugin.
 
@@ -44,7 +44,7 @@ writing the tests, and landing the result. It depends on no other plugin.
 
 ## What's bundled
 
-Beyond the router, the 24 playbooks and the 25 principles, plumb ships these skills
+Beyond the router, the 26 playbooks and the 25 principles, plumb ships these skills
 (all called under the `plumb:` namespace) and their supporting agents:
 
 - **`plumb:pr-review`** — adversarial PR review: cross-checks the PR body against
@@ -56,7 +56,9 @@ Beyond the router, the 24 playbooks and the 25 principles, plumb ships these ski
 - **`plumb:lead`** — runs a queue as the coordinator: takes "review the open PRs"
   or "implement the issues assigned to me", drops what already landed, gives each
   unit its own worktree and visible pane, and drives implement → independent
-  review → local checks → ready PR. Stops at a ready PR; the owner merges.
+  review → local checks → ready PR. Stops at a ready PR and the owner merges; with
+  `repo.production_branches` in the base branch's contract it may merge into a branch outside that
+  list once a verdict names the PR's current head.
   `plumb-run-view` prints where its lanes stand (ledger plus pull request facts) as JSON.
   `plumb-stalled` lists every open pull request by how long it has waited and on whom (read-only).
   `plumb-lane stale` lists running lanes that have gone quiet for longer than that kind of work takes;
@@ -81,9 +83,13 @@ Beyond the router, the 24 playbooks and the 25 principles, plumb ships these ski
   each routed to the layer that owns it; nothing is applied until approved.
 - **`plumb:help`** — answers how to use plumb and hands back the prompt to send; it never starts
   the work.
+- **`plumb:configure`** — settles roles, pane driver and stack tool in the config file, showing the
+  diff before it writes.
 
 The `plumb-bench-extract` and `plumb-bench-score` commands build a pruned review corpus and compare
 agent configurations by precision, recall, F1, and tokens per review.
+
+To learn how to work with plumb (a first hour, how to ask, recipes, overnight runs, pitfalls), start at [`docs/guide/README.md`](docs/guide/README.md).
 
 ## Install
 
@@ -236,7 +242,7 @@ the layer that should stop it, with the number that will show whether it did.
 
 ## Language
 
-plumb is written in English throughout — SKILL.md, the 24 playbooks, the 25
+plumb is written in English throughout — SKILL.md, the 26 playbooks, the 25
 principles, the bundled skills and agents, the scripts and the docs/ files.
 
 It was written in Japanese through v0.5.0 and rewritten in English for release.

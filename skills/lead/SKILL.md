@@ -11,11 +11,49 @@ gate, and bring back only what needs the owner.**
 ## Authorization and the stop line
 
 Invoking this skill is the owner's request for parallel roles; do not ask again before starting
-lanes. It authorizes nothing else: no merge, deploy, infrastructure apply, release, branch
-deletion, issue closing, or message to anyone. Post review comments only when this request asked.
+lanes. It authorizes nothing else: no deploy, infrastructure apply, release, branch deletion,
+issue closing, or message to anyone, and a merge only by the rule below. Post review comments only
+when this request asked.
 
 **Default stop line: a ready PR** (implemented, independently reviewed, checked at the final
 commit, pushed, marked ready). A request naming another line ("plan only", "draft only") wins.
+
+**Merge a lane's PR yourself only when the base branch's contract allows it.** A merge cannot be
+taken back, so each condition ties it to evidence at the head being merged. Without
+`repo.production_branches` in the contract of the PR's base branch, stop at the ready PR: the owner
+merges. With the key present, merge only when all four hold:
+
+1. **The base is not production.** It is not listed in `repo.production_branches` and is not the
+   default branch of the repository the PR is open against. Ask the forge for both names and
+   compare bare branch names: `gh pr view <n> --json baseRefName,url` and, for the repository in
+   that URL, `gh repo view <owner>/<name> --json defaultBranchRef`. A local ref such as
+   `origin/HEAD` can be stale, absent or a fork's; do not use it. Read the list from the base
+   branch's copy in that same repository, never the PR head's and never a fork's, because a head
+   must not grant itself merge rights (`plumb:verify` trusts the base contract the same way):
+   fetch `<base>` from the remote whose URL is that repository, make a throwaway worktree at the
+   fetched commit and run `plumb-project --json repo.production_branches` in it. No such remote,
+   a default branch you could not read, or any outcome but `set` fails this condition. A PR that
+   changes `.plumb/project.toml` stays a ready PR.
+2. **A passing verdict covers this head.** The independent reviewer seat's verdict is a pass with
+   no finding left open, and it names the PR's current head SHA. A failing verdict, a verdict you
+   wrote yourself, or one for an older head does not count; after a rebase or a fix, redo the
+   re-check in `playbooks/landing-a-stack.md`, step 3.
+3. **The PR is ready.** `plumb-pr-watch <n>` prints `ready`, with no `merge=blocked` and no
+   `review=` detail asking for changes or a review.
+4. **It is on the ledger first.** The PR's row (`ready-pr`, `next` = merge) carries the verdict's
+   SHA and the `plumb-pr-watch` output before you merge.
+
+Merge with the repository's own method, once, pinned to the verdict's SHA
+(`gh pr merge <n> --match-head-commit <sha>`), so a push that lands after the checks is refused
+instead of merged. Immediately before that command read `baseRefName` again: a base that differs
+from the one condition 1 checked voids all four conditions. After it, the read-back below checks the
+base once more; a merge that landed on any other branch goes up at once as an incident. Never force it, never bypass a required check, never
+use an admin override, never delete the branch; when the forge refuses, the PR stays ready and goes
+up. Then read back: `plumb-pr-watch <n>` prints `merged` and the merge commit
+(`gh pr view <n> --json mergeCommit`) is an ancestor of the base branch condition 1 checked, after a fetch from that repository. Write a
+`merged` row with that commit; a read-back that fails goes up as it is. Anything that targets a
+production branch, or fails a condition, stays a ready PR and goes up to the owner. Pull requests
+read for review (`references/pr-queue.md`) are never merged by this rule.
 
 The repository's instruction files win on base branch, branch naming, check commands, PR template
 and anything they forbid. Read them first.
@@ -67,7 +105,11 @@ items, hand each item's reading to the explorer role and take back one ledger ro
 Search **merged** PRs for each item (closing keywords act only on the default branch, so work
 merged elsewhere leaves the issue open), then **read what the PR says about it**: "split out to
 #N" is a mention, not a fix. Confirm on the current base's code -> `landed`. Search **open** PRs ->
-`has-pr`: continue or review that PR, never a duplicate. Read the code, not the issue body.
+`has-pr`: continue or review that PR, never a duplicate. **An item that already has a fix** (an open
+or merged PR that plausibly addresses it) **is verified, not rebuilt**: reproduce the symptom twice
+on the baseline, see it gone twice on the fix, through the project's own verification when the
+contract has one (`plumb:verify`). The outcome is exactly one of `confirmed`, `insufficient fix`
+or `inconclusive`, and no competing PR is opened. Read the code, not the issue body.
 Every other item gets exactly one state:
 
 | State | Meaning |
@@ -103,10 +145,12 @@ A lane's pull request is read with `plumb-pr-watch <n>` (one word, one exit code
   reversible; anything else goes up
 - *done*: read the report file, diff from the starting commit
   (`playbooks/running-a-plan.md`, step 4), review in the separate seat, rework to the same
-  implementer with the cap from step 5 there
+  implementer with the cap from step 5 there. **The seat blocks only on a problem it can show at
+  this head** (a run that fails here, a line this change made false). A problem the base already
+  had is one line in the report, and blocks only if this change copied it or newly made it reachable
 - *passed*: run the repository's checks once at the final commit and record SHA and exit status;
   push, open by `playbooks/opening-a-pr.md` with the template (UI changed -> screenshots), mark
-  ready, ledger `ready-pr`, refill the slot
+  ready, ledger `ready-pr`, refill the slot; then merge only if the stop line's rule allows it
 
 Queue outlasting the session -> layer `playbooks/autonomous-run.md`; predicate: every item is
 `ready-pr`, `landed`, `needs-ruling` with the question asked, or escalated with a reason.
@@ -119,7 +163,13 @@ Then the ledger path. **A report without the ledger path is not complete.**
 ## What goes up
 
 Only: an irreversible or outward-facing action, a product call no check settles, an approval
-outside a lane's range, a real dead end. Raise the driver's alert with it when the driver has
-one, never for a lane that only finished. Decide the rest and log it
+outside a lane's range, a real dead end, a merge the stop line does not allow, and a gate a lane
+wants loosened. Raise the driver's alert with it when the driver has one, never for a lane
+that only finished. Decide the rest and log it
 (**principle-never-block-on-the-human**). Known failure shapes:
 [references/failure-modes.md](references/failure-modes.md).
+
+**Loosening a gate is never a lane's own decision**: raising a budget or threshold, adding to an
+allowlist, disabling or soft-failing a check. It needs the verifying seat's proof that the gate was
+wrong and the coordinator's countersign in the ledger, and a disabled check gets a row saying when
+it is restored.

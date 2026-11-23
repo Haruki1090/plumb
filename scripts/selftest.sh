@@ -1449,6 +1449,9 @@ elif command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-stalled.py" >/dev/null \
     && ok "stalled: last real commit (a base merge is not work), verified head (stale SHA, HTML comment), idle threshold, ready_at, unpromoted (ancestor, unknown), unreachable forge" \
     || ng "stalled (run scripts/test-stalled.py)"
+  python3 -B "$root/scripts/test-project-contract.py" >/dev/null \
+    && ok "project contract: repo.production_branches (valid, absent, wrong type, empty element, empty list)" \
+    || ng "project contract production branches (run scripts/test-project-contract.py)"
   python3 -B "$root/scripts/test-decision-log.py" >/dev/null \
     && ok "decision log: run boundary row, audit of commits, pull requests and files (resolved, missing, unchecked), scope after the last start" \
     || ng "decision log audit (run scripts/test-decision-log.py)"

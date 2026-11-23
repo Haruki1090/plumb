@@ -47,9 +47,11 @@ Playbooks name principles; read a named principle in full when you apply it.
 | **Turn an approved shape into steps someone else can execute** | `playbooks/writing-a-plan.md` |
 | **Land those steps, one task at a time** | `playbooks/running-a-plan.md` |
 | Write tests, or repair existing ones | `playbooks/writing-tests.md` |
+| Establish a promise tests cannot reach: an ordering, an invariant over every state, a protocol, a whole input space | `playbooks/properties-tests-cannot-reach.md` |
 | Buy a design decision with an implementation you throw away | `playbooks/prototype.md` |
 | Hand independent work out to parallel roles | `playbooks/fan-out.md` |
 | Call a tool that needs several calls per answer, or the same call over many items | `playbooks/batching-chatty-tools.md` |
+| **Work that fits no row in this index**: frame it, build and baseline the verifier, then run it as a loop | `playbooks/designing-a-run.md` |
 
 ### Ship
 
@@ -80,6 +82,7 @@ Playbooks name principles; read a named principle in full when you apply it.
 | **Ask for review and answer what comes back** (as the author) | `playbooks/being-reviewed.md` |
 | Add a different model family's axis to that review | `plumb:interrogate` |
 | Check whether the environment plumb claims still exists | `plumb:doctor` |
+| Set plumb up on this machine: settle roles, pane driver and stack tool in the config file, after showing the diff | `plumb:configure` |
 | **Check that a change works in the running app, or has not regressed against its base** ("verify this", "does it still work", "compare against base"; a dosa-kakunin request in Japanese is the same request) | `plumb:verify` (the repository's own verification through its contract; formats in `docs/verify-protocol.md`) |
 | **Give a repository with no `[verify]` contract its first working one** ("set up verification for this repo", "we have no verify contract") | `plumb:verify-init` |
 | See what a session spent its context on | `plumb-session-audit` |

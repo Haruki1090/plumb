@@ -36,6 +36,9 @@
 #   ledger.runtimes         = codex     the runtimes `plumb-ledger capture --sweep` (and the Stop hook,
 #                                        after the Claude capture) reads, separated by commas or white
 #                                        space; default `claude,codex,opencode` (claude is not swept)
+#   worker.rules.types      = <types>   comma-separated subagent type names (for example `implementer`)
+#                                        whose prompts the Agent hook gives the worker-rules line;
+#                                        unset = off
 #
 # **"Not configured" is not an error.** Unset still exits 0 and returns the default.
 # Exit 1 here and every caller ends up writing || true, which hides the real failures.
