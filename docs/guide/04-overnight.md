@@ -25,7 +25,8 @@ each item says which.
   `plumb-path run`, as `lead-<issues|prs>-<time>-<pid>.tsv`; a plan run writes `<plan name>.tsv` there. That
   directory is untracked and survives removing a worktree.
 - **When it reports.** The run returns when the predicate is met or at a real dead end. Only three things
-  go up before then: an irreversible action, a product call no check can settle, and a dead end. Say how
+  go up before then: an irreversible action you did not approve in advance (the merge key above is the one
+  advance approval there is), a product call no check can settle, and a dead end. Say how
   often you want a heartbeat if you want one, and what counts as a reason to stop and wait.
 
 An example request:

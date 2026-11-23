@@ -45,10 +45,12 @@ merges. With the key present, merge only when all four hold:
 
 Merge with the repository's own method, once, pinned to the verdict's SHA
 (`gh pr merge <n> --match-head-commit <sha>`), so a push that lands after the checks is refused
-instead of merged. Never force it, never bypass a required check, never
+instead of merged. Immediately before that command read `baseRefName` again: a base that differs
+from the one condition 1 checked voids all four conditions. After it, the read-back below checks the
+base once more; a merge that landed on any other branch goes up at once as an incident. Never force it, never bypass a required check, never
 use an admin override, never delete the branch; when the forge refuses, the PR stays ready and goes
 up. Then read back: `plumb-pr-watch <n>` prints `merged` and the merge commit
-(`gh pr view <n> --json mergeCommit`) is an ancestor of `origin/<base>` after a fetch. Write a
+(`gh pr view <n> --json mergeCommit`) is an ancestor of the base branch condition 1 checked, after a fetch from that repository. Write a
 `merged` row with that commit; a read-back that fails goes up as it is. Anything that targets a
 production branch, or fails a condition, stays a ready PR and goes up to the owner. Pull requests
 read for review (`references/pr-queue.md`) are never merged by this rule.
