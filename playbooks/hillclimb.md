@@ -42,6 +42,8 @@ unverified changes. Do not claim a win from having read the code. **The data dec
    **This is the run's memory.** Read it before each attempt. Skip that and the search stops
    accumulating and you circle the same spot. Keep it outside the tree (under gitignore) so it
    survives a revert.
+   **Open each run with `plumb-decision-log <log> --start "<label>"`** when the log is shared with an
+   earlier run.
 4. Ground each hypothesis in the structural understanding from step 1 and **name a concrete
    mechanism**. "Drop X from the startup path, because it blocks first paint." "Try memoizing
    something" is not a hypothesis.
@@ -87,6 +89,9 @@ unverified changes. Do not claim a win from having read the code. **The data dec
 8. Stack the adopted commits in landing order and close out with `playbooks/closing-a-branch.md`.
    **Once a PR is decided on**, go to `playbooks/opening-a-pr.md`. The climb of the metric reads top
    to bottom.
+
+**Audit the log before you report.** Run `plumb-decision-log <log> --audit` and carry every `missing`
+line into the report. A commit, PR or file the log names that is not there is not evidence.
 
 **What you return:** the metric and the target, baseline through final and the rate of change, the
 number of attempts (adopted / reverted), one line per adopted fix, the path to the decision log, and

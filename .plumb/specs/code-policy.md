@@ -65,6 +65,8 @@ empty scan.
   per rule. `--json`: `{"schema":1,"outcome":"clean|findings|skip","findings":[{rule,path,line,excerpt}],"counts":{rule:n}}`.
 - Exit: `mode=report` → 0 even with findings; `mode=enforce` → 1 with findings; 2 invalid; 3 unavailable.
 - An exceptions row suppresses findings of that rule in that path; a row whose reason is empty is invalid.
+  Optional 4th/5th columns `expires` (YYYY-MM-DD) and `approved_by`: an expired row stops suppressing
+  and is reported as `expired-exception` (reserved id); see docs/project-contract.md.
 - `--base` default: `origin/HEAD`'s target, else `main`.
 
 ## Acceptance

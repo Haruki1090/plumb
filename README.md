@@ -59,6 +59,8 @@ Beyond the router, the 24 playbooks and the 25 principles, plumb ships these ski
   review → local checks → ready PR. Stops at a ready PR; the owner merges.
   `plumb-run-view` prints where its lanes stand (ledger plus pull request facts) as JSON.
   `plumb-stalled` lists every open pull request by how long it has waited and on whom (read-only).
+  `plumb-lane stale` lists running lanes that have gone quiet for longer than that kind of work takes;
+  `plumb-pr-watch` gives one pull request's state as a word and an exit code.
 - **`plumb:graph`** — pre-work execution-graph design for goals that are large,
   parallelizable, or need to stay aligned with a source-of-truth doc.
 - **`plumb:decision-brief`** — hands a branching decision back to the owner as

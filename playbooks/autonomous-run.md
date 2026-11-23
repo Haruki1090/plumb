@@ -34,6 +34,8 @@ a machine, do not run it overnight.** Nobody is awake to judge it.
    forward). Put a long time-based heartbeat behind it as backup. If there is nothing to watch,
    use a fixed heartbeat at **the interval that makes going to look worth it**.
    That is `/loop` and `ScheduleWakeup`'s territory.
+   On each wake with lanes running, run `plumb-lane stale`; inspect a stale lane at its worktree
+   and replace it. Do not wait on it.
 3. **Each iteration makes only the smallest change the evidence justifies.** Verify it against the
    predicate; commit if it moved forward, and **revert every change** if it did not.
    **"This might work" is a hypothesis, not a fix.** Do not let it ride along.
@@ -58,6 +60,8 @@ a machine, do not run it overnight.** Nobody is awake to judge it.
    **Exactly one line per iteration.** Line 0 is the predicate, and stopping adds one more line.
    If you skipped an iteration, **write the reason on that iteration's line**. Do not skip without
    making the line. **A run with no trace can neither be audited nor resumed.**
+   **Open each run with `plumb-decision-log <log> --start "<label>"`** so a log shared with an earlier
+   run still says where this one begins.
    When you judge that context compaction is close, run step 4 of `playbooks/pause-safely.md`
    and then continue.
 6. **Stop when the predicate is met. Stalled is not stopped.**
@@ -79,6 +83,9 @@ a machine, do not run it overnight.** Nobody is awake to judge it.
    **A stop missing any of the four invalidates the predicate without rewriting it.**
    "I feel like I'm out of ideas" is not a reason to stop.
    If it is a real dead end, say so instead of circling.
+
+**Audit the log before you report.** Run `plumb-decision-log <log> --audit` and carry every `missing`
+line into the report. A commit, PR or file the log names that is not there is not evidence.
 
 **What you return:** the termination predicate, **the path to the decision log**, how many
 iterations you ran (**and the log holds a line with each of those numbers**), what landed,

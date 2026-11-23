@@ -43,6 +43,10 @@ Conventional Commits, `type(scope): subject`. The types are `feat` `fix` `docs` 
 | `## Blast Radius` | Who and what it touches. Why it is safe, or why it is risky. If main stays red without this fix, write the continuing cost of that |
 | `## Verification` | **How you ran each check, and how strict it is.** Name the path you actually ran. Write the result, not the name of the command |
 
+**Run `plumb-check-pr-body` on the body before you open the PR.** It checks the mechanical part: the
+sections above and their order (Tradeoffs may be absent), the length, fenced blocks over 15 lines, a section
+left empty. **Fix the finding. Do not raise a limit to make it pass**: a log or a long table goes behind a link.
+
 **Lines the repository requires** (the `Fixes-PR:` line, and stopping on a broken contract) are
 `plumb:open-pr`. Run it before writing these sections; it is the only place those rules are written.
 
