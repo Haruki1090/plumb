@@ -93,6 +93,8 @@ Playbooks name principles; read a named principle in full when you apply it.
 | Check a pull request body mechanically before opening it (sections, order, length, long blocks) | `plumb-check-pr-body` |
 | Whether the commits, pull requests and files a decision log cites exist | `plumb-decision-log <log> --audit` |
 | What changed upstream since the commit NOTICE records, and which upstream items have no recorded decision | `plumb-upstream-diff`; the decisions are in `docs/scope.md` |
+| Which rules a check, a hook or a command holds, and which rest on prose alone | `plumb-enforcement`; a new hard rule gets a row in `docs/enforcement.tsv` in the same change |
+| Whether a Codex agent file fell behind its `agents/*.md` source | `plumb-codex-agents-check` |
 | Read the repository's project contract (rework authors, verify commands, ledger classes) | `plumb-project`; the schema and the CI wiring are in `docs/project-contract.md` |
 | Check the `Fixes-PR:` line of a pull request body | `plumb-check-fixes` |
 | Which changes landed, which were fixed later (rework rate), and what each task cost | `plumb-ledger`; records, store and coverage are in `docs/ledger.md` |

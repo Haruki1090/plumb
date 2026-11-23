@@ -1452,6 +1452,12 @@ elif command -v python3 >/dev/null 2>&1; then
   python3 -B "$root/scripts/test-project-contract.py" >/dev/null \
     && ok "project contract: repo.production_branches (valid, absent, wrong type, empty element, empty list)" \
     || ng "project contract production branches (run scripts/test-project-contract.py)"
+  python3 -B "$root/scripts/test-enforcement.py" >/dev/null \
+    && ok "enforcement table: columns, mechanisms, paths and headings, harness rules, hooks, prose rows, duplicates, counts" \
+    || ng "enforcement table (run scripts/test-enforcement.py)"
+  python3 -B "$root/scripts/test-codex-agents-check.py" >/dev/null \
+    && ok "Codex agent files: source line, stale, unmapped, missing source, --update" \
+    || ng "Codex agent staleness check (run scripts/test-codex-agents-check.py)"
   python3 -B "$root/scripts/test-decision-log.py" >/dev/null \
     && ok "decision log: run boundary row, audit of commits, pull requests and files (resolved, missing, unchecked), scope after the last start" \
     || ng "decision log audit (run scripts/test-decision-log.py)"
