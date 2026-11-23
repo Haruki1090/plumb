@@ -17,12 +17,17 @@ import re
 import shutil
 import subprocess
 import sys
+from urllib.parse import urlsplit
 
 FILE_EXTENSIONS = (".md", ".py", ".sh", ".json", ".tsv", ".txt", ".log", ".html", ".toml", ".yml", ".yaml", ".png")
 COMMIT = re.compile(r"(?<![0-9A-Za-z_])[0-9a-f]{7,40}(?![0-9A-Za-z_])")
 PR_HASH = re.compile(r"(?<![0-9A-Za-z_&])#(\d+)(?![0-9A-Za-z_])")
 PR_URL = re.compile(r"/pull/(\d+)(?![0-9A-Za-z_])")
 LINE_SUFFIX = re.compile(r":\d+(?:-\d+)?$")
+MD_LINK = re.compile(r"\[([^\]]*)\]\(\s*<?([^)\s>]+)>?\s*\)")  # [text](target): the text and the target are both words
+PR_URL_PATH = re.compile(r"/([^/]+/[^/]+)/pull/\d+")
+ORIGIN_URL = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://(?:[^/@]*@)?(?P<host>[^/:]+)(?::\d+)?/(?P<slug>[^/]+/[^/]+?)(?:\.git)?/?$")
+ORIGIN_SCP = re.compile(r"^(?:[^/@:]+@)?(?P<host>[^/:]+):(?P<slug>[^/:]+/[^/]+?)(?:\.git)?/?$")
 NOT_FOUND = ("could not resolve to a pullrequest", "no pull requests found", "no pull request found", "not found")
 GH_TIMEOUT = 30
 
@@ -34,8 +39,8 @@ def is_commit_token(token: str) -> bool:
 def trim(token: str) -> str:
     """Strip what surrounds a token in prose: the formula-neutralising quote, brackets, trailing punctuation."""
     token = re.sub(r"^'[=+@-]", "", token)  # decision-log.sh quotes a cell that starts like a formula
-    token = token.lstrip("'\"`([<{")
-    token = token.rstrip("'\"`)]>},;:.!?")
+    token = token.lstrip("'\"`([<{*\u2018\u201c")
+    token = token.rstrip("'\"`)]>},;:.!?*\u2019\u201d")
     return token
 
 
@@ -58,6 +63,7 @@ def file_candidate(raw: str) -> tuple[str, str] | None:
 def references_in(cell: str) -> list[tuple[str, str]]:
     """(kind, token) pairs in one cell, in order of appearance, without repeats."""
     found: list[tuple[str, str]] = []
+    cell = MD_LINK.sub(r"\1 \2", cell)  # `[text](docs/x.md)` is the words `text` and `docs/x.md`
     blanked = cell
     for word in cell.split():
         candidate = file_candidate(word)
@@ -110,11 +116,16 @@ class Resolver:
                               capture_output=True, stdin=subprocess.DEVNULL)
         return "resolved" if done.returncode == 0 else "missing"
 
-    def origin_slug(self) -> str | None:
+    def origin_identity(self) -> tuple[str, str] | None:
+        """(host, owner/name), both lower case, of the remote `origin`; https, ssh:// and the scp form (user, an at sign, host, colon, owner/name)
+        forms. None when there is no origin or it is not one of those."""
         done = subprocess.run(["git", "-C", self.repo, "remote", "get-url", "origin"], capture_output=True,
                               text=True, stdin=subprocess.DEVNULL)
-        match = re.search(r"[:/]([^/:]+/[^/:]+?)(?:\.git)?/?$", done.stdout.strip()) if done.returncode == 0 else None
-        return match.group(1).lower() if match else None
+        if done.returncode != 0:
+            return None
+        url = done.stdout.strip()
+        match = ORIGIN_URL.match(url) or ORIGIN_SCP.match(url)
+        return (match.group("host").lower(), match.group("slug").lower()) if match else None
 
     def _pr(self, token: str) -> str:
         if not self.remote:
@@ -123,9 +134,14 @@ class Resolver:
             self.notes.add("not in a git repository: pull requests are unchecked")
             return "unchecked"
         if "://" in token:
-            url = re.search(r"://[^/]+/([^/]+/[^/]+)/pull/\d+", token)
-            if url is None or url.group(1).lower() != self.origin_slug():
-                self.notes.add("a pull request URL names a repository other than origin (or origin is unknown): unchecked")
+            try:
+                parts = urlsplit(token)
+                host, path = (parts.hostname or "").lower(), parts.path
+            except ValueError:
+                host, path = "", ""
+            url = PR_URL_PATH.match(path) if host else None
+            if url is None or (host, url.group(1).lower()) != self.origin_identity():
+                self.notes.add("a pull request URL names a host or repository other than origin (or origin is unknown): unchecked")
                 return "unchecked"
         if shutil.which("gh") is None:
             self.notes.add("gh is not on PATH: pull requests are unchecked")

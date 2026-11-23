@@ -188,6 +188,7 @@ def fence(count: int, marker: str = "```") -> str:
 @case("body: the playbook's sections in order are clean, with or without Tradeoffs")
 def _():
     assert findings(GOOD) == [], findings(GOOD)
+    assert findings(GOOD.replace("## Scope", "## Elsewhere")) == [("heading-missing", "## Scope")], "the clean answer is not a constant"
     with_tradeoffs = GOOD.replace("## Blast Radius", "## Tradeoffs\n\nChose A over B.\n\n## Blast Radius")
     assert findings(with_tradeoffs) == [], findings(with_tradeoffs)
 
@@ -399,6 +400,8 @@ def _():
 @case("command: usage and input errors exit 2 and print nothing on stdout")
 def _():
     good = write_body(GOOD)
+    assert run_module(body_tool, ["--file", good], {**os.environ, "PATH": str(fresh_dir("empty"))})[:2] == (0, "pr-body: clean\n"), \
+        "the same input without the bad option is fine, so exit 2 below is the option's doing"
     bad = [[], ["--file", good, "--pr", "3"], ["--file", good, "-"], ["--pr", "0"], ["--pr", "x"], ["--file", good, "--max-lines", "-1"],
            ["--file", good, "--max-block-lines", "-1"], ["--file", good, "--allow-alias", "Nope=x"], ["--file", good, "--heading", ""],
            ["--file", str(ROOT / "no-such-file")], ["--file", str(ROOT)], ["--file", good, "--repo", "a/b"], ["--pr", "3", "--repo", "bad"],
@@ -479,7 +482,6 @@ def _():
     assert state_of(pr(mergeStateStatus="DIRTY")) == "conflicts", "DIRTY alone is a conflict"
     assert state_of(pr(statusCheckRollup=[run("a", "FAILURE")]), threads(False)) == "threads", "threads beat failing"
     assert state_of(pr(mergeable="UNKNOWN", statusCheckRollup=[run("a", "FAILURE")]), QUIET) == "failing", "a known failure is not hidden by an unknown field"
-    assert dict(zip(("merged", "closed", "conflicts", "threads", "failing", "pending", "draft", "ready"), range(8)))  # the list above is the order
 
 
 @case("classify: failing names are at most 5, in order, with the rest counted; control characters cannot split the line")
@@ -538,6 +540,68 @@ def _():
     assert watch_tool.classify({}, QUIET)[0] == "pending"
     assert all(state_of(pr(**{k: ...}), t) != "ready" for k in ("state", "isDraft", "mergeable", "mergeStateStatus", "statusCheckRollup")
                for t in (None, QUIET))
+
+
+@case("classify: pageInfo.hasNextPage must be a boolean; absent or not a boolean means the threads are not known")
+def _():
+    resolved = [{"isResolved": True}]
+    for page_info in ({}, {"hasNextPage": None}, {"hasNextPage": "false"}, {"hasNextPage": 0}, {"hasNextPage": []}, None, "x", []):
+        for nodes in ([], resolved):
+            got = watch_tool.classify(pr(), {"pageInfo": page_info, "nodes": nodes})
+            assert got == ("pending", ["unknown=threads"]), (page_info, nodes, got)
+    assert watch_tool.classify(pr(), {"nodes": resolved}) == ("pending", ["unknown=threads"]), "no pageInfo at all"
+    assert watch_tool.classify(pr(), {"pageInfo": {"hasNextPage": False}, "nodes": resolved}) == ("ready", ["checks_passed=2"])
+    assert watch_tool.classify(pr(), {"pageInfo": {}, "nodes": [{"isResolved": False}]}) == ("threads", ["unresolved=1"]), \
+        "a known unresolved thread needs no page information"
+
+
+@case("classify: mergeStateStatus, mergeable, state and reviewDecision are closed sets; a value outside them is unknown")
+def _():
+    assert watch_tool.classify(pr(mergeStateStatus="SOMETHING_NEW"), QUIET) == ("pending", ["unknown=merge"])
+    assert watch_tool.classify(pr(mergeStateStatus=...), QUIET) == ("pending", ["unknown=merge"])
+    assert watch_tool.classify(pr(mergeStateStatus="clean"), QUIET) == ("pending", ["unknown=merge"]), "case matters"
+    for known in ("BLOCKED", "BEHIND", "UNSTABLE", "HAS_HOOKS", "DRAFT"):
+        got = watch_tool.classify(pr(mergeStateStatus=known), QUIET)
+        assert got == ("ready", ["checks_passed=2", f"merge={known.lower()}"]), (known, got)
+    assert watch_tool.classify(pr(mergeStateStatus="UNKNOWN"), QUIET) == ("pending", ["unknown=merge"])
+    assert watch_tool.classify(pr(mergeable="MERGEABLE_SOON"), QUIET) == ("pending", ["unknown=mergeable"])
+    assert watch_tool.classify(pr(state="REOPENED"), QUIET) == ("pending", ["unknown=state"])
+    assert watch_tool.classify(pr(state="open"), QUIET) == ("pending", ["unknown=state"])
+    assert watch_tool.classify(pr(reviewDecision="SOMETHING_NEW"), QUIET) == ("pending", ["unknown=review"])
+    assert watch_tool.classify(pr(reviewDecision=...), QUIET) == ("pending", ["unknown=review"])
+    assert watch_tool.classify(pr(reviewDecision=None), QUIET) == ("ready", ["checks_passed=2"]), "null is no decision required"
+    for known in ("APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"):
+        assert watch_tool.classify(pr(reviewDecision=known), QUIET) == ("ready", ["checks_passed=2", f"review={known.lower()}"]), known
+    unseen = {"__typename": "StatusContext", "context": "ci/x", "state": "NEW_STATE"}
+    assert watch_tool.classify(pr(statusCheckRollup=[unseen]), QUIET) == ("pending", ["unknown=check-state"])
+    assert watch_tool.classify(pr(statusCheckRollup=[run(conclusion="NEW_CONCLUSION")]), QUIET) == ("pending", ["unknown=check-state"])
+    assert watch_tool.classify(pr(statusCheckRollup=[run(status="NEW_STATUS", conclusion=None)]), QUIET) \
+        == ("pending", ["unknown=check-state"])
+
+
+@case("classify: malformed forge data (wrong JSON types anywhere) never raises and is pending with an unknown= detail")
+def _():
+    junk_values = ([], {}, 3, 1.5, True, "", "x", [[]], {"a": 1})
+    for key in ("state", "isDraft", "mergeable", "mergeStateStatus", "reviewDecision", "statusCheckRollup"):
+        for junk in junk_values:
+            if (key, junk) in (("isDraft", True), ("reviewDecision", ""), ("statusCheckRollup", [])):
+                continue  # these are real values: a draft, no review required, no checks at all
+            state, detail = watch_tool.classify(pr(**{key: junk}), QUIET)
+            assert state == "pending" and any(d.startswith("unknown=") for d in detail), (key, junk, state, detail)
+    for entry in ([], {}, 3, None, "x", [[]], {"name": []}, {"name": {}, "status": [], "conclusion": []},
+                  {"name": "a", "status": "COMPLETED", "conclusion": []}, {"name": "a", "status": "COMPLETED", "conclusion": {}},
+                  {"name": "a", "status": []}, {"context": "c", "state": []}, {"context": [], "state": "SUCCESS", "name": "a"},
+                  {"__typename": "StatusContext", "state": {}}):
+        state, detail = watch_tool.classify(pr(statusCheckRollup=[run("ok"), entry]), QUIET)
+        assert state in ("pending", "failing") and state != "ready", (entry, state, detail)
+        if state == "pending":
+            assert any(d.startswith("unknown=") for d in detail), (entry, detail)
+    assert watch_tool.classify(pr(statusCheckRollup=[[], run("lint", "FAILURE")]), QUIET)[0] == "failing", "a known failure is not hidden"
+    for odd in ([], "x", 3, None, {"nodes": [[]]}, {"nodes": {}}, {"nodes": [{"isResolved": []}]}, {"pageInfo": [], "nodes": []},
+                {"pageInfo": {"hasNextPage": []}, "nodes": []}, {"nodes": "x", "pageInfo": {"hasNextPage": False}}):
+        assert watch_tool.classify(pr(), odd) == ("pending", ["unknown=threads"]), odd
+    for odd in (None, [], "x", 3, [pr()]):
+        assert watch_tool.classify(odd, QUIET) == ("pending", ["unknown=pull-request"]), odd
 
 
 @case("classify: ready names a review decision and a merge state that need a person; clean ones add nothing")
@@ -608,6 +672,28 @@ def _():
         assert (code, out) == (7, "pending\tunknown=threads\n"), (answer, code, out)
 
 
+@case("command: malformed forge data (wrong types, an unknown value, a missing hasNextPage) is exit 7 with unknown=, never a crash")
+def _():
+    quiet = {"data": {"repository": {"pullRequest": {"reviewThreads": QUIET}}}}
+    table = [
+        (pr(mergeable=[]), quiet, "pending\tunknown=mergeable\n"),
+        (pr(mergeStateStatus="SOMETHING_NEW"), quiet, "pending\tunknown=merge\n"),
+        (pr(statusCheckRollup={"a": 1}), quiet, "pending\tunknown=statusCheckRollup\n"),
+        (pr(statusCheckRollup=[[], 3, None]), quiet, "pending\tunknown=check-state\n"),
+        ([], quiet, "pending\tunknown=pull-request\n"),
+        (pr(), {"data": {"repository": {"pullRequest": {"reviewThreads": {"nodes": []}}}}}, "pending\tunknown=threads\n"),
+        (pr(), {"data": {"repository": {"pullRequest": {"reviewThreads": {"pageInfo": {}, "nodes": []}}}}}, "pending\tunknown=threads\n"),
+        (pr(), {"data": []}, "pending\tunknown=threads\n"),
+    ]
+    for pull, thread_answer, expected in table:
+        forge = Forge().put("pr.json", pull).put("threads.json", thread_answer)
+        code, out, err = cli(forge, ["7"])
+        assert (code, out, "Traceback" in err) == (7, expected, False), (pull, thread_answer, code, out, err)
+    forge = Forge().put("pr.json", pr(mergeable=[])).put("threads.json", quiet)
+    code, out, _ = cli(forge, ["7", "--json"])
+    assert code == 7 and json.loads(out)["detail"] == ["unknown=mergeable"], out
+
+
 @case("command: --json carries the state, the exit code and the detail")
 def _():
     forge = Forge().put("pr.json", pr(statusCheckRollup=[run("lint", "FAILURE")])).put("threads.json", {"data": {"repository": {"pullRequest": {"reviewThreads": QUIET}}}})
@@ -631,8 +717,10 @@ def _():
     assert cli(forge, ["7"])[:2] == (9, "remote: unavailable\n"), "an empty answer is not JSON"
     forge = Forge().put("pr.json", "")
     assert cli(forge, ["7"])[0] == 9
-    for state in ("MERGED", "OPEN"):
-        assert "ready" not in cli(Forge().put("fail", ""), ["7"])[1], state
+    for state, expected in (("MERGED", (0, "merged\n")), ("OPEN", (9, "remote: unavailable\n"))):
+        forge = Forge().put("pr.json", pr(state=state))  # the pull request reads; an OPEN one then needs the threads call, which has no answer
+        assert cli(forge, ["7"])[:2] == expected, (state, cli(forge, ["7"]))
+        assert "ready" not in cli(forge, ["7"])[1], state
 
 
 class Clock:
@@ -755,7 +843,8 @@ def _():
         code, out, err = cli(forge, argv)
         assert code == 2 and out == "" and "Traceback" not in err, (argv, code, out, err)
     assert forge.calls() == [], "usage errors never reach the forge"
-    assert cli(forge, ["7", "--interval", "30"])[0] in (0, 4, 5, 7, 8, 9), "30 is the minimum, allowed"
+    forge.put("threads.json", {"data": {"repository": {"pullRequest": {"reviewThreads": QUIET}}}})
+    assert cli(forge, ["7", "--interval", "30"])[:2] == (0, "ready\tchecks_passed=2\n"), "30 is the minimum, allowed"
 
 
 @case("command: the wrapper runs through a symlink with a fake gh first on PATH; nothing is written to the working directory")
@@ -776,6 +865,21 @@ def _():
     done = subprocess.run([str(WATCH_BIN), "7"], capture_output=True, text=True, cwd=work, env={**os.environ, "PATH": str(bare)})
     assert (done.returncode, done.stdout.strip()) == (9, "remote: unavailable"), done
     assert os.access(WATCH_BIN, os.X_OK)
+
+
+@case("wrappers: the read-only commands run python with -B and leave no bytecode in the install")
+def _():
+    install = fresh_dir("install")
+    shutil.copytree(PLUGIN / "bin", install / "bin")
+    shutil.copytree(HERE, install / "scripts", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"}
+    for wrapper, args in (("plumb-pr-watch", ["--help"]), ("plumb-check-pr-body", ["--help"])):
+        text = (install / "bin" / wrapper).read_text()
+        assert "exec python3 -B " in text, f"{wrapper} must run python3 -B"
+        done = subprocess.run([str(install / "bin" / wrapper), *args], capture_output=True, text=True, env=env, cwd=fresh_dir("work"))
+        assert done.returncode == 0, (wrapper, done)
+    leftover = sorted(str(p.relative_to(install)) for p in install.rglob("__pycache__")) + sorted(str(p) for p in install.rglob("*.pyc"))
+    assert leftover == [], leftover
 
 
 shutil.rmtree(ROOT, ignore_errors=True)

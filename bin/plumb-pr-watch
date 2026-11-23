@@ -6,4 +6,4 @@ while [ -L "$src" ]; do
   src=$(readlink "$src")
   case "$src" in /*) ;; *) src="$dir/$src" ;; esac
 done
-exec python3 "$(cd -P "$(dirname "$src")/.." && pwd)/scripts/pr-watch.py" "$@"
+exec python3 -B "$(cd -P "$(dirname "$src")/.." && pwd)/scripts/pr-watch.py" "$@"

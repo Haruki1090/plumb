@@ -9,6 +9,7 @@ name and path is made up.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -22,6 +23,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SCRIPT = HERE / "decision-log.sh"
 AUDIT = HERE / "decision-log-audit.py"
+_spec = importlib.util.spec_from_file_location("decision_log_audit", AUDIT)
+audit_tool = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(audit_tool)
 ROOT = Path(tempfile.mkdtemp(prefix="plumb-decision-log-test-"))
 FAILED: list[str] = []
 _counter = [0]
@@ -208,10 +212,10 @@ def _():
 
 @case("a word of hex without a digit, or without a letter, is not a commit")
 def _():
-    log = log_with([["1", "decade", "deadbeef and 1234567 and 123456"]])
+    log = log_with([["1", "decade", "deadbeef and 1234567 and 123456"], ["2", "real", f"fixed at {SHA} and {UNKNOWN_SHA}"]])
     done = audit(log)
-    assert refs(done) == [], done.stdout
-    assert "audit: 0 references" in done.stdout and "rows without evidence: 1" in done.stdout, done.stdout
+    assert statuses(done) == {SHA: "resolved", UNKNOWN_SHA: "missing"}, done.stdout
+    assert "audit: 2 references" in done.stdout and "rows without evidence: 1" in done.stdout, done.stdout
 
 
 @case("a file resolves relative to the working directory, the repository and the log's directory")
@@ -241,6 +245,31 @@ def _():
     done = audit(log)
     assert statuses(done) == {"kept.txt": "resolved"}, done.stdout
     assert len(refs(done)) == 1, "the same token in one cell is reported once"
+    # each wrapped form alone in its own row, so the line suffix cannot rescue a word the trimming should have cleaned
+    forms = ["(see kept.txt),", "`kept.txt`.", "<kept.txt>", '"kept.txt";', "kept.txt:12-14,", "(`kept.txt`)", "ghost-nowhere.md)."]
+    done = audit(log_with([[str(n), "read", form] for n, form in enumerate(forms, 1)]))
+    assert [(r[0], r[3], r[4]) for r in refs(done)] == \
+        [(str(n + 2), "kept.txt", "resolved") for n in range(6)] + [("8", "ghost-nowhere.md", "missing")], done.stdout
+
+
+@case("a markdown link yields its target as the token and its text as ordinary words; wrapping punctuation is stripped")
+def _():
+    refs_in = audit_tool.references_in
+    assert refs_in("[the scope](docs/scope.md)") == [("file", "docs/scope.md")]
+    assert refs_in("see [kept.txt](docs/scope.md) now") == [("file", "kept.txt"), ("file", "docs/scope.md")]
+    assert refs_in("[text](docs/scope.md).") == [("file", "docs/scope.md")]
+    assert refs_in("[PR](https://example.invalid/org/repo/pull/7)") == [("pr", "https://example.invalid/org/repo/pull/7")]
+    assert refs_in("[a](<docs/x.md>) and [b]( docs/y.md )") == [("file", "docs/x.md"), ("file", "docs/y.md")]
+    for wrapped in ("`docs/x.md`", "(docs/x.md)", "<docs/x.md>", "docs/x.md,", "docs/x.md.", "\"docs/x.md\"", "'docs/x.md'", "(`docs/x.md`),",
+                    "**docs/x.md**", "docs/x.md:", "docs/x.md;", "[docs/x.md]", "(see docs/x.md)", "docs/x.md:12,"):
+        assert refs_in(wrapped) == [("file", "docs/x.md")], (wrapped, refs_in(wrapped))
+    assert refs_in("and/or 1200/940") == [("path", "and/or"), ("path", "1200/940")], "a bare slash word stays a candidate path"
+    log = log_with([["1", "read", "[the scope](docs/scope.md) and [kept.txt](docs/other.md)."]])
+    done = audit(log)
+    assert statuses(done) == {"docs/scope.md": "missing", "kept.txt": "resolved", "docs/other.md": "missing"}, done.stdout
+    (REPO / "docs").mkdir(exist_ok=True)
+    (REPO / "docs" / "scope.md").write_text("x")
+    assert statuses(audit(log))["docs/scope.md"] == "resolved", "the link target is looked up as a path, not as `text](docs/scope.md`"
 
 
 @case("words with a slash and no known extension are references only when the path exists")
@@ -265,17 +294,17 @@ def _():
 
 @case("a word that ends in a known extension is a reference even when nothing is there")
 def _():
-    log = log_with([["1", "did", "x/y.md only.json"]])
+    log = log_with([["1", "did", "x/y.md only.json kept.txt"]])
     done = audit(log)
-    assert statuses(done) == {"x/y.md": "missing", "only.json": "missing"}, done.stdout
+    assert statuses(done) == {"x/y.md": "missing", "only.json": "missing", "kept.txt": "resolved"}, done.stdout
     assert done.returncode == 1
 
 
 @case("a URL is not a file")
 def _():
-    log = log_with([["1", "read", "https://example.invalid/some/page.html"]])
+    log = log_with([["1", "read", "https://example.invalid/some/page.html kept.txt"]])
     done = audit(log)
-    assert refs(done) == [], done.stdout
+    assert statuses(done) == {"kept.txt": "resolved"}, done.stdout
 
 
 @case("a formula-neutralised cell (leading quote) is still audited")
@@ -307,30 +336,72 @@ def _():
     done = audit(log)
     assert statuses(done) == {"https://example.invalid/other/thing/pull/7": "unchecked"}, done.stdout
     assert GH_CALLS.read_text() == "", "gh must not be asked about another repository's number"
+    done = audit(log_with([["1", "merged", "https://example.invalid/org/repo/pull/7"]]))
+    assert statuses(done) == {"https://example.invalid/org/repo/pull/7": "resolved"}, "origin's own repository is asked"
     assert done.returncode == 0
 
 
 @case("a pull request URL that matches origin ignoring case and the .git suffix is checked")
 def _():
     GH_CALLS.write_text("")
-    log = log_with([["1", "merged", "https://example.invalid/ORG/Repo/pull/7"]])
+    log = log_with([["1", "merged", "https://example.invalid/ORG/Repo/pull/7 https://example.invalid/ORG/Repo/pull/404"]])
     done = audit(log)
-    assert statuses(done) == {"https://example.invalid/ORG/Repo/pull/7": "resolved"}, done.stdout
+    assert statuses(done) == {"https://example.invalid/ORG/Repo/pull/7": "resolved",
+                              "https://example.invalid/ORG/Repo/pull/404": "missing"}, done.stdout
+
+
+def repo_with_origin(url: str) -> Path:
+    repo = fresh("origin-repo")
+    git(repo, "init", "-q")
+    if url:
+        git(repo, "remote", "add", "origin", url)
+    return repo
+
+
+def pr_status(origin: str, token: str) -> tuple[str, str]:
+    """(status of `token`, what the fake gh was asked) for a repository whose origin is `origin`."""
+    GH_CALLS.write_text("")
+    log = log_with([["1", "merged", token]])
+    done = run(str(log), "--audit", "--repo", str(repo_with_origin(origin)))
+    return statuses(done)[token], GH_CALLS.read_text()
+
+
+@case("a pull request URL is checked only when host and owner/name both match origin; another host is unchecked, gh is not asked")
+def _():
+    at = chr(64)
+    token = "https://example.invalid/org/repo/pull/7"
+    other_host = "https://other.invalid/org/repo/pull/7"
+    for origin in ("https://example.invalid/org/repo.git", "https://example.invalid/org/repo", "https://EXAMPLE.invalid/Org/Repo.git",
+                   "https://user:pw" + at + "example.invalid/org/repo.git", "ssh://git" + at + "example.invalid:2222/org/repo.git",
+                   "ssh://git" + at + "example.invalid/org/repo.git", "git" + at + "example.invalid:org/repo.git",
+                   "git" + at + "EXAMPLE.invalid:Org/Repo"):
+        status, asked = pr_status(origin, token)
+        assert (status, asked.split("\n")[0]) == ("resolved", "pr view 7 --json number"), (origin, status, asked)
+        status, asked = pr_status(origin, "https://Example.Invalid/ORG/repo/pull/7")
+        assert (status, asked.split("\n")[0]) == ("resolved", "pr view 7 --json number"), (origin, "host case", status, asked)
+        status, asked = pr_status(origin, other_host)
+        assert (status, asked) == ("unchecked", ""), (origin, status, asked)
+        status, asked = pr_status(origin, "https://example.invalid/org/other/pull/7")
+        assert (status, asked) == ("unchecked", ""), (origin, "other name", status, asked)
+    for origin in ("", "not a url", "https://example.invalid/just-one-segment"):
+        assert pr_status(origin, token) == ("unchecked", ""), origin
+    status, asked = pr_status("git" + at + "example.invalid:org/repo.git", "#7")
+    assert (status, asked.split("\n")[0]) == ("resolved", "pr view 7 --json number"), "a bare #7 still goes to gh"
 
 
 @case("a pull request gh says it cannot find is missing")
 def _():
-    log = log_with([["1", "merged", "(#404)"]])
+    log = log_with([["1", "merged", "(#404) #7"]])
     done = audit(log)
-    assert statuses(done) == {"#404": "missing"}, done.stdout
+    assert statuses(done) == {"#404": "missing", "#7": "resolved"}, done.stdout
     assert done.returncode == 1
 
 
 @case("a gh failure that is not 'not found' leaves the pull request unchecked, never resolved")
 def _():
-    log = log_with([["1", "merged", "#500"]])
+    log = log_with([["1", "merged", "#500 #7"]])
     done = audit(log)
-    assert statuses(done) == {"#500": "unchecked"}, done.stdout
+    assert statuses(done) == {"#500": "unchecked", "#7": "resolved"}, done.stdout
     assert done.returncode == 0
     assert "unchecked" in done.stdout.splitlines()[-2], done.stdout
 
@@ -352,6 +423,7 @@ def _():
     assert statuses(done) == {"#7": "unchecked", "#404": "unchecked"}, done.stdout
     assert GH_CALLS.read_text() == "", "gh must not be called under --no-remote"
     assert done.returncode == 0
+    assert statuses(audit(log)) == {"#7": "resolved", "#404": "missing"}, "without --no-remote the same log is asked"
 
 
 @case("outside a repository commits and pull requests are unchecked, files are still checked")
@@ -386,8 +458,9 @@ def _():
 
 @case("a log with no start row is audited whole; a start row with nothing after it audits nothing")
 def _():
-    log = log_with([["1", "did", f"x {UNKNOWN_SHA}"]])
-    assert audit(log).returncode == 1
+    log = log_with([["1", "did", f"x {UNKNOWN_SHA} {SHA}"]])
+    done = audit(log)
+    assert done.returncode == 1 and statuses(done) == {UNKNOWN_SHA: "missing", SHA: "resolved"}, done.stdout
     assert run(str(log), "--start", "empty run").returncode == 0
     done = audit(log)
     assert done.returncode == 0 and "audit: 0 references" in done.stdout and "rows without evidence: 0" in done.stdout, done.stdout
@@ -420,7 +493,7 @@ def _():
 def _():
     log = log_with([["1", "did", f"{SHA}"]])
     before = log.read_bytes()
-    assert audit(log).returncode == 0
+    assert audit(log).returncode == 0 and statuses(audit(log)) == {SHA: "resolved"}
     assert audit(log, "--json").returncode == 0
     assert log.read_bytes() == before
     ghost = fresh("ghost") / "deeper" / "run.tsv"

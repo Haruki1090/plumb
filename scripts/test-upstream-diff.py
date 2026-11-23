@@ -243,6 +243,8 @@ def _():
     for files in ([], [entry("README.md"), entry("elsewhere/x.md")]):
         text = ud.render_changes(ud.build_changes(NOTICE, HEAD, files))
         assert text == "upstream: no changes under kit since abc1234", text
+    assert ud.render_changes(ud.build_changes(NOTICE, HEAD, [entry("README.md"), entry("kit/README.md")])).splitlines()[0] == "# other (1)", \
+        "one file under the path is a change, so the answer above is not a constant"
 
 
 @case("render: a control character in a forge path never reaches the terminal")
@@ -280,6 +282,76 @@ def _():
     with page_size(10):
         gh = forge(files=files, page=10)
         assert ud.fetch_files("acme/widgets", "abc1234", HEAD, 1e18, gh=gh) == files and len(gh.calls) == 3, gh.calls
+
+
+def first_page_forge(files: list, later: dict | None = None):
+    """The compare as the forge serves it in practice: every file on page 1 (capped at 300), and on later pages no
+    `files` at all (or whatever `later` says)."""
+    calls: list[list[str]] = []
+
+    def gh(args, cwd, timeout):
+        calls.append(list(args))
+        endpoint = args[-1]
+        if "/commits/HEAD" in endpoint:
+            return subprocess.CompletedProcess(args, 0, HEAD + "\n", "")
+        if "/compare/" in endpoint:
+            if endpoint.endswith("page=1"):
+                return subprocess.CompletedProcess(args, 0, json.dumps({"status": "ahead", "files": files[:ud.FILES_CAP]}), "")
+            return subprocess.CompletedProcess(args, 0, json.dumps(later if later is not None else {"status": "ahead", "total_commits": 4}), "")
+        return subprocess.CompletedProcess(args, 1, "", "unknown endpoint")
+
+    gh.calls = calls
+    return gh
+
+
+@case("fetch_files: a later page with no `files` key or an empty list ends the pagination; the answer is not `unavailable`")
+def _():
+    files = [entry(f"kit/docs/f{i:03}.md") for i in range(150)]
+    for later in (None, {"files": []}, {"files": None}):
+        gh = first_page_forge(files, later)
+        assert ud.fetch_files("acme/widgets", "abc1234", HEAD, 1e18, gh=gh) == files and len(gh.calls) == 2, (later, gh.calls)
+        code, out, _ = run_main(["--notice", write("notice-p2", NOTICE_TEXT), "--json"], first_page_forge(files, later))
+        doc = json.loads(out)
+        assert code == 0 and doc["remote"] == "ok" and doc["total"] == 150 and doc["truncated"] is False, (later, doc)
+        assert "truncated" not in ud.render_changes(doc), "a complete list must not claim to be cut"
+    gh = first_page_forge(files, {"files": "not a list"})
+    try:
+        ud.fetch_files("acme/widgets", "abc1234", HEAD, 1e18, gh=gh)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a later page whose files is not a list was accepted")
+
+
+@case("truncated: at the forge's 300-file cap the summary line and the JSON say so; the list is never shown as complete")
+def _():
+    notice = write("notice-cap", NOTICE_TEXT)
+    note = "list truncated by the forge at 300 files; read the rest in a clone"
+    files = [entry(f"kit/docs/f{i:03}.md") for i in range(300)]
+    gh = first_page_forge(files)
+    assert ud.fetch_files("acme/widgets", "abc1234", HEAD, 1e18, gh=gh) == files and len(gh.calls) == 1, "no page 2 at the cap"
+    code, out, _ = run_main(["--notice", notice], first_page_forge(files))
+    lines = out.splitlines()
+    assert code == 0 and lines[-1].startswith("upstream: 300 files changed under kit since abc1234") and lines[-1].endswith(note), lines[-1]
+    code, out, _ = run_main(["--notice", notice, "--json"], first_page_forge(files))
+    doc = json.loads(out)
+    assert code == 0 and doc["remote"] == "ok" and doc["truncated"] is True and doc["total"] == 300, doc
+    just_under = files[:299]
+    code, out, _ = run_main(["--notice", notice, "--json"], first_page_forge(just_under))
+    assert json.loads(out)["truncated"] is False and note not in ud.render_changes(json.loads(out)), out
+    # nothing in the listed 300 is under the path: "no changes" would be a claim about files the forge did not list
+    elsewhere = [entry(f"elsewhere/f{i:03}.md") for i in range(300)]
+    code, out, _ = run_main(["--notice", notice], first_page_forge(elsewhere))
+    assert out.strip() != "upstream: no changes under kit since abc1234" and note in out and out.startswith("upstream: no changes"), out
+    code, out, _ = run_main(["--notice", notice, "--json"], first_page_forge(elsewhere))
+    doc = json.loads(out)
+    assert doc["changes"] == [] and doc["truncated"] is True, doc
+    # a forge that does return files on later pages is read to the cap and no further
+    with page_size(100):
+        many = [entry(f"kit/docs/f{i:03}.md") for i in range(450)]
+        paged = forge(files=many, page=100)
+        got = ud.fetch_files("acme/widgets", "abc1234", HEAD, 1e18, gh=paged)
+    assert len(got) == 300 and len(paged.calls) == 3, (len(got), paged.calls)
 
 
 @case("fetch: an error, a head that is not a SHA, an answer with no files and a cut-short tree all raise ValueError")
@@ -354,16 +426,17 @@ def _():
 def _():
     notice = write("notice-ok", NOTICE_TEXT)
     files = [entry("kit/skills/a/SKILL.md", "added"), entry("kit/skills/n/SKILL.md", "renamed", old="kit/skills/o/SKILL.md"),
-             entry("elsewhere/x.md")]
+             entry("elsewhere/x.md"), entry("kit/agents/scribe.md", "removed"), entry("kit/README.md")]
     gh = forge(files=files)
     code, out, err = run_main(["--notice", notice], gh)
     assert code == 0 and err == "" and out.splitlines()[0] == "# skills (2)", (code, out, err)
+    assert "# agents (1)" in out.splitlines() and "# other (1)" in out.splitlines() and "# docs (1)" not in out.splitlines(), out
     assert gh.calls[0][-1].endswith("/commits/HEAD") and f"abc1234...{HEAD}" in gh.calls[1][-1], gh.calls
     code, out, _ = run_main(["--notice", notice, "--json"], forge(files=files))
     doc = json.loads(out)
     assert code == 0 and doc["remote"] == "ok" and doc["repo"] == "acme/widgets" and doc["path"] == "kit", doc
     assert doc["since"] == "abc1234" and doc["head"] == HEAD and doc["version"] == "1.2.3" and doc["read_on"] == "2026-03-04", doc
-    assert doc["total"] == 2 and doc["counts"]["skills"] == 2 and set(doc["counts"]) == set(ud.GROUPS), doc
+    assert doc["total"] == 4 and doc["counts"] == {"skills": 2, "playbooks": 0, "principles": 0, "agents": 1, "docs": 0, "other": 1}, doc
     assert doc["changes"][1] == {"group": "skills", "status": "renamed", "path": "kit/skills/n/SKILL.md",
                                  "previous_path": "kit/skills/o/SKILL.md"}, doc["changes"]
     code, out, _ = run_main(["--notice", notice], forge(files=[]))
@@ -490,6 +563,19 @@ def _():
     assert bad.returncode == 2 and "usage" in bad.stderr and "Traceback" not in bad.stderr, bad
     none = subprocess.run([sys.executable, script, "--notice", write("notice-cli3", "plumb\n")], capture_output=True, text=True)
     assert none.returncode == 2 and "Upstream last read:" in none.stderr, none
+
+
+@case("wrapper: it runs python with -B and leaves no bytecode in the install")
+def _():
+    install = ROOT / "install"
+    shutil.copytree(PLUGIN / "bin", install / "bin")
+    shutil.copytree(HERE, install / "scripts", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    assert "exec python3 -B " in (install / "bin" / "plumb-upstream-diff").read_text()
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"}
+    done = subprocess.run([str(install / "bin" / "plumb-upstream-diff"), "--help"], capture_output=True, text=True, env=env)
+    assert done.returncode == 0, done
+    leftover = sorted(str(p.relative_to(install)) for p in install.rglob("__pycache__")) + sorted(str(p) for p in install.rglob("*.pyc"))
+    assert leftover == [], leftover
 
 
 shutil.rmtree(ROOT, ignore_errors=True)
