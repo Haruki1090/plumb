@@ -149,7 +149,7 @@ fi
 #     repository top level (absolute paths as-is) and must be executable; without one it must be on
 #     PATH, which is how it will be run. verify.thresholds is a path and must be a file.
 echo "— contract"
-contract_keys="repo.base_branch rework.required_authors rework.lookahead_days ledger.classify ledger.timezone verify.lookup verify.up verify.down verify.scenarios verify.thresholds failure.extra_codes"
+contract_keys="repo.base_branch repo.production_branches rework.required_authors rework.lookahead_days ledger.classify ledger.timezone verify.lookup verify.up verify.down verify.scenarios verify.thresholds failure.extra_codes"
 cmd_resolves() { # <command line> <repository top level>
   local first path
   read -r first _ <<<"$1"
