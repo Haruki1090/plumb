@@ -6,6 +6,7 @@ The built-in comment scan is line-local. See docs/project-contract.md for its li
 """
 from __future__ import annotations
 
+import datetime
 import importlib.util
 import json
 import os
@@ -20,6 +21,7 @@ HERE = Path(__file__).resolve().parent
 FILE_LABEL = ".plumb/project.toml"
 DEFAULT_DIRECTIVES = ("prettier-ignore",)
 MOVE_NOTE = "note: moved lines count as added (known limitation)"
+DATE_FORM = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 NO_NEWLINE = rb"\ No newline at end of file"
 HUNK_HEADER = re.compile(rb"@@ -[0-9]+(?:,([0-9]+))? \+([0-9]+)(?:,([0-9]+))? @@(?: |$)")
 # Match complete same-line literals before looking for comment markers.
@@ -39,9 +41,13 @@ each finding on a line the change newly introduces. Run it inside the policy che
 
 Plain output is one line per finding, `rule<TAB>path:line<TAB>excerpt` (the excerpt is at most
 80 characters), then `summary: <rule> <count>` for every configured rule and for
-`non-regular` when that finding occurs. A report with findings ends with a note that moved
-lines count as added. A clean change prints `clean` before its summaries.
+`non-regular` or `expired-exception` when that finding occurs. A report with findings ends with a
+note that moved lines count as added. A clean change prints `clean` before its summaries.
 A contract without [code_policy] prints `skip: no code_policy`.
+
+An exceptions row may carry a 4th column `expires` (YYYY-MM-DD) and a 5th `approved_by`. A row
+that expired before today (PLUMB_TODAY, else the local date) stops suppressing and is itself
+reported as `expired-exception` at line 0.
 
 The comment kind scans each added line for // or /* outside a quote or backtick pair that
 closes on that line. Standalone allow_directives entries are the only allowance.
@@ -252,26 +258,64 @@ def comment_hit(line: str, directives: tuple) -> bool:
             and any(token.group(1) for token in COMMENT_TOKENS.finditer(line)))
 
 
+def parse_date(text: str):
+    if not DATE_FORM.fullmatch(text):
+        return None
+    try:
+        return datetime.date(int(text[:4]), int(text[5:7]), int(text[8:]))
+    except ValueError:
+        return None
+
+
+def today_date():
+    """PLUMB_TODAY (YYYY-MM-DD) when set and non-empty, else the local date; None when malformed."""
+    text = os.environ.get("PLUMB_TODAY", "")
+    return parse_date(text) if text else datetime.date.today()
+
+
 def read_exceptions(spec: str, top: Path) -> tuple:
-    """Return exception pairs and any error. Each row is rule<TAB>path<TAB>reason."""
+    """Return the active exception pairs, the expired rows and any error.
+
+    Each row is rule<TAB>path<TAB>reason[<TAB>expires[<TAB>approved_by]]. A row whose expires
+    is before today no longer suppresses and is reported as a finding.
+    """
     full = spec if os.path.isabs(spec) else os.path.join(top, spec)
     if not os.path.isfile(full):
-        return None, f"exceptions file {spec}: does not exist"
+        return None, None, f"exceptions file {spec}: does not exist"
     try:
         with open(full, encoding="utf-8", errors="surrogateescape", newline="") as handle:
             rows = handle.read().replace("\r\n", "\n").split("\n")
     except OSError:
-        return None, f"exceptions file {spec}: cannot be read"
-    pairs: set = set()
+        return None, None, f"exceptions file {spec}: cannot be read"
+    parsed = []
     for number, row in enumerate(rows, 1):
         if not row:
             continue
         fields = row.split("\t")
-        if len(fields) != 3 or not all(field.strip() for field in fields):
-            return None, (f"exceptions file {spec}: line {number}: "
-                           "expected rule<TAB>path<TAB>reason with a non-empty reason")
-        pairs.add((fields[0], fields[1]))
-    return pairs, None
+        where = f"exceptions file {spec}: line {number}: "
+        if len(fields) < 3 or not all(field.strip() for field in fields[:3]):
+            return None, None, where + "expected rule<TAB>path<TAB>reason with a non-empty reason"
+        if len(fields) > 5:
+            return None, None, where + "expected at most 5 columns: rule, path, reason, expires, approved_by"
+        expires = parse_date(fields[3]) if len(fields) > 3 and fields[3] else None
+        if len(fields) > 3 and fields[3] and expires is None:
+            return None, None, where + "expected expires as a date, YYYY-MM-DD"
+        if len(fields) > 4 and not fields[4].strip():
+            return None, None, where + "expected a non-empty approved_by when the 5th column is present"
+        parsed.append((fields[0], fields[1], expires))
+    today = None
+    if any(expires for _, _, expires in parsed):
+        today = today_date()
+        if today is None:
+            return None, None, "PLUMB_TODAY: expected a date, YYYY-MM-DD"
+    pairs: set = set()
+    expired: set = set()
+    for rule, path, expires in parsed:
+        if expires is not None and expires < today:
+            expired.add((rule, path, expires))
+        else:
+            pairs.add((rule, path))
+    return pairs, sorted(expired, key=lambda row: (row[1], row[0], row[2])), None
 
 
 def read_source(full: bytes, info: os.stat_result) -> bytes:
@@ -410,9 +454,10 @@ def main(argv: list) -> int:
             usage_error("--paths-from needs a readable file")
 
     exceptions: set = set()
+    expired: list = []
     if isinstance(table.get("exceptions"), str):
         policy_top = Path(path).parent.parent
-        exceptions, error = read_exceptions(table["exceptions"], policy_top)
+        exceptions, expired, error = read_exceptions(table["exceptions"], policy_top)
         if error:
             return invalid_exit(error)
 
@@ -421,6 +466,9 @@ def main(argv: list) -> int:
                           "cannot find the worktree top level").stdout.removesuffix(b"\n")
         added, file_types = introduced(args["base"], top)
         findings = scan(rules, added, file_types, top, scoped, exceptions, only_paths, directives, mode)
+        findings += [{"rule": "expired-exception", "path": row_path, "line": 0,
+                      "excerpt": f"expired {expires.isoformat()}: {rule}"[:80]}
+                     for rule, row_path, expires in expired]
     except (ScanError, OSError) as error:
         return invalid_exit(str(error))
     counts = {rule["id"]: 0 for rule in rules}

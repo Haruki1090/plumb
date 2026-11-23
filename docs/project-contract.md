@@ -122,9 +122,9 @@ pattern = '\buse(Layout)?Effect\s*\('
 | `failure.extra_codes` | array of tables `{code, mechanism}` | Product-specific failure codes |
 | `code_policy.mode` | string: `off`, `report` or `enforce` (default `report`) | Whether findings fail the run (`enforce` exits 1) or are reported only (`report` exits 0) |
 | `code_policy.include`, `code_policy.exclude` | arrays of strings | Globs from the repository top level. An absent or empty `include` means every path |
-| `code_policy.exceptions` | string | A TSV file, one `rule<TAB>path<TAB>reason` row per exception; a row suppresses that rule in that path, and a row whose reason is empty is `invalid` |
+| `code_policy.exceptions` | string | A TSV file, one `rule<TAB>path<TAB>reason` row per exception, with an optional 4th column `expires` (`YYYY-MM-DD`) and 5th `approved_by` (free text); a row suppresses that rule in that path until its expiry day, and a row whose reason is empty, whose date is malformed, with an empty `approved_by`, or with more than 5 columns is `invalid` |
 | `code_policy.allow_directives` | array of strings (default `["prettier-ignore"]`) | Standalone comments containing exactly one listed directive are allowed. An empty array disables the allowance |
-| `code_policy.rule` | array of tables `{id, kind}` | IDs must be unique. The checker reserves `non-regular`. Use `kind = "comment"` or `kind = "pattern"` with a valid regular expression in `pattern` |
+| `code_policy.rule` | array of tables `{id, kind}` | IDs must be unique. The checker reserves `non-regular` and `expired-exception`. Use `kind = "comment"` or `kind = "pattern"` with a valid regular expression in `pattern` |
 
 `plumb-doctor` prints a `contract` block: `none` when the file is absent, `ok` or `--` for each key,
 one `NG` line naming the key and reason when the file is invalid, an `NG` for a verify command
@@ -288,11 +288,17 @@ plumb-code-policy report [--base REF] [--json] [--paths-from FILE] [--worktree D
   from Git's change and untracked lists on stderr. Enforce mode reports each such path at
   line 0 with rule ID `non-regular`. An exceptions row for that rule and path suppresses
   the finding.
+- A row whose `expires` is before today no longer suppresses: its finding is reported as usual,
+  and one `expired-exception` finding (line 0, path = the row's path, excerpt naming the rule
+  and the date) is added whether or not the rule fires on an added line. The day of expiry
+  still suppresses. Today is `PLUMB_TODAY` (`YYYY-MM-DD`) when set, else the local date; a
+  malformed `PLUMB_TODAY` is `invalid` when a row has an `expires`. Rows without the optional
+  columns behave as before.
 - The checker forwards Git diagnostics to stderr. A failed Git command, a diagnostic
   indicating incomplete enumeration, or a source read failure exits 2.
 - Plain output is one line per finding, `rule<TAB>path:line<TAB>excerpt` (the excerpt is at most
   80 characters), then `summary: <rule> <count>` for every configured rule and for
-  `non-regular` when that finding occurs. A report with findings ends with a note that
+  `non-regular` or `expired-exception` when that finding occurs. A report with findings ends with a note that
   moved lines count as added. A clean change prints `clean` before its zero-count summaries.
   With `--json` the answer is
   `{"schema":1,"outcome":"clean|findings|skip","findings":[…],"counts":{…}}`.
@@ -308,6 +314,10 @@ independently. Expect false positives and missed comments in multiline literals,
 continuations, regex literals, and JSX text. The only allowance is a standalone comment that
 contains exactly a listed directive, including `{/* prettier-ignore */}`. Use an exception row
 for license headers and doc comments above exports.
+
+Clear a finding before excepting it. A comment that states a constraint becomes a type, a test
+or a lint rule, and the comment is then deleted. Add a suppression comment only after reading
+what the suppressed rule protects.
 
 A `pattern` rule searches the raw added line once per rule. The sample `no-new-effect` pattern
 checks the spellings below. Use a project linter with token or binding analysis when the policy
