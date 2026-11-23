@@ -43,7 +43,8 @@ Do not throw the pinned repro away. **After the fix, keep it as a test**
 (`playbooks/writing-tests.md`).
 
 **Commit the failing repro before the fix.** The order red, then green is then in the history, and a
-reviewer sees it without taking your word.
+reviewer sees it without taking your word. Where every commit has to pass, commit it marked as an
+expected failure and lift the mark in the fix.
 
 ## 3. Trace back from where it fell to where it broke
 
@@ -89,7 +90,7 @@ problem. **Do not try a fourth one yourself.** Stop, and hand it to the judge ro
 The moment it is fixed, think about the next one (**principle-encode-lessons-in-structure**).
 
 - **Keep the repro as a test.** This is the floor. Leave it out and the same bug comes back
-- **If no good test can be built, add none, and say so.** A test that is mostly mocks, hangs on
+- **The one exception: if no good test can be built, add none, and say so.** A test that is mostly mocks, hangs on
   wall-clock time, or would be deleted right after the fix protects nothing. No test is better than a
   bad one
 - **Tighten the boundary the bad value came in through.** If it can be rejected at the entrance, reject

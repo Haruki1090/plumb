@@ -6,8 +6,9 @@ description: "Apply when a second fix built on the same assumption has failed at
 
 # Attack the Premise
 
-**Two fixes that rest on the same assumption and fail at the same gate are evidence against
-the assumption, not against the fixes.** Tracing a symptom to its cause belongs to
+**Two fixes that rest on the same assumption and fail at the same gate are the point where
+the assumption gets tested, before a third fix.** It may well hold. Until now nobody has
+checked. Tracing a symptom to its cause belongs to
 **fix-root-causes**. This principle owns **the moment you stop trusting what every attempt so
 far took for granted.**
 
@@ -41,8 +42,9 @@ moved; it did not go away.
 4. **Only then choose.** The premise held: go back to fixing, now with a reason. It fell:
    restate the problem and start from the new statement, not from the old attempts
 
-**Carry nothing over from the failed attempts.** Revert them. A half-fix left in place is the
-old premise still running.
+**Carry over only what was verified on its own.** A change that made a named check go from
+red to green stays. Everything else from the failed attempts is reverted: a half-fix left in
+place is the old premise still running.
 
 ## Where it meets the rest
 

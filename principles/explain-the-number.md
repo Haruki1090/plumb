@@ -26,7 +26,9 @@ collecting, not deciding. Written afterwards, the decision bends to fit the numb
 
 ## Seven questions, in this order
 
-Ask them of every number that will change what gets built or what gets claimed.
+Ask them of every number that will change what gets built or what gets claimed. **A question
+that cannot apply is answered `n/a: <reason>`, not skipped**: a single recorded fact, such as
+what one session cost, has no second side to alternate against, and saying so is the answer.
 
 1. **Why is it not twice as good?** Name the limiter: the one resource or step that sets the
    figure. If you cannot name it, you do not yet know what you measured
@@ -46,7 +48,8 @@ Ask them of every number that will change what gets built or what gets claimed.
    span and check the count against what you asked for
 
 **The first question you cannot answer is where you stop and look.** Do not go on to the next
-one and do not report.
+one. If looking does not answer it, the verdict is inconclusive, and you report it as that,
+naming the question.
 
 ## What a reported number carries
 
@@ -54,7 +57,8 @@ The figure, **the number of runs, the spread, the error count, the work count an
 limiter.** Leave one out and the reader has to trust the rest.
 
 The verdict is one of four words: **faster, slower, no measurable difference, inconclusive.**
-"No measurable difference" means the ranges overlap. "Inconclusive" means a question above
+"No measurable difference" means the gap between the medians is inside the spread you saw
+between runs of the same side. "Inconclusive" means a question above
 went unanswered. **Neither is a failure to report. Rounding either one up to a win is.**
 
 ## It is not only for timings
