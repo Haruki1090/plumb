@@ -2,6 +2,14 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.29.0] - 2026-11-23
+
+### Added
+
+- Cockpit mode resolves work kinds through configured roles, generates and checks
+  lane briefs, and records attempts, acceptance evidence, and holds in an append-only
+  run log. Route demotions persist across runs and can be cleared by the owner.
+
 ## [0.28.0] - 2026-11-20
 
 ### Added

@@ -1,0 +1,13 @@
+{
+  "title": "Check record rendering",
+  "kind": "test-transcription",
+  "allow_paths": ["checks/"],
+  "material": "A record with an empty field is available.",
+  "do_not_touch": ["Shared settings"],
+  "acceptance": [
+    {"id": "automated", "description": "The automated check passes", "check": "test -f checks/record.txt"},
+    {"id": "manual", "description": "The displayed record matches the example", "check": "cat checks/record.txt"}
+  ],
+  "report_path": "/tmp/cockpit-worker-report.md",
+  "forbidden_means": ["Shared data service"]
+}

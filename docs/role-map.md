@@ -8,8 +8,11 @@ who does not have that tool.
 |---|---|---|
 | Main session | — (the Claude Code you are running in) | — |
 | Implementer role | `role.implementer` (a command, started in a pane through `pane.driver`); `role.implementer.model` (the `Task` fallback's `model`) | A `Task` that inherits the main session's model |
-| Explorer role | `role.explorer.model` (an alias: `sonnet`, `opus`, `haiku` or `fable`). Produces no diff. When an `Explore` call names no `model`, the PreToolUse hook (`scripts/agent-route.py`) gives it this value | Inherits the main session's model |
-| Design role (`architect`) | — (no key). An agent named `architect` in the owner's agents, if there is one; its model is written in that definition | **The main session stands in** |
+| Explorer role | `role.explorer.model` (a runtime-supported alias). Produces no diff. When an `Explore` call names no `model`, the PreToolUse hook (`scripts/agent-route.py`) gives it this value | Inherits the main session's model |
+| Design role (`architect`) | `role.architect` in cockpit. The design playbook uses the owner's `architect` agent when defined | **The main session stands in** |
+| Draft role | `role.draft` | The main session does the draft |
+| Complex role | `role.complex` | The main session handles the implementation or diagnosis |
+| Final role | `role.final` | The main session does the final review |
 | Judge role | `role.judge` | **The main session stands in.** Say out loud that no other family's eyes are on it, and go on |
 | Bulk role | `role.bulk` | The main session works through it in order |
 | Driving a pane | `pane.driver` | Run it in the foreground |
@@ -136,3 +139,58 @@ instructions describe it; a driver without them changes nothing in any playbook.
 - **An alert to the owner**: when something goes up to the owner, raise it as well as writing it in
   the reply. Only for what the owner must decide or do, never for a finished step. An alert the
   driver says was not shown is not retried; the reply is still the record.
+
+## Cockpit routing and briefs
+
+The user-invoked `plumb:cockpit` skill uses the launch command prefixes in the same personal
+config. Its [kind table](../skills/cockpit/references/kinds.tsv) supplies the preferred and
+baseline roles. `route.<kind>` overrides the preferred role and `route.<kind>.baseline` overrides
+the baseline. An unset launch command means the main session does the work. `plumb-route resolve`
+shows the selected role, command and reason.
+
+`cockpit.demote_after` defaults to 2 consecutive misses for the preferred role. A hit clears an
+unfinished streak. An inconclusive verdict leaves it as it was. The threshold at adjudication
+applies to that verdict. A demoted route uses the baseline until the owner runs
+`plumb-lane route-reset KIND`. The log retains route history across runs and linked worktrees.
+Separate Git repositories have separate cockpit stores, including under a shared artifact root.
+
+A brief spec is JSON. Paths in `allow_paths` are literal and repository-relative. A trailing
+slash allows everything under that directory. Use an empty list for read-only kinds. Put the lane
+report outside the worktree to keep it out of the collection inventory. Use the same spec file
+for `plumb-brief new` and `plumb-lane add`. A registered brief is immutable. Generate changed
+contents with `new --rev REV` and register them with `add --rev REV` when the lane has no active
+attempt. After a plugin move, `plumb-brief refresh --run RUN --lane LANE --rev REV` updates the
+worker instructions path in a new revision for registration. Run, lane, revision and lock names
+use ASCII letters, digits, underscores and hyphens. Letters are stored in lowercase.
+
+```json
+{
+  "title": "Transcribe a parser case",
+  "kind": "test-transcription",
+  "allow_paths": ["tests/"],
+  "material": "The fixture covers an empty record.",
+  "do_not_touch": ["Parser implementation"],
+  "acceptance": [
+    {"id": "empty-record", "description": "The empty record case passes", "check": "python3 -m unittest tests.test_parser"}
+  ],
+  "report_path": "/tmp/parser-lane.md",
+  "forbidden_means": ["Shared database"],
+  "locks": ["local-test-runner"]
+}
+```
+
+The optional `locks` list declares resources a lane holds until adjudication or abandonment.
+These resources are shared across runs of this repository. Use `plumb-lane abandon --attempt A
+--reason REASON` to release them when an attempt cannot finish. Add `--miss` to count the
+abandonment as a route miss. Pass a stable `--event-id` to retrieve the original response on retry.
+
+Keep the same `--work` identifier across lanes or attempts on the same work in a run. Use
+`--worktree` and `--base` on `start` to pin the lane checkout and comparison base. Start and
+collect require the original base to be an ancestor of the checkout's HEAD. Collection compares
+the start and current inventories of untracked files, including ignored paths, and excludes
+cockpit artifacts. An out-of-range collection records one miss in its collection event.
+
+Pass the attempt number and head from `collect` as `--attempt` and `--head` to `observe` and
+`adjudicate`. Record passes on that attempt before closing it, including manual acceptance items.
+A failing observation without a cause can be classified by recording that failed item again
+with `--cause`. Use `plumb-lane status` to read and repair the replayed table even when a lane is held.
