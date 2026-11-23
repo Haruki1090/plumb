@@ -5,6 +5,11 @@ source stand in for measuring.
 
 1. Capture the baseline trace from the real thing (**principle-prove-it-works**). Put the capture in a
    pane (`pane.driver`; if it is unset, run it in the foreground).
+   For a repeated interaction, check what each sample counts. For cumulative
+   counters, subtract consecutive readings and divide by the number of operations
+   in that interval. Keep the first load separate. Retain the event count alongside
+   the average so a single stall stays visible. Before setting a regression limit,
+   repeat the run on the same revision to measure variation between runs.
 2. Put the hypothesis on the ground. **Do not talk about the performance ceiling before you have run
    anything.**
 
