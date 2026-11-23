@@ -43,7 +43,7 @@ USAGE = """usage: plumb-project <dotted.key>
 Reads the repository's project contract (the file `plumb-path project` prints) and validates it
 against schema v1 as a whole. Run it inside the checkout.
 
-  <dotted.key>  e.g. rework.required_authors, ledger.timezone, verify.lookup
+  <dotted.key>  e.g. rework.required_authors, ledger.timezone, verify.lookup, code_policy.mode
   --json        always print {"outcome", "key", "value", "message"}; without a key, value is the
                 whole contract
   --enforce     the form a CI uses. The rule: no file -> empty output, exit 0; an invalid file ->
@@ -61,8 +61,11 @@ A string prints as-is, an array of strings one per line, anything else as JSON. 
 keys warn on stderr and do not fail. A usage error exits 2.
 """
 
-TOP_LEVEL = ("schema", "repo", "rework", "ledger", "verify", "failure")
+TOP_LEVEL = ("schema", "repo", "rework", "ledger", "verify", "failure", "code_policy")
 VERIFY_KEYS = ("lookup", "up", "down", "scenarios", "thresholds")
+CODE_POLICY_KEYS = ("mode", "include", "exclude", "exceptions", "allow_directives", "rule")
+CODE_POLICY_MODES = ("off", "report", "enforce")
+CODE_POLICY_KINDS = ("comment", "pattern")
 KEY_RE = re.compile(r"[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*")
 
 
@@ -137,6 +140,55 @@ def check_timezone(name: str) -> None:
         raise Invalid(key, "expected an IANA time zone name such as Asia/Tokyo")
 
 
+def check_code_policy(table: dict, warnings: list) -> None:
+    """[code_policy] holds the rules plumb-code-policy reports on newly introduced lines. The
+    comparator lives there; only the shape is decided here."""
+    if "mode" in table:
+        mode = table["mode"]
+        if not isinstance(mode, str) or mode not in CODE_POLICY_MODES:
+            raise Invalid("code_policy.mode", f"expected one of {', '.join(CODE_POLICY_MODES)}")
+    want_str_list(table, "code_policy", "include")
+    want_str_list(table, "code_policy", "exclude")
+    want_str(table, "code_policy", "exceptions")
+    want_str_list(table, "code_policy", "allow_directives")
+    rules = table.get("rule", [])
+    if not isinstance(rules, list):
+        raise Invalid("code_policy.rule", "expected an array of tables with id and kind")
+    seen = set()
+    for index, item in enumerate(rules):
+        here = f"code_policy.rule[{index}]"
+        if not isinstance(item, dict):
+            raise Invalid(here, "expected a table with id and kind")
+        if "id" not in item:
+            raise Invalid(f"{here}.id", "missing")
+        if not isinstance(item["id"], str) or not item["id"]:
+            raise Invalid(f"{here}.id", "expected a non-empty string")
+        if item["id"] == "non-regular":
+            raise Invalid(f"{here}.id", "non-regular is reserved for the built-in file type finding")
+        if item["id"] in seen:
+            raise Invalid(f"{here}.id", f"duplicate rule id {item['id']!r}")
+        seen.add(item["id"])
+        if "kind" not in item:
+            raise Invalid(f"{here}.kind", "missing")
+        kind = item["kind"]
+        if not isinstance(kind, str) or kind not in CODE_POLICY_KINDS:
+            raise Invalid(f"{here}.kind", f"expected one of {', '.join(CODE_POLICY_KINDS)}")
+        if kind == "pattern":
+            if "pattern" not in item:
+                raise Invalid(f"{here}.pattern", "missing (a pattern rule needs one)")
+            if not isinstance(item["pattern"], str) or not item["pattern"]:
+                raise Invalid(f"{here}.pattern", "expected a non-empty string")
+            try:
+                re.compile(item["pattern"])
+            except (re.error, OverflowError):
+                raise Invalid(f"{here}.pattern", "not a valid regular expression")
+        known = {"id", "kind", "pattern"} if kind == "pattern" else {"id", "kind"}
+        for extra in sorted(set(item) - known):
+            warnings.append(f"{here}.{extra}")
+    for extra in sorted(set(table) - set(CODE_POLICY_KEYS)):
+        warnings.append(f"code_policy.{extra}")
+
+
 def validate(doc: dict) -> list:
     """Raise Invalid on the first break of schema v1; return the unknown keys as warnings."""
     warnings: list = []
@@ -183,6 +235,10 @@ def validate(doc: dict) -> list:
         want_pairs(failure, "failure", "extra_codes", "code", "mechanism", warnings)
         warnings.extend(f"failure.{k}" for k in sorted(set(failure) - {"extra_codes"}))
 
+    if "code_policy" in doc:
+        policy = want_table(doc["code_policy"], "code_policy")
+        check_code_policy(policy, warnings)
+
     return warnings
 
 
@@ -207,12 +263,13 @@ def render(value: object) -> str:
 def contract_path() -> tuple:
     """(path, error). The path is asked from plumb-path; it is never rebuilt here."""
     try:
-        done = subprocess.run(["bash", str(PATH_SCRIPT), "project"], capture_output=True, text=True)
+        done = subprocess.run(["bash", str(PATH_SCRIPT), "project"], capture_output=True)
     except OSError:
         return None, "cannot run plumb-path"
-    if done.returncode != 0 or not done.stdout.strip():
+    path = done.stdout[:-1] if done.stdout.endswith(b"\n") else done.stdout
+    if done.returncode != 0 or not path:
         return None, "cannot locate the contract (run inside a git repository)"
-    return done.stdout.strip().splitlines()[0], None
+    return os.fsdecode(path), None
 
 
 def syntax_reason(error: Exception) -> str:

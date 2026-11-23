@@ -51,13 +51,16 @@ for a in "$@"; do
 done
 case "$kind" in root|spec|plan|history|run|project) ;; *) usage >&2; exit 2 ;; esac
 
-[ -n "$repo" ] || repo=$(git rev-parse --show-toplevel 2>/dev/null || true)
-
 # The contract is checked out with the code: no PLUMB_ROOT, no config, no common dir.
 if [ "$kind" = project ]; then
   if [ "$mk" -eq 1 ]; then
     echo "plumb-path: project has no --mkdir; the contract is written by people (docs/project-contract.md)" >&2
     exit 2
+  fi
+  if [ -z "$repo" ]; then
+    # Preserve a checkout name ending in LF through command substitution.
+    repo=$(git rev-parse --show-toplevel 2>/dev/null && printf '.') || repo=""
+    repo=${repo%$'\n.'}
   fi
   if [ -z "$repo" ]; then
     echo "run this inside a git repository, pass a repo path, or set PLUMB_ROOT to an absolute path" >&2
@@ -66,6 +69,8 @@ if [ "$kind" = project ]; then
   printf '%s\n' "$repo/.plumb/project.toml"
   exit 0
 fi
+
+[ -n "$repo" ] || repo=$(git rev-parse --show-toplevel 2>/dev/null || true)
 
 # run/ outlives a linked worktree: resolve it from the main worktree. A bare repository or a
 # submodule has no main working tree in the usual place, so it keeps the checkout it was given.

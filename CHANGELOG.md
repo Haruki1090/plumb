@@ -2,6 +2,15 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.30.0] - 2026-11-23
+
+### Added
+
+- `plumb-code-policy report` reads a `[code_policy]` table from the project contract and reports
+  comments and pattern rules (for example effect hooks and lint suppressions) on lines a branch
+  adds, minus an exceptions file. Report mode exits 0; enforce mode exits 1 on findings. Comment
+  detection is a documented line-local scan; precise detection is left to the project's linter.
+
 ## [0.29.0] - 2026-11-23
 
 ### Added
