@@ -12,6 +12,24 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
   the fixing and tests the assumption). `playbooks/perf-issue.md`, `playbooks/hillclimb.md` and
   `playbooks/fixing-a-bug.md` name them where they apply. The principle count is 25.
 
+- `plumb-lane stale`: lists running cockpit lanes whose latest recorded activity (last event, worktree
+  HEAD commit, report file) is older than `--factor` times the median start-to-collect time of that
+  kind of work (`--default-minutes` until `--min-samples` attempts exist). Read-only; `--strict` exits
+  1 when a lane is stale.
+- `plumb-decision-log <log> --start "<label>"` marks where a run begins in a shared log, and
+  `--audit` resolves every commit, pull request and file the log cites: `resolved`, `missing` or
+  `unchecked`, exit 1 on any `missing`. A word with a slash and no known extension is a reference only
+  when it exists.
+- `plumb-check-pr-body`: mechanical checks on a pull request body (required sections and their
+  order, length, fenced blocks over 15 lines, empty sections). `plumb-pr-watch <n>`: one pull
+  request's state as one word and one exit code; unknown data is `pending`, never `ready`.
+- `plumb-upstream-diff`: NOTICE records the upstream commit last read; the command lists what
+  changed under the upstream path since then, and `--unrecorded` lists upstream items `docs/scope.md`
+  does not name.
+- Code-policy exceptions take two optional columns, `expires` (`YYYY-MM-DD`) and `approved_by`. An
+  expired row stops suppressing and is reported as `expired-exception`. Three-column files behave as
+  before.
+
 ### Changed
 
 - The router asks for each reported claim to be marked measured, inferred or guessed, and for a check
