@@ -67,6 +67,7 @@ def make_repo() -> tuple[Path, str]:
     """A real repository with one commit whose 7-character hash holds both a letter and a digit."""
     repo = fresh("repo")
     git(repo, "init", "-q")
+    git(repo, "remote", "add", "origin", "https://example.invalid/org/repo.git")
     for attempt in range(40):
         (repo / "kept.txt").write_text(f"made up {attempt}\n")
         git(repo, "add", "kept.txt")
@@ -227,8 +228,9 @@ def _():
                     ["2", "abs", str(absolute)]], where=logdir)
     done = audit(log, cwd=where)
     got = statuses(done)
+    assert "missing/dir/x" not in got, "a slash-only word that is not there is prose, not a reference"
     assert got == {"only-cwd.md": "resolved", "only-repo.md": "resolved", "only-log.md": "resolved",
-                   "sub/nested.txt": "resolved", "nowhere.md": "missing", "missing/dir/x": "missing",
+                   "sub/nested.txt": "resolved", "nowhere.md": "missing",
                    str(absolute): "resolved"}, got
     assert done.returncode == 1
 
@@ -239,6 +241,34 @@ def _():
     done = audit(log)
     assert statuses(done) == {"kept.txt": "resolved"}, done.stdout
     assert len(refs(done)) == 1, "the same token in one cell is reported once"
+
+
+@case("words with a slash and no known extension are references only when the path exists")
+def _():
+    where = fresh("slashes")
+    (where / "plain-dir").mkdir()
+    (where / "plain-dir" / "noext").write_text("x")
+    log = log_with([["1", "prose", "and/or 1200/940 yes/no"], ["2", "paths", "plain-dir plain-dir/noext plain-dir/ghost"]],
+                   where=where)
+    done = audit(log, cwd=where)
+    assert statuses(done) == {"plain-dir/noext": "resolved"}, done.stdout  # "plain-dir" has no slash: not a path word
+    assert done.returncode == 0, "prose with a slash must never turn the exit code to 1"
+    done = audit(log, cwd=where, with_gh=False)
+    assert "and/or" not in done.stdout and "1200/940" not in done.stdout, done.stdout
+    where2 = fresh("slashes2")
+    (where2 / "a" / "b").mkdir(parents=True)
+    log2 = log_with([["1", "dir", "see a/b and also and/or"]], where=where2)
+    done = audit(log2, cwd=where2)
+    assert statuses(done) == {"a/b": "resolved"}, done.stdout
+    assert "rows without evidence: 0" in done.stdout, done.stdout
+
+
+@case("a word that ends in a known extension is a reference even when nothing is there")
+def _():
+    log = log_with([["1", "did", "x/y.md only.json"]])
+    done = audit(log)
+    assert statuses(done) == {"x/y.md": "missing", "only.json": "missing"}, done.stdout
+    assert done.returncode == 1
 
 
 @case("a URL is not a file")
@@ -268,6 +298,24 @@ def _():
     assert done.returncode == 0, (done.returncode, done.stdout, done.stderr)
     assert statuses(done) == {"#7": "resolved", "https://example.invalid/org/repo/pull/7": "resolved"}, done.stdout
     assert GH_CALLS.read_text().split("\n")[0] == "pr view 7 --json number", GH_CALLS.read_text()
+
+
+@case("a pull request URL of another repository than origin is unchecked and gh is not asked")
+def _():
+    GH_CALLS.write_text("")
+    log = log_with([["1", "merged", "https://example.invalid/other/thing/pull/7"]])
+    done = audit(log)
+    assert statuses(done) == {"https://example.invalid/other/thing/pull/7": "unchecked"}, done.stdout
+    assert GH_CALLS.read_text() == "", "gh must not be asked about another repository's number"
+    assert done.returncode == 0
+
+
+@case("a pull request URL that matches origin ignoring case and the .git suffix is checked")
+def _():
+    GH_CALLS.write_text("")
+    log = log_with([["1", "merged", "https://example.invalid/ORG/Repo/pull/7"]])
+    done = audit(log)
+    assert statuses(done) == {"https://example.invalid/ORG/Repo/pull/7": "resolved"}, done.stdout
 
 
 @case("a pull request gh says it cannot find is missing")

@@ -39,15 +39,19 @@ def trim(token: str) -> str:
     return token
 
 
-def file_candidate(raw: str) -> str | None:
-    """The path a whitespace-separated word names, or None when it does not look like one."""
+def file_candidate(raw: str) -> tuple[str, str] | None:
+    """The path a whitespace-separated word names: ("file", path) when it ends in a known extension (a
+    reference whether or not it exists), ("path", path) when it only contains a slash (a reference only
+    when it exists, so "and/or" and "1200/940" are prose). None when it is neither."""
     if "://" in raw:
         return None
     token = LINE_SUFFIX.sub("", trim(raw))
     if not token or not re.search(r"[0-9A-Za-z]", token):
         return None
-    if "/" in token or token.lower().endswith(FILE_EXTENSIONS):
-        return token
+    if token.lower().endswith(FILE_EXTENSIONS):
+        return "file", token
+    if "/" in token:
+        return "path", token
     return None
 
 
@@ -56,10 +60,11 @@ def references_in(cell: str) -> list[tuple[str, str]]:
     found: list[tuple[str, str]] = []
     blanked = cell
     for word in cell.split():
-        path = file_candidate(word)
-        if path is not None:
-            found.append(("file", path))
-            blanked = blanked.replace(word, " " * len(word), 1)  # a file name is not a commit hash
+        candidate = file_candidate(word)
+        if candidate is not None:
+            found.append(candidate)
+            if candidate[0] == "file":
+                blanked = blanked.replace(word, " " * len(word), 1)  # a file name is not a commit hash
     for word in cell.split():
         if "://" in word and PR_URL.search(word):
             found.append(("pr", trim(word)))
@@ -105,12 +110,23 @@ class Resolver:
                               capture_output=True, stdin=subprocess.DEVNULL)
         return "resolved" if done.returncode == 0 else "missing"
 
+    def origin_slug(self) -> str | None:
+        done = subprocess.run(["git", "-C", self.repo, "remote", "get-url", "origin"], capture_output=True,
+                              text=True, stdin=subprocess.DEVNULL)
+        match = re.search(r"[:/]([^/:]+/[^/:]+?)(?:\.git)?/?$", done.stdout.strip()) if done.returncode == 0 else None
+        return match.group(1).lower() if match else None
+
     def _pr(self, token: str) -> str:
         if not self.remote:
             return "unchecked"
         if self.repo is None:
             self.notes.add("not in a git repository: pull requests are unchecked")
             return "unchecked"
+        if "://" in token:
+            url = re.search(r"://[^/]+/([^/]+/[^/]+)/pull/\d+", token)
+            if url is None or url.group(1).lower() != self.origin_slug():
+                self.notes.add("a pull request URL names a repository other than origin (or origin is unknown): unchecked")
+                return "unchecked"
         if shutil.which("gh") is None:
             self.notes.add("gh is not on PATH: pull requests are unchecked")
             return "unchecked"
@@ -195,6 +211,10 @@ def main(argv: list[str]) -> int:
                 continue  # ts is written by the tool
             name = header[column] if column < len(header) else f"col{column}"
             for kind, token in references_in(cell):
+                if kind == "path":
+                    if resolver.resolve("file", token) != "resolved":
+                        continue  # a slash alone, with nothing there, is prose
+                    kind = "file"
                 references.append({"line": number, "column": name, "kind": kind, "token": token,
                                    "status": resolver.resolve(kind, token)})
                 count += 1
