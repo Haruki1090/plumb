@@ -24,21 +24,28 @@ taken back, so each condition ties it to evidence at the head being merged. With
 merges. With the key present, merge only when all four hold:
 
 1. **The base is not production.** It is not listed in `repo.production_branches` and is not the
-   repository's default branch (`git symbolic-ref --short refs/remotes/origin/HEAD`). Read the list
-   from the base branch's copy, never the PR head's, because a head must not grant itself merge
-   rights (`plumb:verify` trusts the base contract the same way): after `git fetch`, make a
-   throwaway worktree at `origin/<base>` and run `plumb-project --json repo.production_branches`
-   in it. Any outcome but `set` fails this condition. A PR that changes `.plumb/project.toml`
-   stays a ready PR.
-2. **A verdict covers this head.** The independent reviewer seat's verdict names the PR's current
-   head SHA. A verdict for an older head is void; after a rebase or a fix, redo the re-check in
-   `playbooks/landing-a-stack.md`, step 3.
+   default branch of the repository the PR is open against. Ask the forge for both names and
+   compare bare branch names: `gh pr view <n> --json baseRefName,url` and, for the repository in
+   that URL, `gh repo view <owner>/<name> --json defaultBranchRef`. A local ref such as
+   `origin/HEAD` can be stale, absent or a fork's; do not use it. Read the list from the base
+   branch's copy in that same repository, never the PR head's and never a fork's, because a head
+   must not grant itself merge rights (`plumb:verify` trusts the base contract the same way):
+   fetch `<base>` from the remote whose URL is that repository, make a throwaway worktree at the
+   fetched commit and run `plumb-project --json repo.production_branches` in it. No such remote,
+   a default branch you could not read, or any outcome but `set` fails this condition. A PR that
+   changes `.plumb/project.toml` stays a ready PR.
+2. **A passing verdict covers this head.** The independent reviewer seat's verdict is a pass with
+   no finding left open, and it names the PR's current head SHA. A failing verdict, a verdict you
+   wrote yourself, or one for an older head does not count; after a rebase or a fix, redo the
+   re-check in `playbooks/landing-a-stack.md`, step 3.
 3. **The PR is ready.** `plumb-pr-watch <n>` prints `ready`, with no `merge=blocked` and no
    `review=` detail asking for changes or a review.
 4. **It is on the ledger first.** The PR's row (`ready-pr`, `next` = merge) carries the verdict's
    SHA and the `plumb-pr-watch` output before you merge.
 
-Merge with the repository's own method, once. Never force it, never bypass a required check, never
+Merge with the repository's own method, once, pinned to the verdict's SHA
+(`gh pr merge <n> --match-head-commit <sha>`), so a push that lands after the checks is refused
+instead of merged. Never force it, never bypass a required check, never
 use an admin override, never delete the branch; when the forge refuses, the PR stays ready and goes
 up. Then read back: `plumb-pr-watch <n>` prints `merged` and the merge commit
 (`gh pr view <n> --json mergeCommit`) is an ancestor of `origin/<base>` after a fetch. Write a

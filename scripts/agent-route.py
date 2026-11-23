@@ -73,7 +73,7 @@ def main() -> int:
             if model in ALIASES:
                 updated["model"] = model
         prompt = tool_input.get("prompt")
-        if (isinstance(kind, str) and isinstance(prompt, str) and not prompt.startswith(MARKER)
+        if (isinstance(kind, str) and isinstance(prompt, str) and not (prompt == MARKER or prompt.startswith(MARKER + "\n"))
                 and os.path.isfile(RULES) and kind in rules_types()):
             updated["prompt"] = f"{MARKER}\n\n{prompt}"
         if updated == tool_input:

@@ -16,7 +16,8 @@ Run `plumb-doctor`. Read the `--` lines for `role.judge`, `role.bulk`, `role.imp
 `pane.driver`, `role.explorer.model`, `role.implementer.model` and `stack.tool`; those are unset.
 The doctor does not report `worker.rules.types`; ask it with `plumb-config worker.rules.types ""`. An `NG` line
 for a key already set is not this skill's job to hide: report it, and offer to fix that key too.
-`plumb-config --help` prints the path of the file; use that path, not a remembered one.
+The file is the one `PLUMB_CONFIG` names when that variable is set, and `~/.claude/plumb/config`
+otherwise; check the variable, do not use a remembered path.
 
 ## 2. Settle, in one batched question
 

@@ -187,7 +187,7 @@ putting the current parent against the head of that time reports even a PR that 
 write it).
 **Compare per PR, on the diff from that PR's parent.** Standing in the single head commit for the
 whole thing misjudges it.
-Anything whose fingerprint changed goes through step 3 again.
+Anything whose fingerprint changed goes through step 3 again, at the depth the table below gives.
 
 **How much to verify again depends on the kind of change.** A verdict carries forward only while
 the patch is unchanged (the fingerprint above).
@@ -195,8 +195,9 @@ the patch is unchanged (the fingerprint above).
 | What changed | What runs |
 |---|---|
 | The code is ready | The full independent verification, once, at that head |
-| A rebase, a conflict resolution, a small fix | One verifier on the changed range, not the full pass |
-| Wording only: comments, docs, PR text | None |
+| A rebase, a conflict resolution, a small fix | One verifier on the changed range, not the full pass; the verdict is issued again at the new head |
+| Wording only inside the diff: comments, docs | The reviewer seat confirms the range between the two heads is wording only and issues the verdict again at the new head |
+| The PR text only (the head did not move) | None |
 
 **Noise has a definition.** A difference that also appears when the same commit is built twice
 (timestamps, embedded commit SHAs, ordering) is noise. Anything else is a change, and it voids the

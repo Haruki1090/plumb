@@ -46,7 +46,8 @@ In Japanese:
 2. **A tool checks the result.** A test command, a script, a verifier. If the only check is the agent's
    own say-so, it is not a check.
 3. **Every step can be stopped.** Nothing in the loop is irreversible without your approval, and you can
-   interrupt it at any point.
+   interrupt it at any point. A merge is irreversible: `repo.production_branches` in the contract is that
+   approval given in advance, for branches below production only. Leave the key out and nothing merges.
 4. **Earlier transcripts were read.** The failure that repeated across them has been turned into a tool,
    not a reminder. `plumb-session-audit` reads the sessions; `plumb:failure-to-rule` takes a failure to
    the layer that stops it.
