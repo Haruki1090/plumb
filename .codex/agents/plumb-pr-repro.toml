@@ -1,3 +1,4 @@
+# source: agents/pr-repro.md sha256:bf78bfa9d41e692478944451356080769e627169ddf28a901c1a5230afe6c840
 name = "plumb_pr_repro"
 description = "Reproduction agent that writes the smallest failing test inside an isolated worktree."
 model = "gpt-5.6-luna"

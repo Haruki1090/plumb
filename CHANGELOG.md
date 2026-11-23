@@ -61,6 +61,11 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
 - `docs/scope.md` records the second reading of upstream: a decision for every upstream skill,
   principle, agent and guide page, and dated notes where the first record is no longer true.
 
+- `plumb-enforcement` and `docs/enforcement.tsv`: each hard rule, where it is stated, and whether a
+  check, a hook, a command or only prose holds it. `plumb-doctor` prints the counts.
+- `plumb-sidecar-agents-check`: each Codex agent file names its `agents/*.md` source and that file's
+  hash; the harness check fails when a source changed and its condensed copy did not.
+
 ### Changed
 
 - The router asks for each reported claim to be marked measured, inferred or guessed, and for a check
