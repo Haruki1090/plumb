@@ -8,6 +8,8 @@ Read the relevant existing flow and constraints. Distinguish product choices (wh
 
 Ask only when missing information materially changes the result or permission and cannot be inferred from the request. A new component alone does not require a separate approval ceremony. If the user asks to see a plan before implementation, show the concrete plan first and honor the requested stopping point.
 
+A description that could name more than one problem gets the wrong option built. When the problem has no settled name yet, write down the two or three problems it could be, each with the name practitioners give it and the observation that would separate it from the others, and say which one the evidence favors and why. A name borrowed from a neighboring field comes with the point where the borrowing stops holding. Cite a source for a term only after opening it and seeing it used that way; drop a citation you could not check.
+
 Scale the record to the work: a probe returns evidence and a recommendation; a local change may need only a few lines; structural work may need a durable spec. Reassess the scale when evidence changes, including when the problem becomes simpler.
 
 ## Compare meaningful alternatives

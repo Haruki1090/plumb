@@ -2,7 +2,7 @@
 """Report findings on lines added between a merge base and a worktree.
 
 The project contract defines scope, rules, exceptions, and whether findings fail the run.
-The built-in comment scan is line-local. See docs/project-contract.md for its limits.
+The built-in comment scans use only the added lines of one file. See docs/project-contract.md for their limits.
 """
 from __future__ import annotations
 
@@ -26,6 +26,32 @@ NO_NEWLINE = rb"\ No newline at end of file"
 HUNK_HEADER = re.compile(rb"@@ -[0-9]+(?:,([0-9]+))? \+([0-9]+)(?:,([0-9]+))? @@(?: |$)")
 # Match complete same-line literals before looking for comment markers.
 COMMENT_TOKENS = re.compile(r"""'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`|(//|/\*)""")
+HASH_SUFFIXES = (".py", ".sh", ".bash", ".zsh", ".rb", ".pl", ".r", ".yaml", ".yml", ".toml", ".tf",
+                 ".ps1", ".cmake", ".mk")
+HASH_NAMES = ("Makefile", "Dockerfile")
+SEQUENCE_KINDS = ("comment-block", "commented-code")
+CODE_END = re.compile(r"[;{}]$")
+CLOSE_PAREN = re.compile(r"\)\s*;?$")
+IDENT_CALL = re.compile(r"[A-Za-z_][\w.]*\(", re.ASCII)
+DOC_MARKERS = ("///", "//!", "/**", "/*!")
+TRIPLE = ('"""', "'''")
+CODE_START = re.compile(r"(?:(?:return|if|for|while|const|let|var|import|from|def|class|function|final|"
+                        r"await|async|export|elif|except)\b|else:|try:)")
+STATEMENT_END = re.compile(r"[;{}:]\s*$")
+ASSIGNMENT = re.compile(r"(?:(?:const|let|var|final|val)\s+)?[A-Za-z_][\w.\[\]]*\s*"
+                        r"(?:\+=|-=|(?<![=!<>])=(?!=))\s*(?P<rhs>\S.*)$", re.ASCII)
+CALL_HEAD = re.compile(r"(?:await\s+)?[A-Za-z_][\w.]*\(", re.ASCII)
+FOR_LOOP = re.compile(r"for\b.*(?:\sin\s|\sof\s|\()", re.ASCII)
+PROSE_RUN = re.compile(r"(?=\b([A-Za-z]+) ([A-Za-z]+) ([A-Za-z]+)\b)", re.ASCII)
+WORD_PAIR = re.compile(r"[A-Za-z]+\s+[A-Za-z]+", re.ASCII)
+LITERAL = re.compile(r"'(?:[^'\\]|\\.)*'" r'|"(?:[^"\\]|\\.)*"' r"|`(?:[^`\\]|\\.)*`")
+PROSE = re.compile(r"[A-Z][a-z]*:?\s+[a-z]")
+TOKEN = re.compile(r"[A-Za-z_]\w*|\d[\w.]*|\S", re.ASCII)
+KEYWORDS = frozenset((
+    "and", "as", "async", "await", "class", "const", "def", "default", "elif", "else", "except",
+    "export", "final", "finally", "for", "from", "function", "if", "import", "in", "instanceof", "is",
+    "lambda", "let", "new", "not", "of", "or", "return", "static", "try", "typeof", "val", "var",
+    "while", "with", "yield"))
 
 USAGE = """usage: plumb-code-policy report [--base REF] [--json] [--paths-from FILE] [--worktree DIR]
 
@@ -51,6 +77,14 @@ reported as `expired-exception` at line 0.
 
 The comment kind scans each added line for // or /* outside a quote or backtick pair that
 closes on that line. Standalone allow_directives entries are the only allowance.
+
+The comment-block kind (min_lines = N, an integer of at least 2) reports one finding per run of
+at least N consecutive added comment-only lines, at the run's first line. The commented-code kind
+reports one finding per run of consecutive added comment-only lines that look like code. A
+comment-only line starts with //, /* or */, or sits inside an open /* ... */ block; in .py .sh
+.bash .zsh .rb .pl .r .yaml .yml .toml .tf .ps1 .cmake .mk, Makefile and Dockerfile files it
+starts with # instead (a #! first line is not one). Added lines that are not consecutive never
+join a run, and a line that already existed is never counted.
 The project contract and the scan's limits are described in docs/project-contract.md.
 
 Exit 0 means clean, skip or report-mode findings. Exit 1 means enforce-mode findings.
@@ -258,6 +292,229 @@ def comment_hit(line: str, directives: tuple) -> bool:
             and any(token.group(1) for token in COMMENT_TOKENS.finditer(line)))
 
 
+def uses_hash_marker(name: str) -> bool:
+    base = os.path.basename(name)
+    return base in HASH_NAMES or os.path.splitext(base)[1].lower() in HASH_SUFFIXES
+
+
+def comment_body(text: str, hash_marker: bool) -> str:
+    """The text of a comment-only line with its marker removed."""
+    if hash_marker:
+        return text[1:].strip()
+    if text.endswith("*/"):
+        text = text[:-2]
+    if text.startswith("//"):
+        text = text.lstrip("/")
+    elif text.startswith("/*"):
+        text = text[2:].lstrip("*")
+    elif text.startswith("*"):
+        text = text[1:]
+    return text.strip()
+
+
+def scan_c(text: str, in_block: bool) -> tuple:
+    """Return (comment_only, in_block_after) for one stripped line of a C-family file.
+
+    A line is comment-only when it holds nothing but comment text: a /* */ pair may be followed only
+    by whitespace, another comment or a // comment, never by code. A block opens only on a
+    comment-only line, so a /* that follows code does not start one."""
+    rest = text
+    if in_block:
+        end = rest.find("*/")
+        if end < 0:
+            return True, True
+        rest = rest[end + 2:].strip()
+    elif not rest.startswith(("//", "/*", "*/")):
+        return False, False
+    while True:
+        if rest == "" or rest.startswith("//"):
+            return True, False
+        if rest.startswith("*/"):
+            rest = rest[2:].strip()
+        elif rest.startswith("/*"):
+            end = rest.find("*/", 2)
+            if end < 0:
+                return True, True
+            rest = rest[end + 2:].strip()
+        else:
+            return False, False
+
+
+def is_doc(text: str) -> bool:
+    return text.startswith(DOC_MARKERS) and not text.startswith("/**/")
+
+
+def triple_state(text: str, quote):
+    """The open triple-quote delimiter (or None) after one line of a # file, given the one before it.
+
+    Outside a string, a # starts a comment that ends the scan, and a '...' or "..." literal that
+    closes on the line is skipped."""
+    index = 0
+    while index < len(text):
+        if quote:
+            end = text.find(quote, index)
+            while end >= 0:
+                backslashes = 0
+                while end - backslashes - 1 >= index and text[end - backslashes - 1] == "\\":
+                    backslashes += 1
+                if backslashes % 2 == 0:
+                    break
+                end = text.find(quote, end + 1)
+            if end < 0:
+                return quote
+            index, quote = end + 3, None
+            continue
+        char = text[index]
+        if char == "#":
+            return None
+        if text.startswith(TRIPLE, index):
+            quote, index = text[index:index + 3], index + 3
+        elif char in "'\"":
+            close = index + 1
+            while close < len(text) and text[close] != char:
+                close += 2 if text[close] == "\\" else 1
+            if close >= len(text):
+                return None
+            index = close + 1
+        else:
+            index += 1
+    return quote
+
+
+def comment_lines(lines: list, name: str, directives: tuple) -> list:
+    """Pair each (number, text) line with its comment body and a doc flag.
+
+    The body is None when the line is not comment-only. The doc flag marks doc comments (///, //!,
+    and the lines of a /** or /*! block), which count for comment-block but never as commented-out
+    code. State (an open /* block, an open triple-quoted string) resets at a gap in line numbers,
+    because the lines between hunks are not visible."""
+    hash_marker = uses_hash_marker(name)
+    in_block = False
+    block_doc = False
+    quote = None
+    previous = None
+    result = []
+    for number, line in lines:
+        text = line.strip()
+        if previous is None or number != previous + 1:
+            in_block, block_doc, quote = False, False, None
+        previous = number
+        comment = doc = False
+        if hash_marker:
+            if quote is None and text.startswith("#"):
+                comment = not (number == 1 and text.startswith("#!"))
+            else:
+                quote = triple_state(text, quote)
+        elif not in_block and directive_body(line) in directives:
+            pass
+        else:
+            was_block = in_block
+            comment, in_block = scan_c(text, in_block)
+            if was_block:
+                doc = comment and block_doc
+            else:
+                doc = comment and is_doc(text)
+                block_doc = in_block and is_doc(text)
+        result.append((number, text, comment_body(text, hash_marker) if comment else None, doc))
+    return result
+
+
+def prose_run(text: str) -> bool:
+    """Three plain words in a row, none of them a keyword ("return values are listed")."""
+    return any(not KEYWORDS.intersection(words) for words in PROSE_RUN.findall(text))
+
+
+def adjacent_operands(text: str) -> bool:
+    """Whether two operands stand side by side with no operator between them, as in prose.
+
+    "retry() fails" puts the word fails right after a call; code needs an operator or a keyword
+    there ("ready and done", "x is None")."""
+    previous = False
+    for token in TOKEN.findall(text):
+        word = token[0].isalpha() or token[0] == "_"
+        operand = (word and token not in KEYWORDS) or token[0].isdigit()
+        if operand and previous:
+            return True
+        previous = operand or token in (")", "]", '""')
+    return False
+
+
+def whole_call(body: str) -> bool:
+    """Whether the body is one call (or a chain of calls) and nothing after it but an optional ;.
+
+    Parentheses are matched with string literals skipped, so "retry() handles (timeouts)" is a call
+    followed by prose, not a call."""
+    head = CALL_HEAD.match(body)
+    if not head:
+        return False
+    depth, index, quote = 1, head.end(), None
+    while index < len(body):
+        char = body[index]
+        if quote:
+            if char == "\\":
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+        elif char in "'\"`":
+            quote = char
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                rest = body[index + 1:].strip()
+                return rest in ("", ";") or (rest.startswith(".") and whole_call(rest[1:]))
+        index += 1
+    return False
+
+
+def looks_like_code(body: str) -> bool:
+    """Whether a comment body is, as a whole, one statement of code.
+
+    A comment that mentions code inside prose ("remove retry() later") is not code. The body counts
+    only when the whole of it is a call, a keyword statement that ends like one (; { } or a Python
+    block colon), or an assignment whose right side holds no run of words. Three plain words in a
+    row outside string literals mark prose, whatever else the line holds."""
+    bare = LITERAL.sub('""', body)
+    if "://" in body or PROSE.match(body) or prose_run(bare) or not bare.isascii():
+        return False
+    if whole_call(body):
+        return True
+    if CODE_START.match(body) and STATEMENT_END.search(body):
+        if body.startswith("for") and FOR_LOOP.match(body) is None:
+            return False
+        return not adjacent_operands(bare)
+    assignment = ASSIGNMENT.match(body)
+    return assignment is not None and not WORD_PAIR.search(LITERAL.sub('""', assignment.group("rhs")))
+
+
+def runs_of(items: list, wanted) -> list:
+    """Maximal runs of consecutive line numbers whose items satisfy wanted, as lists of items."""
+    runs = []
+    current = []
+    for item in items:
+        if wanted(item) and (not current or current[-1][0] == item[0] - 1):
+            current.append(item)
+            continue
+        if current:
+            runs.append(current)
+        current = [item] if wanted(item) else []
+    if current:
+        runs.append(current)
+    return runs
+
+
+def sequence_hits(rule: dict, items: list) -> list:
+    """Findings of a comment-block or commented-code rule as (line, excerpt) pairs."""
+    if rule["kind"] == "comment-block":
+        runs = runs_of(items, lambda item: item[2] is not None)
+        return [(run[0][0], f"{len(run)} comment lines: {run[0][1]}"[:80])
+                for run in runs if len(run) >= rule["min_lines"]]
+    runs = runs_of(items, lambda item: item[2] is not None and not item[3] and looks_like_code(item[2]))
+    return [(run[0][0], f"{len(run)} commented-out lines: {run[0][1]}"[:80]) for run in runs]
+
+
 def parse_date(text: str):
     if not DATE_FORM.fullmatch(text):
         return None
@@ -362,17 +619,27 @@ def scan(rules: list, added: dict, file_types: dict, top: bytes, scoped,
                 lines = sorted(tracked_lines.items())
         except (OSError, ScanError) as error:
             raise ScanError(f"cannot read source {name!r}: {error}") from error
-        for number, payload in lines:
-            line = payload.decode("utf-8-sig" if number == 1 else "utf-8", errors="replace")
-            for rule in rules:
-                if (rule["id"], name) in exceptions:
-                    continue
+        decoded = [(number, payload.decode("utf-8-sig" if number == 1 else "utf-8", errors="replace"))
+                   for number, payload in lines]
+        hits = []
+        items = None
+        for position, rule in enumerate(rules):
+            if (rule["id"], name) in exceptions:
+                continue
+            if rule["kind"] in SEQUENCE_KINDS:
+                if items is None:
+                    items = comment_lines(decoded, name, directives)
+                hits += [(number, position, excerpt) for number, excerpt in sequence_hits(rule, items)]
+                continue
+            for number, line in decoded:
                 if rule["kind"] == "comment":
                     hit = comment_hit(line, directives)
                 else:
                     hit = rule["regex"].search(line) is not None
                 if hit:
-                    found.append({"rule": rule["id"], "path": name, "line": number, "excerpt": line.strip()[:80]})
+                    hits.append((number, position, line.strip()[:80]))
+        for number, position, excerpt in sorted(hits, key=lambda hit: hit[:2]):
+            found.append({"rule": rules[position]["id"], "path": name, "line": number, "excerpt": excerpt})
     return found
 
 
@@ -431,7 +698,7 @@ def main(argv: list) -> int:
 
     rules = []
     for item in table.get("rule") or []:
-        rule = {"id": item["id"], "kind": item["kind"], "regex": None}
+        rule = {"id": item["id"], "kind": item["kind"], "regex": None, "min_lines": item.get("min_lines")}
         if item["kind"] == "pattern":
             rule["regex"] = re.compile(item["pattern"])
         rules.append(rule)

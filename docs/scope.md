@@ -238,8 +238,8 @@ gets lost among 34 `__pycache__` directories.
 
 ## Read again at 0.15.46 (2026-11-23)
 
-**The upstream was read a second time on 2026-11-23, at the commit `NOTICE` records (version
-0.15.46).** The first reading covered playbooks and principles only. This one also took the
+**The upstream was read a second time on 2026-11-23, at `7a58391` (version
+0.15.46).** *(2026-11-24: `NOTICE` now records 0.15.48, whose only new item is `reframe`, recorded in the skills table below.)* The first reading covered playbooks and principles only. This one also took the
 skills, the agents, the guide pages and the automations, and plumb then took a number of things
 (`CHANGELOG.md` 0.31.0). The text was read for what failure each item exists to prevent and then
 closed; what plumb carries is written in its own words, so the claim in `NOTICE` that nothing is
@@ -282,7 +282,7 @@ rewrite of 2026-08-31 already covers all of them except the new three.
 | `reflect` | ported as `skills/reflect` | At most five changes from one session, routed to the layer that owns them, applied only after approval |
 | `poteto-help` | ported as `skills/help` | Answers and hands back the prompt; never starts the work |
 | `setup-pstack` | ported as `skills/configure` (roles and drivers) | **The effort-budget part is not taken**: effort is a per-call setting by role (`docs/role-map.md`, "Where effort goes up"), and a stored budget would be a second source for it |
-| `correct` | folded | Optional `expires` and `approved_by` columns on code-policy exceptions (`docs/project-contract.md`); history mining in `skills/retro`. **The table that maps each rule to its enforcing mechanism is not taken yet** |
+| `correct` | folded | Optional `expires` and `approved_by` columns on code-policy exceptions (`docs/project-contract.md`); history mining in `skills/retro`. The table that maps each rule to its enforcing mechanism is `docs/enforcement.tsv`, read by `plumb-enforcement` (*2026-11-24: this row said "not taken yet" until that table landed*) |
 | `arena` | folded into `playbooks/prototype.md` | Racing one brief across model families, a judge from another family, and grafting |
 | `swarm` | folded into `playbooks/fan-out.md` | Every result carries the SHA and the method it was measured with; a result without them is discarded and run once more; a gap is not a pass |
 | `figure-it-out` | ported as `playbooks/designing-a-run.md` | Work no playbook fits: a predicate a command decides, the verifier and its baseline before the work |
@@ -291,9 +291,11 @@ rewrite of 2026-08-31 already covers all of them except the new three.
 | `why`, `how`, `in-your-own-words`, `sharpen` | folded as lines in `playbooks/investigation.md` and `playbooks/fixing-a-bug.md` | Answer "why" from the record and say what the record does not answer; restate a long or vague report in your own words before reading code. **The four sharpening questions as a separate skill are not taken** |
 | `tdd` | folded into `playbooks/fixing-a-bug.md` | The failing repro is committed before the fix; no test beats a bad test |
 | `no-comments` | not taken as a skill | `plumb-code-policy` reports the comments and effect hooks a branch adds, and `docs/project-contract.md` says how to clear one: encode the constraint, then delete the comment |
-| `unslop`, `technical-writing` | not taken yet | `plumb-check-pr-body` covers only the mechanical part of a pull request body (sections, order, length, fenced blocks) |
+| `unslop` | ported as `docs/writing.md`, with a Japanese counterpart in `docs/writing-ja.md` (*2026-11-24*) | Numbered rules with stable ids for prose a person reads, written in plumb's own words. Kept out: the ban on dashes (plumb's corpus uses them) and the ban on "harness" and other words plumb uses as names. Not a skill, so the model-read description budget does not grow; the router's reporting paragraph and `playbooks/opening-a-pr.md` point at it |
+| `technical-writing` | not taken yet | The four layers (document modes, sentence style for developer docs, simplified technical English for instructions, unambiguous syntax for non-native readers). `plumb-check-pr-body` covers the mechanical part of a pull request body; `docs/writing.md` covers the habits of generated prose |
 | `interrogate` | already `plumb:interrogate` | It exists as an axis of the pull-request review; the standalone form is not taken |
 | `architect` | not taken | plumb has `playbooks/shaping-the-work.md` and the principles; a second entry point would split the source of truth |
+| `reframe` | folded into `playbooks/shaping-the-work.md` (*added upstream in 0.15.48, 2026-11-24*) | When a description could name more than one problem: the candidates, the name practitioners use for each, the sign that separates them, and a source cited only after it was opened. **Not taken as a skill**, for the reason given for `architect` and `sharpen` |
 | `teach`, `bro`, `automate-me`, `ketchup-video`, `make-bot-ui`, `typescript-best-practices` | not taken | Personal style, another product's features, or one language; plumb is language-neutral |
 | `poteto-mode` | the router itself (root `SKILL.md`) | Its worker file became `docs/worker-rules.md`, delivered by the Agent hook when `worker.rules.types` is set |
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression suite for the `repo.production_branches` key of the project contract.
+"""Regression suite for the `repo.production_branches` key and the `code_policy.rule` kinds of the project contract.
 
     python3 -B scripts/test-project-contract.py
 
@@ -95,6 +95,42 @@ def main() -> int:
     code, out, err = run("repo.production_branches")
     check("other unknown repo keys still warn, and this one does not",
           code == 0 and out == "main" and "warning: unknown key repo.weird" in err and "production_branches" not in err, repr((code, out, err)))
+
+    def rule(body: str) -> str:
+        return f'[code_policy]\nmode = "report"\n[[code_policy.rule]]\nid = "r"\n{body}'
+
+    for label, body in (
+        ("comment-block with min_lines 4", 'kind = "comment-block"\nmin_lines = 4'),
+        ("comment-block with min_lines 2", 'kind = "comment-block"\nmin_lines = 2'),
+        ("commented-code without keys", 'kind = "commented-code"'),
+    ):
+        write(rule(body))
+        code, out, err = run("code_policy.mode")
+        check(f"{label} is valid and warns about nothing", (code, out, err) == (0, "report", ""), repr((code, out, err)))
+
+    for label, body, key in (
+        ("comment-block without min_lines", 'kind = "comment-block"', "code_policy.rule[0].min_lines"),
+        ("min_lines 1", 'kind = "comment-block"\nmin_lines = 1', "code_policy.rule[0].min_lines"),
+        ("min_lines 0", 'kind = "comment-block"\nmin_lines = 0', "code_policy.rule[0].min_lines"),
+        ("a boolean min_lines", 'kind = "comment-block"\nmin_lines = true', "code_policy.rule[0].min_lines"),
+        ("a string min_lines", 'kind = "comment-block"\nmin_lines = "4"', "code_policy.rule[0].min_lines"),
+        ("a float min_lines", 'kind = "comment-block"\nmin_lines = 4.0', "code_policy.rule[0].min_lines"),
+        ("an unknown kind", 'kind = "comment-blocks"', "code_policy.rule[0].kind"),
+    ):
+        write(rule(body))
+        code, out, err = run("code_policy.mode")
+        check(f"{label} is invalid and names {key}",
+              code == 2 and out == "" and err.startswith(f"plumb-project: invalid: {key}: "), repr((code, out, err)))
+
+    for kind in ('comment', 'commented-code'):
+        write(rule(f'kind = "{kind}"\nmin_lines = 4'))
+        code, out, err = run("code_policy.mode")
+        check(f"min_lines on a {kind} rule is only a warning",
+              code == 0 and out == "report" and "warning: unknown key code_policy.rule[0].min_lines" in err, repr((code, out, err)))
+    write(rule('kind = "pattern"\npattern = "x"\nmin_lines = 4'))
+    code, out, err = run("code_policy.mode")
+    check("min_lines on a pattern rule is only a warning",
+          code == 0 and "warning: unknown key code_policy.rule[0].min_lines" in err, repr((code, out, err)))
 
     shutil.rmtree(ROOT, ignore_errors=True)
     print(f"{len(FAILED)} NG" if FAILED else "all ok")

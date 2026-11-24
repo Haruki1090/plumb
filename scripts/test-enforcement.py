@@ -294,11 +294,11 @@ def _():
     assert summary.startswith("enforcement: ") and ", prose " in summary, summary
 
 
-@case("this checkout's table has 50 to 90 rules, at least 20 of them prose")
+@case("this checkout's table has 50 to 120 rules, at least 20 of them prose")
 def _():
     counts = json.loads(run(PLUGIN, "--json").stdout)["counts"]
     total = sum(counts.values())
-    assert 50 <= total <= 90 and counts["prose"] >= 20, counts
+    assert 50 <= total <= 120 and counts["prose"] >= 20, counts
 
 
 shutil.rmtree(ROOT, ignore_errors=True)

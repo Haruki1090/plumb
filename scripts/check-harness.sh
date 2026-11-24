@@ -422,5 +422,94 @@ for path in sorted((root / ".codex/agents").glob("*.toml")):
   fi
 fi
 
+# 16. The descriptions the model reads at the start of every session stay within one budget.
+#     Every skill without disable-model-invocation puts its description into each session's fixed
+#     prompt, so each new skill makes every session heavier. 2026-11-24: making skills user-invoked to
+#     save that weight was measured (four candidates came to 1,989 bytes, about 500 tokens) and
+#     rejected, because a user-invoked skill no longer fires from what the owner says. The budget
+#     holds the total instead: a new or longer description has to buy its bytes by shortening
+#     another, and a shortened description is checked with plumb-trigger-eval on its own cases.
+#     Measured: the bytes of the description value in the frontmatter of every target whose frontmatter
+#     does not set disable-model-invocation to true (a trailing # comment allowed). The rule does not
+#     parse YAML in general; it accepts only the form it can measure exactly, a one-line plain value or
+#     a one-line quoted value with no quote or backslash inside, and reports anything else as NG: a
+#     block or folded scalar, a continued line, an escaped quote. A body line that looks like a setting
+#     does not count, and only an unindented --- closes the frontmatter. No frontmatter, no
+#     description, or no target at all is NG rather than zero bytes. Set at 7,675 bytes measured on 2026-11-24, plus 25.
+DESC_BUDGET=7700
+if command -v python3 >/dev/null 2>&1; then
+  desc_out=$(targets | python3 -c '
+import re, sys
+def frontmatter(text):
+    lines = [l[:-1] if l.endswith("\r") else l for l in text.split("\n")]
+    if not lines or lines[0] != "---":
+        return None
+    for i in range(1, len(lines)):
+        if lines[i] == "---":
+            return lines[1:i]
+    return None
+def field(lines, key):
+    for i, line in enumerate(lines):
+        if line.startswith(key + ":"):
+            nxt = [l for l in lines[i + 1:] if l.strip(" \t")]
+            follows = bool(nxt) and nxt[0][:1] in (" ", "\t")
+            return line[len(key) + 1:].strip(" \t"), follows
+    return None, False
+def one_line(value, follows):
+    if follows or not value or value[0] in "|>&*!%@`":
+        return None
+    if value[0] in "\"\x27":
+        q = value[0]
+        if len(value) < 2 or value[-1] != q or q in value[1:-1] or "\\" in value:
+            return None
+        return value[1:-1]
+    return value
+files = errors = total = 0
+rows = []
+for path in sys.stdin.read().split("\n"):
+    if not path:
+        continue
+    files += 1
+    fm = frontmatter(open(path, encoding="utf-8").read())
+    if fm is None:
+        errors += 1; print("error\tno frontmatter\t" + path); continue
+    keys = [l.split(":", 1)[0] for l in fm if l[:1] not in ("", " ", "\t", "#") and ":" in l]
+    if len(keys) != len(set(keys)):
+        errors += 1; print("error\tfrontmatter repeats a key\t" + path); continue
+    flag, flag_follows = field(fm, "disable-model-invocation")
+    if flag is not None and flag_follows:
+        errors += 1; print("error\tdisable-model-invocation is not one line\t" + path); continue
+    if flag is not None and re.fullmatch(r"true([ \t]+#.*)?", flag):
+        continue
+    raw, follows = field(fm, "description")
+    if raw is None:
+        errors += 1; print("error\tno description\t" + path); continue
+    desc = one_line(raw, follows)
+    if desc is None:
+        errors += 1; print("error\tdescription is not one plain or simply quoted line\t" + path); continue
+    n = len(desc.encode("utf-8"))
+    total += n
+    rows.append((n, path))
+for n, path in sorted(rows, reverse=True)[:5]:
+    print("top\t%d\t%s" % (n, path))
+print("total\t%d\t%d\t%d" % (total, files, errors))
+')
+  read -r _ desc_total desc_files desc_errors < <(printf '%s\n' "$desc_out" | grep '^total' | tr '\t' ' ')
+  printf '%s\n' "$desc_out" | grep '^error' | while IFS=$'\t' read -r _ why path; do note "NG" "description budget: ${why}: ${path#$root/}"; done
+  if [ "${desc_files:-0}" -eq 0 ]; then
+    note "NG" "description budget: no skill files found"; fail=1
+  elif [ "${desc_errors:-1}" -ne 0 ]; then
+    fail=1
+  elif [ "$desc_total" -le "$DESC_BUDGET" ]; then
+    note "ok" "model-read skill descriptions within budget (${desc_total} / ${DESC_BUDGET} bytes)"
+  else
+    note "NG" "model-read skill descriptions over budget (${desc_total} / ${DESC_BUDGET} bytes); longest:"
+    printf '%s\n' "$desc_out" | grep '^top' | while IFS=$'\t' read -r _ n path; do printf '       %s %s\n' "$n" "${path#$root/}"; done
+    fail=1
+  fi
+else
+  note "--" "description budget: skipped, python3 is unavailable"
+fi
+
 if [ $fail -eq 0 ]; then echo "  → passed (SKILL.md ${scanned} / playbooks ${pbs} / principles ${prs} / agents ${ags})"; else echo "  → failed"; fi
 exit $fail
