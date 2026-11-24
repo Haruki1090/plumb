@@ -88,3 +88,4 @@ A failing doctor item is fixed, never hidden by loosening the expectation.	skill
 An instruction written twice becomes a lint, a check or a script.	principles/encode-lessons-in-structure.md	prose	-
 A claim of done is gated on a command run this turn.	principles/gate-claims-on-evidence.md	prose	-
 After two fixes fail at the same gate, the assumption is tested before a third fix.	principles/attack-the-premise.md	prose	-
+New prose for a person follows the numbered writing rules, English or Japanese.	SKILL.md#Apply only the relevant workflow	prose	-

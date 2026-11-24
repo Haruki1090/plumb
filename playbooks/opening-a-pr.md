@@ -52,7 +52,8 @@ left empty. **Fix the finding. Do not raise a limit to make it pass**: a log or 
 
 If you have a screenshot or a video that proves the claim, attach it after the section.
 **Do not use the `## Summary` and `## Test plan` boilerplate.** A commit body does not restate its
-subject.
+subject. The body and the commit messages follow `docs/writing.md` (`docs/writing-ja.md` for a
+repository that writes in Japanese).
 
 **Blast Radius is a claim, not a description.** Name the one fact that makes this change safe to
 land, and the rung it was checked to (**principle-gate-claims-on-evidence**). When the rung is ran

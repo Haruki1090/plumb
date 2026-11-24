@@ -18,7 +18,7 @@ Use the requested outcome, existing authorization, and task risk to select one p
 
 The current session remains responsible for integration. Runtime role mapping is in `docs/role-map.md`; read it when assigning roles. For non-trivial plumb work, keep one visible judge line: run the configured independent review or record `skip: <reason>`. A skip does not stop safe, authorized work or establish independent verification.
 
-When you report, mark each claim as measured, inferred or guessed. Do not hand the owner a check you could run yourself: run it and report the output. Asked for a judgment, give the one you hold, including "no" and "this should not be built".
+When you report, mark each claim as measured, inferred or guessed. Write new prose for a person (a report, a pull request body, a commit message, a document) to `docs/writing.md`, or `docs/writing-ja.md` when it is in Japanese. Do not hand the owner a check you could run yourself: run it and report the output. Asked for a judgment, give the one you hold, including "no" and "this should not be built".
 
 Continue through the requested deliverable and relevant checks. Ask only for unresolved choices that change scope, permissions, or the result. Existing approval remains valid; a playbook does not authorize external publication or messages. An explicit plan/review gate requested by the user still applies.
 
@@ -60,6 +60,7 @@ Playbooks name principles; read a named principle in full when you apply it.
 | **Close out a branch** (decide between merge / PR / leave it) | `playbooks/closing-a-branch.md` |
 | Open a PR | `plumb:open-pr` (lines the repository requires), then `playbooks/opening-a-pr.md` |
 | Get it green and land it | `playbooks/landing-a-stack.md` |
+| Write prose a person reads: a report, a pull request body, a commit message, a document | `docs/writing.md` (English), `docs/writing-ja.md` (Japanese); rules are cited by id |
 
 ### Keep going
 
