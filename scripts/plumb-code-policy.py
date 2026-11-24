@@ -2,7 +2,7 @@
 """Report findings on lines added between a merge base and a worktree.
 
 The project contract defines scope, rules, exceptions, and whether findings fail the run.
-The built-in comment scan is line-local. See docs/project-contract.md for its limits.
+The built-in comment scans use only the added lines of one file. See docs/project-contract.md for their limits.
 """
 from __future__ import annotations
 
@@ -26,6 +26,17 @@ NO_NEWLINE = rb"\ No newline at end of file"
 HUNK_HEADER = re.compile(rb"@@ -[0-9]+(?:,([0-9]+))? \+([0-9]+)(?:,([0-9]+))? @@(?: |$)")
 # Match complete same-line literals before looking for comment markers.
 COMMENT_TOKENS = re.compile(r"""'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`|(//|/\*)""")
+HASH_SUFFIXES = (".py", ".sh", ".bash", ".zsh", ".rb", ".pl", ".r", ".yaml", ".yml", ".toml", ".tf",
+                 ".ps1", ".cmake", ".mk")
+HASH_NAMES = ("Makefile", "Dockerfile")
+SEQUENCE_KINDS = ("comment-block", "commented-code")
+CODE_END = re.compile(r"(?:[;{}]|\)\s*;?)$")
+CODE_START = re.compile(r"(?:(?:return|if|for|while|const|let|var|import|from|def|class|function|final|"
+                        r"await|async|export|elif|except)\b|else:|try:)")
+CODE_MARKS = re.compile(r"[(=:{;]")
+ASSIGNMENT = re.compile(r"[A-Za-z_][\w.\[\]]*\s*(?:=|\+=|-=)\s*\S")
+CALL = re.compile(r"[A-Za-z_][\w.]*\(.*\)\s*;?$")
+PROSE = re.compile(r"[A-Z][a-z]*:?\s+[a-z]")
 
 USAGE = """usage: plumb-code-policy report [--base REF] [--json] [--paths-from FILE] [--worktree DIR]
 
@@ -51,6 +62,14 @@ reported as `expired-exception` at line 0.
 
 The comment kind scans each added line for // or /* outside a quote or backtick pair that
 closes on that line. Standalone allow_directives entries are the only allowance.
+
+The comment-block kind (min_lines = N, an integer of at least 2) reports one finding per run of
+at least N consecutive added comment-only lines, at the run's first line. The commented-code kind
+reports one finding per run of consecutive added comment-only lines that look like code. A
+comment-only line starts with //, /* or */, or sits inside an open /* ... */ block; in .py .sh
+.bash .zsh .rb .pl .r .yaml .yml .toml .tf .ps1 .cmake .mk, Makefile and Dockerfile files it
+starts with # instead (a #! first line is not one). Added lines that are not consecutive never
+join a run, and a line that already existed is never counted.
 The project contract and the scan's limits are described in docs/project-contract.md.
 
 Exit 0 means clean, skip or report-mode findings. Exit 1 means enforce-mode findings.
@@ -258,6 +277,91 @@ def comment_hit(line: str, directives: tuple) -> bool:
             and any(token.group(1) for token in COMMENT_TOKENS.finditer(line)))
 
 
+def uses_hash_marker(name: str) -> bool:
+    base = os.path.basename(name)
+    return base in HASH_NAMES or os.path.splitext(base)[1].lower() in HASH_SUFFIXES
+
+
+def comment_body(text: str, hash_marker: bool) -> str:
+    """The text of a comment-only line with its marker removed."""
+    if hash_marker:
+        return text[1:].strip()
+    if text.endswith("*/"):
+        text = text[:-2]
+    if text.startswith("//"):
+        text = text.lstrip("/")
+    elif text.startswith("/*"):
+        text = text[2:].lstrip("*")
+    elif text.startswith("*"):
+        text = text[1:]
+    return text.strip()
+
+
+def comment_lines(lines: list, name: str, directives: tuple) -> list:
+    """Pair each (number, text) line with its comment body, or None when the line is not comment-only.
+
+    A /* block opened on a comment-only line makes the lines up to its */ comment-only. The block
+    state resets at a gap in line numbers, because the lines between hunks are not visible."""
+    hash_marker = uses_hash_marker(name)
+    in_block = False
+    previous = None
+    result = []
+    for number, line in lines:
+        text = line.strip()
+        if previous is None or number != previous + 1:
+            in_block = False
+        previous = number
+        comment = False
+        if hash_marker:
+            comment = text.startswith("#") and not (number == 1 and text.startswith("#!"))
+        elif in_block:
+            comment = True
+            in_block = "*/" not in text
+        elif directive_body(line) in directives:
+            comment = False
+        elif text.startswith(("//", "/*", "*/")):
+            comment = True
+            in_block = text.startswith("/*") and text.rfind("/*") > text.rfind("*/")
+        result.append((number, text, comment_body(text, hash_marker) if comment else None))
+    return result
+
+
+def looks_like_code(body: str) -> bool:
+    if "://" in body or PROSE.match(body):
+        return False
+    if CODE_END.search(body) and "(" in body:
+        return True
+    if CODE_START.match(body) and CODE_MARKS.search(body):
+        return True
+    return ASSIGNMENT.match(body) is not None or CALL.match(body) is not None
+
+
+def runs_of(items: list, wanted) -> list:
+    """Maximal runs of consecutive line numbers whose items satisfy wanted, as lists of items."""
+    runs = []
+    current = []
+    for item in items:
+        if wanted(item) and (not current or current[-1][0] == item[0] - 1):
+            current.append(item)
+            continue
+        if current:
+            runs.append(current)
+        current = [item] if wanted(item) else []
+    if current:
+        runs.append(current)
+    return runs
+
+
+def sequence_hits(rule: dict, items: list) -> list:
+    """Findings of a comment-block or commented-code rule as (line, excerpt) pairs."""
+    if rule["kind"] == "comment-block":
+        runs = runs_of(items, lambda item: item[2] is not None)
+        return [(run[0][0], f"{len(run)} comment lines: {run[0][1]}"[:80])
+                for run in runs if len(run) >= rule["min_lines"]]
+    runs = runs_of(items, lambda item: item[2] is not None and looks_like_code(item[2]))
+    return [(run[0][0], f"{len(run)} commented-out lines: {run[0][1]}"[:80]) for run in runs]
+
+
 def parse_date(text: str):
     if not DATE_FORM.fullmatch(text):
         return None
@@ -362,17 +466,27 @@ def scan(rules: list, added: dict, file_types: dict, top: bytes, scoped,
                 lines = sorted(tracked_lines.items())
         except (OSError, ScanError) as error:
             raise ScanError(f"cannot read source {name!r}: {error}") from error
-        for number, payload in lines:
-            line = payload.decode("utf-8-sig" if number == 1 else "utf-8", errors="replace")
-            for rule in rules:
-                if (rule["id"], name) in exceptions:
-                    continue
+        decoded = [(number, payload.decode("utf-8-sig" if number == 1 else "utf-8", errors="replace"))
+                   for number, payload in lines]
+        hits = []
+        items = None
+        for position, rule in enumerate(rules):
+            if (rule["id"], name) in exceptions:
+                continue
+            if rule["kind"] in SEQUENCE_KINDS:
+                if items is None:
+                    items = comment_lines(decoded, name, directives)
+                hits += [(number, position, excerpt) for number, excerpt in sequence_hits(rule, items)]
+                continue
+            for number, line in decoded:
                 if rule["kind"] == "comment":
                     hit = comment_hit(line, directives)
                 else:
                     hit = rule["regex"].search(line) is not None
                 if hit:
-                    found.append({"rule": rule["id"], "path": name, "line": number, "excerpt": line.strip()[:80]})
+                    hits.append((number, position, line.strip()[:80]))
+        for number, position, excerpt in sorted(hits, key=lambda hit: hit[:2]):
+            found.append({"rule": rules[position]["id"], "path": name, "line": number, "excerpt": excerpt})
     return found
 
 
@@ -431,7 +545,7 @@ def main(argv: list) -> int:
 
     rules = []
     for item in table.get("rule") or []:
-        rule = {"id": item["id"], "kind": item["kind"], "regex": None}
+        rule = {"id": item["id"], "kind": item["kind"], "regex": None, "min_lines": item.get("min_lines")}
         if item["kind"] == "pattern":
             rule["regex"] = re.compile(item["pattern"])
         rules.append(rule)

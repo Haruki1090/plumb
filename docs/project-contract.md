@@ -107,6 +107,13 @@ kind = "comment"
 id = "no-new-effect"
 kind = "pattern"
 pattern = '\buse(Layout)?Effect\s*\('
+[[code_policy.rule]]
+id = "no-comment-block"
+kind = "comment-block"
+min_lines = 4
+[[code_policy.rule]]
+id = "no-commented-code"
+kind = "commented-code"
 ```
 
 | Key | Type | Meaning |
@@ -126,7 +133,8 @@ pattern = '\buse(Layout)?Effect\s*\('
 | `code_policy.include`, `code_policy.exclude` | arrays of strings | Globs from the repository top level. An absent or empty `include` means every path |
 | `code_policy.exceptions` | string | A TSV file, one `rule<TAB>path<TAB>reason` row per exception, with an optional 4th column `expires` (`YYYY-MM-DD`) and 5th `approved_by` (free text); a row suppresses that rule in that path until its expiry day, and a row whose reason is empty, whose date is malformed, with an empty `approved_by`, or with more than 5 columns is `invalid` |
 | `code_policy.allow_directives` | array of strings (default `["prettier-ignore"]`) | Standalone comments containing exactly one listed directive are allowed. An empty array disables the allowance |
-| `code_policy.rule` | array of tables `{id, kind}` | IDs must be unique. The checker reserves `non-regular` and `expired-exception`. Use `kind = "comment"` or `kind = "pattern"` with a valid regular expression in `pattern` |
+| `code_policy.rule` | array of tables `{id, kind}` | IDs must be unique. The checker reserves `non-regular` and `expired-exception`. `kind` is `comment`, `pattern` (with a valid regular expression in `pattern`), `comment-block` or `commented-code` |
+| `code_policy.rule[].min_lines` | integer, at least 2 | Required for `kind = "comment-block"`: the shortest run of added comment lines that is reported. On any other kind it is an unknown key (a warning) |
 
 `repo.production_branches` names the branches whose merges belong to the owner. **When the key is
 absent, every merge belongs to the owner**, and an agent stops at a ready pull request. When it is
@@ -324,6 +332,38 @@ independently. Expect false positives and missed comments in multiline literals,
 continuations, regex literals, and JSX text. The only allowance is a standalone comment that
 contains exactly a listed directive, including `{/* prettier-ignore */}`. Use an exception row
 for license headers and doc comments above exports.
+
+The `comment-block` and `commented-code` kinds let a repository forbid large comment blocks and
+commented-out code without forbidding every short comment. Both read the added lines of one file
+in order, and both honor exceptions rows per path like the other kinds.
+
+- A **comment-only line** is one whose stripped text is entirely comment. It starts with `//`
+  (including `///`), `/*` or `*/`, or sits inside an open `/* ... */` block; a line starting with
+  `*` counts only inside an open block. In files ending `.py .sh .bash .zsh .rb .pl .r .yaml .yml
+  .toml .tf .ps1 .cmake .mk`, and in files named `Makefile` or `Dockerfile`, only `#` is the
+  marker (a `#!` first line is not a comment) and `//` is not one. In every other file `#` is not
+  one. A standalone line that is exactly an `allow_directives` entry is not comment-only, so it
+  breaks a run, as do blank and code lines.
+- A **run** is a maximal sequence of comment-only lines with consecutive line numbers that are all
+  added lines. A line that already existed is never counted: adding one line to an existing
+  ten-line block is a run of one.
+- `comment-block` reports one finding per run of at least `min_lines` lines, at the run's first
+  line, with the excerpt `<n> comment lines: <first line>`.
+- `commented-code` reports one finding per run of consecutive comment-only lines whose text, with
+  the marker removed, looks like code, at the first of them, with the excerpt
+  `<n> commented-out lines: <first line>`. A body looks like code when it ends with `;`, `{`, `}` or
+  `)` and contains a `(`; starts with a keyword such as `return`, `if`, `const`, `import` or `def`
+  and contains one of `( = : { ;`; or is an assignment (`x = 1`) or a call written without a space
+  before the paren (`run(1)`). A body containing `://`, or starting with a capitalised word and
+  then a lowercase word (`See foo(bar)`, `Note: x = 1`), is prose and never looks like code.
+
+These heuristics are line-local and conservative. The block state of `/* ... */` resets at any gap
+between added line numbers, because the lines between hunks are not visible, so a block whose
+opening line is not part of the change is not recognised (its `*`-prefixed lines read as code and
+only a closing `*/` line counts). Doc comments such as `///` and `/** */` count as comments. A `/*` that follows code
+on the same line does not open a block. Commented-out detection can miss code, such as a lone `}`
+or a statement without a trailing character the patterns know, and can fire on prose written like
+code; moved lines count as added here too.
 
 Clear a finding before excepting it. A comment that states a constraint becomes a type, a test
 or a lint rule, and the comment is then deleted. Add a suppression comment only after reading
