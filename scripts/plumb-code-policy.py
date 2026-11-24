@@ -37,9 +37,13 @@ DOC_MARKERS = ("///", "//!", "/**", "/*!")
 TRIPLE = ('"""', "'''")
 CODE_START = re.compile(r"(?:(?:return|if|for|while|const|let|var|import|from|def|class|function|final|"
                         r"await|async|export|elif|except)\b|else:|try:)")
-CODE_MARKS = re.compile(r"[({;]|\s=\s|\+=|-=")
-ASSIGNMENT = re.compile(r"[A-Za-z_][\w.\[\]]*\s*(?:=|\+=|-=)\s*\S")
+STATEMENT_END = re.compile(r"[;{}:]\s*$")
+ASSIGNMENT = re.compile(r"(?:(?:const|let|var|final|val)\s+)?[A-Za-z_][\w.\[\]]*\s*"
+                        r"(?:\+=|-=|(?<![=!<>])=(?!=))\s*(?P<rhs>\S.*)$", re.ASCII)
 CALL = re.compile(r"[A-Za-z_][\w.]*\(.*\)\s*;?$")
+PROSE_RUN = re.compile(r"[A-Za-z]+ [A-Za-z]+ [A-Za-z]+", re.ASCII)
+WORD_PAIR = re.compile(r"[A-Za-z]+\s+[A-Za-z]+", re.ASCII)
+LITERAL = re.compile(r"'(?:[^'\\]|\\.)*'" r'|"(?:[^"\\]|\\.)*"')
 PROSE = re.compile(r"[A-Z][a-z]*:?\s+[a-z]")
 
 USAGE = """usage: plumb-code-policy report [--base REF] [--json] [--paths-from FILE] [--worktree DIR]
@@ -342,6 +346,13 @@ def triple_state(text: str, quote):
     while index < len(text):
         if quote:
             end = text.find(quote, index)
+            while end >= 0:
+                backslashes = 0
+                while end - backslashes - 1 >= index and text[end - backslashes - 1] == "\\":
+                    backslashes += 1
+                if backslashes % 2 == 0:
+                    break
+                end = text.find(quote, end + 1)
             if end < 0:
                 return quote
             index, quote = end + 3, None
@@ -402,16 +413,20 @@ def comment_lines(lines: list, name: str, directives: tuple) -> list:
 
 
 def looks_like_code(body: str) -> bool:
-    if "://" in body or PROSE.match(body):
+    """Whether a comment body is, as a whole, one statement of code.
+
+    A comment that mentions code inside prose ("remove retry() later") is not code. The body counts
+    only when the whole of it is a call, a keyword statement that ends like one (; { } or a Python
+    block colon), or an assignment whose right side holds no run of words. Three plain words in a
+    row outside string literals mark prose, whatever else the line holds."""
+    if "://" in body or PROSE.match(body) or PROSE_RUN.search(LITERAL.sub('""', body)):
         return False
-    if CLOSE_PAREN.search(body):
-        if IDENT_CALL.search(body):
-            return True
-    elif CODE_END.search(body) and "(" in body:
+    if CALL.match(body):
         return True
-    if CODE_START.match(body) and (CODE_MARKS.search(body) or body.endswith(":")):
+    if CODE_START.match(body) and STATEMENT_END.search(body):
         return True
-    return ASSIGNMENT.match(body) is not None or CALL.match(body) is not None
+    assignment = ASSIGNMENT.match(body)
+    return assignment is not None and not WORD_PAIR.search(LITERAL.sub('""', assignment.group("rhs")))
 
 
 def runs_of(items: list, wanted) -> list:

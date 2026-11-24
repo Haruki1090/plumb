@@ -1381,6 +1381,32 @@ def _():
                     ("no-commented-code", "i.py", 2)], rows
 
 
+@case("commented-code fires only when the whole body is one statement, not on prose that mentions code")
+def _():
+    rows = block_hits("cc-statement", {
+        "src/a.ts": "// for details (see below)\n",
+        "src/b.ts": "// TODO: remove retry()\n",
+        "src/c.ts": "// \u518d\u8a66\u884c\u306f retry() \u306b\u4efb\u305b\u308b (\u6700\u59273\u56de)\n",
+        "src/d.ts": "// return values are listed below:\n",
+        "src/e.ts": "// x = 1 is the default\n",
+        "src/f.ts": "// total += step\n",
+        "src/g.ts": "// const total = 1\n",
+        "src/h.ts": '// print("hello there world")\n',
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", "src/f.ts", 1), ("no-commented-code", "src/g.ts", 1),
+                    ("no-commented-code", "src/h.ts", 1)], rows
+
+
+@case("an escaped triple quote does not close a docstring")
+def _():
+    rows = block_hits("py-escaped", {
+        "a.py": '"""Example: \\"""\n# run();\n"""\n',
+        "b.py": '"""Example: \\"""\n# one\n# two\n# three\n# four\n"""\n',
+        "c.py": '"""Example: \\\\"""\n# run();\n',
+    }, BOTH_RULES)
+    assert rows == [("no-commented-code", "c.py", 2)], rows
+
+
 @case("an open triple-quoted string does not carry over a gap in the added lines")
 def _():
     rows = block_hits("py-gap", {"a.py": '"""\nx\ny\n# run();\n'}, CODED_RULE, base={"a.py": "x\ny\n"})

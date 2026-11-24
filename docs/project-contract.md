@@ -355,14 +355,15 @@ in order, and both honor exceptions rows per path like the other kinds.
 - `commented-code` reports one finding per run of consecutive comment-only lines whose text, with
   the marker removed, looks like code, at the first of them, with the excerpt
   `<n> commented-out lines: <first line>`. Doc comments (`///`, `//!`, and the lines of a `/**` or
-  `/*!` block) never count. A body looks like code when it ends with `)` (or `);`) and contains an
-  identifier immediately followed by `(`, such as `compute(a)`; ends with `;`, `{` or `}` and
-  contains a `(`; starts with a keyword such as `return`, `if`, `const`, `import` or `def` and
-  contains `(`, `{`, `;`, an assignment (` = `, `+=` or `-=`, not `==`) or ends with `:` (a colon in
-  the middle does not count); or is an assignment (`x = 1`) or a call written without a space
-  before the paren (`run(1)`). A body containing `://`, or starting with a capitalised word and
-  then a lowercase word (`See foo(bar)`, `Note: x = 1`), is prose and never looks like code, and
-  prose such as `keep the value (for retries)` does not fire because a space precedes the paren.
+  `/*!` block) never count. A body counts only when the whole of it is one statement: a call written
+  without a space before the paren (`run(1)`, `foo.bar(x);`); a statement that starts with a keyword
+  such as `return`, `if`, `const`, `import` or `def` and ends like one (`;`, `{`, `}`, or a Python
+  block colon); or an assignment (`x = 1`, `total += step`, `const total = 1`, not `==`) whose right
+  side holds no two plain words in a row. A comment that mentions code inside prose
+  (`TODO: remove retry()`, `for details (see below)`) does not count. A body containing `://`,
+  three plain words in a row outside string literals, or a capitalised word followed by a lowercase
+  word (`See foo(bar)`, `Note: x = 1`) is prose and never counts. This misses some real code on
+  purpose, such as `for item in items:` and a lone `}`.
 
 These heuristics are conservative: when in doubt they do not fire. The state of a `/* ... */`
 block and of a triple-quoted string resets at any gap between added line numbers, because the lines
