@@ -422,5 +422,31 @@ for path in sorted((root / ".codex/agents").glob("*.toml")):
   fi
 fi
 
+# 16. The descriptions the model reads at the start of every session stay within one budget.
+#     Every skill without disable-model-invocation puts its description into each session's fixed
+#     prompt, so each new skill makes every session heavier. 2026-11-24: making skills user-invoked to
+#     save that weight was measured (four candidates came to 1,989 bytes, about 500 tokens) and
+#     rejected, because a user-invoked skill no longer fires from what the owner says. The budget
+#     holds the total instead: a new or longer description has to buy its bytes by shortening
+#     another, and a shortened description is checked with plumb-trigger-eval on its own cases.
+#     Measured: the bytes of the frontmatter description value, after "description: ", in every
+#     target that the model can invoke. Set at 7,679 bytes measured on 2026-11-24, plus 21.
+DESC_BUDGET=7700
+desc_total=0; desc_top=""
+while IFS= read -r f; do
+  grep -q '^disable-model-invocation: *true' "$f" && continue
+  value=$(awk 'NR==1 && /^---/ {fm=1; next} fm && /^---/ {exit} fm && /^description:/ {sub(/^description: */, ""); print; exit}' "$f")
+  bytes=$(printf '%s' "$value" | LC_ALL=C wc -c | tr -d ' ')
+  desc_total=$((desc_total + bytes))
+  desc_top="${desc_top}${bytes} ${f#$root/}"$'\n'
+done < <(targets)
+if [ "$desc_total" -le "$DESC_BUDGET" ]; then
+  note "ok" "model-read skill descriptions within budget (${desc_total} / ${DESC_BUDGET} bytes)"
+else
+  note "NG" "model-read skill descriptions over budget (${desc_total} / ${DESC_BUDGET} bytes); longest:"
+  printf '%s' "$desc_top" | sort -rn | head -5 | sed 's/^/       /'
+  fail=1
+fi
+
 if [ $fail -eq 0 ]; then echo "  → passed (SKILL.md ${scanned} / playbooks ${pbs} / principles ${prs} / agents ${ags})"; else echo "  → failed"; fi
 exit $fail
