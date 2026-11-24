@@ -473,7 +473,12 @@ for path in sys.stdin.read().split("\n"):
     fm = frontmatter(open(path, encoding="utf-8").read())
     if fm is None:
         errors += 1; print("error\tno frontmatter\t" + path); continue
-    flag, _ = field(fm, "disable-model-invocation")
+    keys = [l.split(":", 1)[0] for l in fm if l[:1] not in ("", " ", "\t", "#") and ":" in l]
+    if len(keys) != len(set(keys)):
+        errors += 1; print("error\tfrontmatter repeats a key\t" + path); continue
+    flag, flag_follows = field(fm, "disable-model-invocation")
+    if flag is not None and flag_follows:
+        errors += 1; print("error\tdisable-model-invocation is not one line\t" + path); continue
     if flag is not None and re.fullmatch(r"true([ \t]+#.*)?", flag):
         continue
     raw, follows = field(fm, "description")
