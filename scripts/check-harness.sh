@@ -429,23 +429,79 @@ fi
 #     rejected, because a user-invoked skill no longer fires from what the owner says. The budget
 #     holds the total instead: a new or longer description has to buy its bytes by shortening
 #     another, and a shortened description is checked with plumb-trigger-eval on its own cases.
-#     Measured: the bytes of the frontmatter description value, after "description: ", in every
-#     target that the model can invoke. Set at 7,679 bytes measured on 2026-11-24, plus 21.
+#     Measured: the bytes of the decoded description value in the frontmatter (quotes removed,
+#     a folded or block scalar and continuation lines joined, CRLF read as LF), in every target whose
+#     frontmatter does not set disable-model-invocation to exactly true. A body line that looks like a
+#     setting does not count. A target with no frontmatter or no description, or no target at all, is
+#     NG rather than zero bytes. Set at 7,675 bytes measured on 2026-11-24, plus 25.
 DESC_BUDGET=7700
-desc_total=0; desc_top=""
-while IFS= read -r f; do
-  grep -q '^disable-model-invocation: *true' "$f" && continue
-  value=$(awk 'NR==1 && /^---/ {fm=1; next} fm && /^---/ {exit} fm && /^description:/ {sub(/^description: */, ""); print; exit}' "$f")
-  bytes=$(printf '%s' "$value" | LC_ALL=C wc -c | tr -d ' ')
-  desc_total=$((desc_total + bytes))
-  desc_top="${desc_top}${bytes} ${f#$root/}"$'\n'
-done < <(targets)
-if [ "$desc_total" -le "$DESC_BUDGET" ]; then
-  note "ok" "model-read skill descriptions within budget (${desc_total} / ${DESC_BUDGET} bytes)"
+if command -v python3 >/dev/null 2>&1; then
+  desc_out=$(targets | python3 -c '
+import sys
+BLOCK = {">", "|", ">-", "|-", ">+", "|+"}
+def frontmatter(text):
+    lines = text.replace("\r\n", "\n").split("\n")
+    if not lines or lines[0].strip() != "---":
+        return None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return lines[1:i]
+    return None
+def field(lines, key):
+    for i, line in enumerate(lines):
+        if line.startswith(key + ":"):
+            value = line[len(key) + 1:].strip()
+            rest = []
+            for more in lines[i + 1:]:
+                if more and not more[0].isspace():
+                    break
+                rest.append(more.strip())
+            if value in BLOCK:
+                sep = "\n" if value.startswith("|") else " "
+                return sep.join(r for r in rest if r).strip()
+            if value[:1] in ("\"", "\x27"):
+                quote = value[0]
+                body = " ".join([value] + [r for r in rest if r])
+                end = body.find(quote, 1)
+                return body[1:end] if end > 0 else body[1:]
+            return " ".join([value] + [r for r in rest if r]).strip()
+    return None
+files = errors = total = 0
+rows = []
+for path in sys.stdin.read().split("\n"):
+    if not path:
+        continue
+    files += 1
+    fm = frontmatter(open(path, encoding="utf-8").read())
+    if fm is None:
+        errors += 1; print("error\tno frontmatter\t" + path); continue
+    if (field(fm, "disable-model-invocation") or "") == "true":
+        continue
+    desc = field(fm, "description")
+    if not desc:
+        errors += 1; print("error\tno description\t" + path); continue
+    n = len(desc.encode("utf-8"))
+    total += n
+    rows.append((n, path))
+for n, path in sorted(rows, reverse=True)[:5]:
+    print("top\t%d\t%s" % (n, path))
+print("total\t%d\t%d\t%d" % (total, files, errors))
+')
+  read -r _ desc_total desc_files desc_errors < <(printf '%s\n' "$desc_out" | grep '^total' | tr '\t' ' ')
+  printf '%s\n' "$desc_out" | grep '^error' | while IFS=$'\t' read -r _ why path; do note "NG" "description budget: ${why}: ${path#$root/}"; done
+  if [ "${desc_files:-0}" -eq 0 ]; then
+    note "NG" "description budget: no skill files found"; fail=1
+  elif [ "${desc_errors:-1}" -ne 0 ]; then
+    fail=1
+  elif [ "$desc_total" -le "$DESC_BUDGET" ]; then
+    note "ok" "model-read skill descriptions within budget (${desc_total} / ${DESC_BUDGET} bytes)"
+  else
+    note "NG" "model-read skill descriptions over budget (${desc_total} / ${DESC_BUDGET} bytes); longest:"
+    printf '%s\n' "$desc_out" | grep '^top' | while IFS=$'\t' read -r _ n path; do printf '       %s %s\n' "$n" "${path#$root/}"; done
+    fail=1
+  fi
 else
-  note "NG" "model-read skill descriptions over budget (${desc_total} / ${DESC_BUDGET} bytes); longest:"
-  printf '%s' "$desc_top" | sort -rn | head -5 | sed 's/^/       /'
-  fail=1
+  note "--" "description budget: skipped, python3 is unavailable"
 fi
 
 if [ $fail -eq 0 ]; then echo "  → passed (SKILL.md ${scanned} / playbooks ${pbs} / principles ${prs} / agents ${ags})"; else echo "  → failed"; fi
