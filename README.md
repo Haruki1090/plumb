@@ -243,7 +243,8 @@ the layer that should stop it, with the number that will show whether it did.
 ## Language
 
 plumb is written in English throughout — SKILL.md, the 26 playbooks, the 25
-principles, the bundled skills and agents, the scripts and the docs/ files.
+principles, the bundled skills and agents, the scripts and the docs/ files. The one exception is
+`docs/writing-ja.md`, the writing rules for prose in Japanese, which is written in the language it governs.
 
 It was written in Japanese through v0.5.0 and rewritten in English for release.
 The Japanese original is frozen at the tag `v0.5.0-ja` and is not maintained:
