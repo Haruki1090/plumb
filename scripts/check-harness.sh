@@ -429,43 +429,40 @@ fi
 #     rejected, because a user-invoked skill no longer fires from what the owner says. The budget
 #     holds the total instead: a new or longer description has to buy its bytes by shortening
 #     another, and a shortened description is checked with plumb-trigger-eval on its own cases.
-#     Measured: the bytes of the decoded description value in the frontmatter (quotes removed,
-#     a folded or block scalar and continuation lines joined, CRLF read as LF), in every target whose
-#     frontmatter does not set disable-model-invocation to exactly true. A body line that looks like a
-#     setting does not count. A target with no frontmatter or no description, or no target at all, is
-#     NG rather than zero bytes. Set at 7,675 bytes measured on 2026-11-24, plus 25.
+#     Measured: the bytes of the description value in the frontmatter of every target whose frontmatter
+#     does not set disable-model-invocation to true (a trailing # comment allowed). The rule does not
+#     parse YAML in general; it accepts only the form it can measure exactly, a one-line plain value or
+#     a one-line quoted value with no quote or backslash inside, and reports anything else as NG: a
+#     block or folded scalar, a continued line, an escaped quote. A body line that looks like a setting
+#     does not count, and only an unindented --- closes the frontmatter. No frontmatter, no
+#     description, or no target at all is NG rather than zero bytes. Set at 7,675 bytes measured on 2026-11-24, plus 25.
 DESC_BUDGET=7700
 if command -v python3 >/dev/null 2>&1; then
   desc_out=$(targets | python3 -c '
 import sys
-BLOCK = {">", "|", ">-", "|-", ">+", "|+"}
 def frontmatter(text):
-    lines = text.replace("\r\n", "\n").split("\n")
-    if not lines or lines[0].strip() != "---":
+    lines = [l[:-1] if l.endswith("\r") else l for l in text.split("\n")]
+    if not lines or lines[0] != "---":
         return None
     for i in range(1, len(lines)):
-        if lines[i].strip() == "---":
+        if lines[i] == "---":
             return lines[1:i]
     return None
 def field(lines, key):
     for i, line in enumerate(lines):
         if line.startswith(key + ":"):
-            value = line[len(key) + 1:].strip()
-            rest = []
-            for more in lines[i + 1:]:
-                if more and not more[0].isspace():
-                    break
-                rest.append(more.strip())
-            if value in BLOCK:
-                sep = "\n" if value.startswith("|") else " "
-                return sep.join(r for r in rest if r).strip()
-            if value[:1] in ("\"", "\x27"):
-                quote = value[0]
-                body = " ".join([value] + [r for r in rest if r])
-                end = body.find(quote, 1)
-                return body[1:end] if end > 0 else body[1:]
-            return " ".join([value] + [r for r in rest if r]).strip()
-    return None
+            follows = i + 1 < len(lines) and lines[i + 1][:1].isspace()
+            return line[len(key) + 1:].strip(), follows
+    return None, False
+def one_line(value, follows):
+    if follows or not value or value[0] in "|>":
+        return None
+    if value[0] in "\"\x27":
+        q = value[0]
+        if len(value) < 2 or value[-1] != q or q in value[1:-1] or "\\" in value:
+            return None
+        return value[1:-1]
+    return value
 files = errors = total = 0
 rows = []
 for path in sys.stdin.read().split("\n"):
@@ -475,11 +472,15 @@ for path in sys.stdin.read().split("\n"):
     fm = frontmatter(open(path, encoding="utf-8").read())
     if fm is None:
         errors += 1; print("error\tno frontmatter\t" + path); continue
-    if (field(fm, "disable-model-invocation") or "") == "true":
+    flag, _ = field(fm, "disable-model-invocation")
+    if flag is not None and flag.split("#")[0].strip() == "true":
         continue
-    desc = field(fm, "description")
-    if not desc:
+    raw, follows = field(fm, "description")
+    if raw is None:
         errors += 1; print("error\tno description\t" + path); continue
+    desc = one_line(raw, follows)
+    if desc is None:
+        errors += 1; print("error\tdescription is not one plain or simply quoted line\t" + path); continue
     n = len(desc.encode("utf-8"))
     total += n
     rows.append((n, path))
