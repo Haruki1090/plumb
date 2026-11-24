@@ -238,8 +238,8 @@ gets lost among 34 `__pycache__` directories.
 
 ## Read again at 0.15.46 (2026-11-23)
 
-**The upstream was read a second time on 2026-11-23, at the commit `NOTICE` records (version
-0.15.46).** The first reading covered playbooks and principles only. This one also took the
+**The upstream was read a second time on 2026-11-23, at `7a58391` (version
+0.15.46).** *(2026-11-24: `NOTICE` now records 0.15.48, whose only new item is `reframe`, recorded in the skills table below.)* The first reading covered playbooks and principles only. This one also took the
 skills, the agents, the guide pages and the automations, and plumb then took a number of things
 (`CHANGELOG.md` 0.31.0). The text was read for what failure each item exists to prevent and then
 closed; what plumb carries is written in its own words, so the claim in `NOTICE` that nothing is
