@@ -14,10 +14,12 @@ contract (`docs/project-contract.md`).
 
 ## Content
 
-- **W1. Name the mechanism.** Write the command, the file, the number or the actor. A sentence that
-  could appear unchanged in another project's documents carries nothing; replace it or delete it.
-- **W2. Give the number instead of an intensifier.** "From 4.2 s to 0.9 s", not "much faster".
-  "Fails on 3 of 40 runs", not "occasionally flaky".
+- **W1. Name the mechanism.** When you describe this work, write the command, the file, the number or
+  the actor. A claim about this work that could appear unchanged in another project's documents
+  carries nothing; replace it or delete it. General rules, such as the ones in this file, are not claims
+  about the work.
+- **W2. Give the number instead of an intensifier.** Write "the build went from 4.2 s to 0.9 s", not
+  "the build is much faster". Write "it fails on 3 of 40 runs", not "it is occasionally flaky".
 - **W3. Attribute by name or not at all.** "The upstream README says", not "it is widely believed".
 - **W4. One hedge per claim, at most.** Prefer the router's labels: measured, inferred, guessed. Two
   hedges on one claim ("may possibly") hide whether anything was checked.
@@ -48,14 +50,14 @@ contract (`docs/project-contract.md`).
 - **W14. No "not just X, but Y" and no "it is not X, it is Y" framing.** State the point.
 - **W15. Do not round a list to three.** List what there is: two items, or four.
 - **W16. Whole sentences.** Keep the articles and the verbs. Spell out arrows and ad hoc abbreviations
-  in running prose; code and tables may keep them.
+  in running prose. Code, tables and quoted examples may keep them.
 - **W17. A colon introduces a list or an example.** Do not use it as a connector in the middle of a
   sentence.
 
 ## Form
 
-- **W18. Bold only what changes a decision.** Not every term, and never a bold label that restates
-  its own line ("**Performance:** performance improved").
+- **W18. Bold only what changes a decision.** Do not bold every term, and never add a bold label that
+  restates its own line ("**Performance:** performance improved").
 - **W19. No decorative emoji.** Sentence-case headings.
 - **W20. No conversational wrapper.** No opening praise or agreement ("Great question"), and no
   closing offer ("Let me know if you need anything else", "I hope this helps"). Start with the answer.
