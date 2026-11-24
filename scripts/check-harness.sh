@@ -439,7 +439,7 @@ fi
 DESC_BUDGET=7700
 if command -v python3 >/dev/null 2>&1; then
   desc_out=$(targets | python3 -c '
-import sys
+import re, sys
 def frontmatter(text):
     lines = [l[:-1] if l.endswith("\r") else l for l in text.split("\n")]
     if not lines or lines[0] != "---":
@@ -451,11 +451,12 @@ def frontmatter(text):
 def field(lines, key):
     for i, line in enumerate(lines):
         if line.startswith(key + ":"):
-            follows = i + 1 < len(lines) and lines[i + 1][:1].isspace()
-            return line[len(key) + 1:].strip(), follows
+            nxt = [l for l in lines[i + 1:] if l.strip(" \t")]
+            follows = bool(nxt) and nxt[0][:1] in (" ", "\t")
+            return line[len(key) + 1:].strip(" \t"), follows
     return None, False
 def one_line(value, follows):
-    if follows or not value or value[0] in "|>":
+    if follows or not value or value[0] in "|>&*!%@`":
         return None
     if value[0] in "\"\x27":
         q = value[0]
@@ -473,7 +474,7 @@ for path in sys.stdin.read().split("\n"):
     if fm is None:
         errors += 1; print("error\tno frontmatter\t" + path); continue
     flag, _ = field(fm, "disable-model-invocation")
-    if flag is not None and flag.split("#")[0].strip() == "true":
+    if flag is not None and re.fullmatch(r"true([ \t]+#.*)?", flag):
         continue
     raw, follows = field(fm, "description")
     if raw is None:
