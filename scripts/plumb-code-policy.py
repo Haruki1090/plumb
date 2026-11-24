@@ -40,10 +40,11 @@ CODE_START = re.compile(r"(?:(?:return|if|for|while|const|let|var|import|from|de
 STATEMENT_END = re.compile(r"[;{}:]\s*$")
 ASSIGNMENT = re.compile(r"(?:(?:const|let|var|final|val)\s+)?[A-Za-z_][\w.\[\]]*\s*"
                         r"(?:\+=|-=|(?<![=!<>])=(?!=))\s*(?P<rhs>\S.*)$", re.ASCII)
-CALL = re.compile(r"[A-Za-z_][\w.]*\(.*\)\s*;?$")
+CALL_HEAD = re.compile(r"(?:await\s+)?[A-Za-z_][\w.]*\(", re.ASCII)
+FOR_LOOP = re.compile(r"for\b.*(?:\sin\s|\sof\s|\()", re.ASCII)
 PROSE_RUN = re.compile(r"[A-Za-z]+ [A-Za-z]+ [A-Za-z]+", re.ASCII)
 WORD_PAIR = re.compile(r"[A-Za-z]+\s+[A-Za-z]+", re.ASCII)
-LITERAL = re.compile(r"'(?:[^'\\]|\\.)*'" r'|"(?:[^"\\]|\\.)*"')
+LITERAL = re.compile(r"'(?:[^'\\]|\\.)*'" r'|"(?:[^"\\]|\\.)*"' r"|`(?:[^`\\]|\\.)*`")
 PROSE = re.compile(r"[A-Z][a-z]*:?\s+[a-z]")
 
 USAGE = """usage: plumb-code-policy report [--base REF] [--json] [--paths-from FILE] [--worktree DIR]
@@ -412,6 +413,36 @@ def comment_lines(lines: list, name: str, directives: tuple) -> list:
     return result
 
 
+def whole_call(body: str) -> bool:
+    """Whether the body is one call (or a chain of calls) and nothing after it but an optional ;.
+
+    Parentheses are matched with string literals skipped, so "retry() handles (timeouts)" is a call
+    followed by prose, not a call."""
+    head = CALL_HEAD.match(body)
+    if not head:
+        return False
+    depth, index, quote = 1, head.end(), None
+    while index < len(body):
+        char = body[index]
+        if quote:
+            if char == "\\":
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+        elif char in "'\"`":
+            quote = char
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                rest = body[index + 1:].strip()
+                return rest in ("", ";") or (rest.startswith(".") and whole_call(rest[1:]))
+        index += 1
+    return False
+
+
 def looks_like_code(body: str) -> bool:
     """Whether a comment body is, as a whole, one statement of code.
 
@@ -421,10 +452,10 @@ def looks_like_code(body: str) -> bool:
     row outside string literals mark prose, whatever else the line holds."""
     if "://" in body or PROSE.match(body) or PROSE_RUN.search(LITERAL.sub('""', body)):
         return False
-    if CALL.match(body):
+    if whole_call(body):
         return True
     if CODE_START.match(body) and STATEMENT_END.search(body):
-        return True
+        return not body.startswith("for") or FOR_LOOP.match(body) is not None
     assignment = ASSIGNMENT.match(body)
     return assignment is not None and not WORD_PAIR.search(LITERAL.sub('""', assignment.group("rhs")))
 

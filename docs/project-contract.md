@@ -356,14 +356,18 @@ in order, and both honor exceptions rows per path like the other kinds.
   the marker removed, looks like code, at the first of them, with the excerpt
   `<n> commented-out lines: <first line>`. Doc comments (`///`, `//!`, and the lines of a `/**` or
   `/*!` block) never count. A body counts only when the whole of it is one statement: a call written
-  without a space before the paren (`run(1)`, `foo.bar(x);`); a statement that starts with a keyword
-  such as `return`, `if`, `const`, `import` or `def` and ends like one (`;`, `{`, `}`, or a Python
-  block colon); or an assignment (`x = 1`, `total += step`, `const total = 1`, not `==`) whose right
-  side holds no two plain words in a row. A comment that mentions code inside prose
+  without a space before the paren, with nothing after its closing paren but `;` or another chained
+  call (`run(1)`, `foo().bar(x);`; parentheses are matched with string literals skipped, so
+  `retry() handles (timeouts)` is a call followed by prose and does not count); a statement that
+  starts with a keyword such as `return`, `if`, `const`, `import` or `def` and ends like one (`;`,
+  `{`, `}`, or a Python block colon; a `for` counts only with ` in `, ` of ` or a paren, so
+  `for details:` does not); or an assignment (`x = 1`, `total += step`, `const total = 1`, not `==`)
+  whose right side holds no two plain words in a row. A comment that mentions code inside prose
   (`TODO: remove retry()`, `for details (see below)`) does not count. A body containing `://`,
-  three plain words in a row outside string literals, or a capitalised word followed by a lowercase
-  word (`See foo(bar)`, `Note: x = 1`) is prose and never counts. This misses some real code on
-  purpose, such as `for item in items:` and a lone `}`.
+  three plain words in a row outside string literals (quotes and backticks), or a capitalised word
+  followed by a lowercase word (`See foo(bar)`, `Note: x = 1`) is prose and never counts. This
+  misses some real code on purpose, such as `for item in items:`, `for (const x of xs) {` and a
+  lone `}`.
 
 These heuristics are conservative: when in doubt they do not fire. The state of a `/* ... */`
 block and of a triple-quoted string resets at any gap between added line numbers, because the lines
@@ -374,7 +378,7 @@ between hunks are not visible. Known limits:
   docstring reads its `#` lines as comments.
 - Nested block comments (Rust) end at the first inner `*/`.
 - A `/*` that follows code on the same line does not open a block.
-- A lone `}` is not recognised as code (the `}` ending needs a `(` in the same line).
+- A lone `}` is not recognised as code (it is not a whole call, keyword statement or assignment).
 - A `#` line in a `#`-marker file is never an `allow_directives` entry, because directives are read
   only in `//` and `/* */` form, so `# prettier-ignore` counts as an ordinary comment line.
 - An assignment pattern also matches a comparison such as `x == 1`.

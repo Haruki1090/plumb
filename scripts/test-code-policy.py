@@ -1397,6 +1397,23 @@ def _():
                     ("no-commented-code", "src/h.ts", 1)], rows
 
 
+@case("a call followed by prose, a bare for, and code inside backtick strings")
+def _():
+    rows = block_hits("cc-round3", {
+        "src/a.ts": "// retry() handles (timeouts)\n",
+        "src/b.ts": "// for details:\n",
+        "src/c.ts": "// retry() \u3092\u4f7f\u3046 (\u6700\u59273\u56de)\n",
+        "src/d.ts": "// Copyright(c) 2026 Acme Inc. (MIT)\n",
+        "src/e.ts": "// TODO(someone): remove retry()\n",
+        "src/f.ts": "// run(`hello there world`);\n",
+        "src/g.ts": "// x = `hello there world`\n",
+        "src/h.ts": "// foo().bar(1);\n",
+        "src/i.ts": '// log("a (b")\n',
+        "src/j.ts": "// for (let i = 0; i < n; i++) {\n",
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", f"src/{name}.ts", 1) for name in "fghij"], rows
+
+
 @case("an escaped triple quote does not close a docstring")
 def _():
     rows = block_hits("py-escaped", {
