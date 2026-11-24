@@ -1295,6 +1295,100 @@ def _():
                     ("no-commented-code", "x.py", 1), ("no-commented-code", "z.py", 1)], rows
 
 
+BOTH_RULES = BLOCK_RULE.format(n=4) + CODED_RULE
+
+
+@case("commented-code ignores prose with a parenthetical and fires on identifier calls")
+def _():
+    rows = block_hits("cc-paren", {
+        "src/a.ts": "// keep the original value (for retries)\n",
+        "src/b.ts": "// 元の値を保持する (再試行用)\n",
+        "src/c.ts": "// TODO: remove this workaround (after migration)\n",
+        "src/d.ts": '// Copyright 2026 Example Corp (the "Copyright Owner")\n',
+        "src/e.ts": "// keep a value (see below);\n",
+        "src/f.ts": "// const old = compute(a);\n",
+        "src/g.ts": "// return foo(bar);\n",
+        "src/h.ts": "// retry(3)\n",
+        "src/i.ts": "// if (ready) {\n",
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", "src/f.ts", 1), ("no-commented-code", "src/g.ts", 1),
+                    ("no-commented-code", "src/h.ts", 1), ("no-commented-code", "src/i.ts", 1)], rows
+
+
+@case("doc comments never count as commented-out code but still count for comment-block")
+def _():
+    rows = block_hits("cc-doc", {
+        "src/a.rs": "/// The HTTP status (cached)\n",
+        "src/b.ts": "/** The HTTP status (cached) */\n",
+        "src/c.rs": "//! const old = compute(a);\n",
+        "src/d.rs": "/// const old = compute(a);\n",
+        "src/e.ts": "/**\n * const old = compute(a);\n * run();\n */\n",
+        "src/f.ts": "/*!\n * run();\n */\n",
+        "src/plain.ts": "// const old = compute(a);\n",
+        "src/block.ts": "/*\n * run();\n */\n",
+        "src/empty.ts": "/**/ run();\n// run();\n",
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", "src/block.ts", 2), ("no-commented-code", "src/empty.ts", 2),
+                    ("no-commented-code", "src/plain.ts", 1)], rows
+    rows = block_hits("cb-doc", {"src/a.rs": "/// one\n/// two\n/// three\n/// four\n",
+                                  "src/b.rs": "/// one\n/// two\n/// three\n"}, BLOCK_RULE.format(n=4))
+    assert rows == [("no-comment-block", "src/a.rs", 1)], rows
+
+
+@case("a /* */ pair followed by code makes the line code; followed by nothing or a // comment it stays a comment")
+def _():
+    coded = "".join(f"/* {name} */ const {name.lower()} = 1;\n" for name in "ABCD")
+    pure = "".join(f"/* {name} */\n" for name in "ABCD")
+    trailing = "".join(f"/* {name} */ // note\n" for name in "ABCD")
+    rows = block_hits("cb-after", {"src/coded.ts": coded, "src/pure.ts": pure, "src/trailing.ts": trailing,
+                                    "src/close.ts": "/*\nA\nB\n*/ const c = 1;\n",
+                                    "src/closed.ts": "/*\nA\nB\n*/\nconst c = 1;\n"}, BLOCK_RULE.format(n=4))
+    assert rows == [("no-comment-block", "src/closed.ts", 1), ("no-comment-block", "src/pure.ts", 1),
+                    ("no-comment-block", "src/trailing.ts", 1)], rows
+    assert block_hits("cc-after", {"src/a.ts": "/* milliseconds */ const timeout = compute();\n"},
+                      CODED_RULE) == []
+
+
+@case("a /* after a closed comment on a code line opens no block; a /* on a comment-only line does")
+def _():
+    code = '/* marker */ const marker = "/*";\nconst a = 1;\nconst b = 2;\nconst c = 3;\n'
+    rows = block_hits("cb-marker", {
+        "src/code.ts": code,
+        "src/open.ts": "/* marker */\n/* open\nb\nc\n*/\n",
+        "src/late.ts": 'const marker = "/*";\nconst a = 1;\nconst b = 2;\nconst c = 3;\n',
+    }, BOTH_RULES)
+    assert rows == [("no-comment-block", "src/open.ts", 1)], rows
+    rows = block_hits("cb-marker-two", {"src/code.ts": code}, BLOCK_RULE.format(n=2))
+    assert rows == [], rows
+
+
+@case("lines inside a Python triple-quoted string are not comments, and a real comment after it still is")
+def _():
+    inside = '"""\n# one\n# two\n# three\n# four\n"""\n'
+    rows = block_hits("py-doc", {
+        "a.py": inside,
+        "b.py": '"""\n# run();\n"""\n',
+        "c.py": "# run();\n",
+        "d.py": inside.replace('"', "'"),
+        "e.py": '"""\n# run();\n"""\n# y = compute(x)\n',
+        "f.py": '"""one line docstring"""\n# x = foo(1)\n',
+        "g.py": "# one\n# two\n# three\n# four\n",
+        "h.py": 'x = """a\n# one\n# two\n# three\n# four\nb"""\n',
+        "i.py": 'x = "not a triple" # y = 1\n# z = foo(2)\n',
+    }, BOTH_RULES)
+    assert rows == [("no-commented-code", "c.py", 1), ("no-commented-code", "e.py", 4),
+                    ("no-commented-code", "f.py", 2), ("no-comment-block", "g.py", 1),
+                    ("no-commented-code", "i.py", 2)], rows
+
+
+@case("an open triple-quoted string does not carry over a gap in the added lines")
+def _():
+    rows = block_hits("py-gap", {"a.py": '"""\nx\ny\n# run();\n'}, CODED_RULE, base={"a.py": "x\ny\n"})
+    assert rows == [("no-commented-code", "a.py", 4)], rows
+    rows = block_hits("py-nogap", {"a.py": '"""\n# run();\n'}, CODED_RULE)
+    assert rows == [], rows
+
+
 if FAILED:
     print(f"  → {len(FAILED)} NG")
     sys.exit(1)

@@ -30,7 +30,11 @@ HASH_SUFFIXES = (".py", ".sh", ".bash", ".zsh", ".rb", ".pl", ".r", ".yaml", ".y
                  ".ps1", ".cmake", ".mk")
 HASH_NAMES = ("Makefile", "Dockerfile")
 SEQUENCE_KINDS = ("comment-block", "commented-code")
-CODE_END = re.compile(r"(?:[;{}]|\)\s*;?)$")
+CODE_END = re.compile(r"[;{}]$")
+CLOSE_PAREN = re.compile(r"\)\s*;?$")
+IDENT_CALL = re.compile(r"[A-Za-z_][\w.]*\(", re.ASCII)
+DOC_MARKERS = ("///", "//!", "/**", "/*!")
+TRIPLE = ('"""', "'''")
 CODE_START = re.compile(r"(?:(?:return|if|for|while|const|let|var|import|from|def|class|function|final|"
                         r"await|async|export|elif|except)\b|else:|try:)")
 CODE_MARKS = re.compile(r"[({;]|\s=\s|\+=|-=")
@@ -297,39 +301,113 @@ def comment_body(text: str, hash_marker: bool) -> str:
     return text.strip()
 
 
-def comment_lines(lines: list, name: str, directives: tuple) -> list:
-    """Pair each (number, text) line with its comment body, or None when the line is not comment-only.
+def scan_c(text: str, in_block: bool) -> tuple:
+    """Return (comment_only, in_block_after) for one stripped line of a C-family file.
 
-    A /* block opened on a comment-only line makes the lines up to its */ comment-only. The block
-    state resets at a gap in line numbers, because the lines between hunks are not visible."""
+    A line is comment-only when it holds nothing but comment text: a /* */ pair may be followed only
+    by whitespace, another comment or a // comment, never by code. A block opens only on a
+    comment-only line, so a /* that follows code does not start one."""
+    rest = text
+    if in_block:
+        end = rest.find("*/")
+        if end < 0:
+            return True, True
+        rest = rest[end + 2:].strip()
+    elif not rest.startswith(("//", "/*", "*/")):
+        return False, False
+    while True:
+        if rest == "" or rest.startswith("//"):
+            return True, False
+        if rest.startswith("*/"):
+            rest = rest[2:].strip()
+        elif rest.startswith("/*"):
+            end = rest.find("*/", 2)
+            if end < 0:
+                return True, True
+            rest = rest[end + 2:].strip()
+        else:
+            return False, False
+
+
+def is_doc(text: str) -> bool:
+    return text.startswith(DOC_MARKERS) and not text.startswith("/**/")
+
+
+def triple_state(text: str, quote):
+    """The open triple-quote delimiter (or None) after one line of a # file, given the one before it.
+
+    Outside a string, a # starts a comment that ends the scan, and a '...' or "..." literal that
+    closes on the line is skipped."""
+    index = 0
+    while index < len(text):
+        if quote:
+            end = text.find(quote, index)
+            if end < 0:
+                return quote
+            index, quote = end + 3, None
+            continue
+        char = text[index]
+        if char == "#":
+            return None
+        if text.startswith(TRIPLE, index):
+            quote, index = text[index:index + 3], index + 3
+        elif char in "'\"":
+            close = index + 1
+            while close < len(text) and text[close] != char:
+                close += 2 if text[close] == "\\" else 1
+            if close >= len(text):
+                return None
+            index = close + 1
+        else:
+            index += 1
+    return quote
+
+
+def comment_lines(lines: list, name: str, directives: tuple) -> list:
+    """Pair each (number, text) line with its comment body and a doc flag.
+
+    The body is None when the line is not comment-only. The doc flag marks doc comments (///, //!,
+    and the lines of a /** or /*! block), which count for comment-block but never as commented-out
+    code. State (an open /* block, an open triple-quoted string) resets at a gap in line numbers,
+    because the lines between hunks are not visible."""
     hash_marker = uses_hash_marker(name)
     in_block = False
+    block_doc = False
+    quote = None
     previous = None
     result = []
     for number, line in lines:
         text = line.strip()
         if previous is None or number != previous + 1:
-            in_block = False
+            in_block, block_doc, quote = False, False, None
         previous = number
-        comment = False
+        comment = doc = False
         if hash_marker:
-            comment = text.startswith("#") and not (number == 1 and text.startswith("#!"))
-        elif in_block:
-            comment = True
-            in_block = "*/" not in text
-        elif directive_body(line) in directives:
-            comment = False
-        elif text.startswith(("//", "/*", "*/")):
-            comment = True
-            in_block = text.startswith("/*") and text.rfind("/*") > text.rfind("*/")
-        result.append((number, text, comment_body(text, hash_marker) if comment else None))
+            if quote is None and text.startswith("#"):
+                comment = not (number == 1 and text.startswith("#!"))
+            else:
+                quote = triple_state(text, quote)
+        elif not in_block and directive_body(line) in directives:
+            pass
+        else:
+            was_block = in_block
+            comment, in_block = scan_c(text, in_block)
+            if was_block:
+                doc = comment and block_doc
+            else:
+                doc = comment and is_doc(text)
+                block_doc = in_block and is_doc(text)
+        result.append((number, text, comment_body(text, hash_marker) if comment else None, doc))
     return result
 
 
 def looks_like_code(body: str) -> bool:
     if "://" in body or PROSE.match(body):
         return False
-    if CODE_END.search(body) and "(" in body:
+    if CLOSE_PAREN.search(body):
+        if IDENT_CALL.search(body):
+            return True
+    elif CODE_END.search(body) and "(" in body:
         return True
     if CODE_START.match(body) and (CODE_MARKS.search(body) or body.endswith(":")):
         return True
@@ -358,7 +436,7 @@ def sequence_hits(rule: dict, items: list) -> list:
         runs = runs_of(items, lambda item: item[2] is not None)
         return [(run[0][0], f"{len(run)} comment lines: {run[0][1]}"[:80])
                 for run in runs if len(run) >= rule["min_lines"]]
-    runs = runs_of(items, lambda item: item[2] is not None and looks_like_code(item[2]))
+    runs = runs_of(items, lambda item: item[2] is not None and not item[3] and looks_like_code(item[2]))
     return [(run[0][0], f"{len(run)} commented-out lines: {run[0][1]}"[:80]) for run in runs]
 
 

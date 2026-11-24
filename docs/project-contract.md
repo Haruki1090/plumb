@@ -338,37 +338,47 @@ commented-out code without forbidding every short comment. Both read the added l
 in order, and both honor exceptions rows per path like the other kinds.
 
 - A **comment-only line** is one whose stripped text is entirely comment. It starts with `//`
-  (including `///`), `/*` or `*/`, or sits inside an open `/* ... */` block; a line starting with
-  `*` counts only inside an open block. In files ending `.py .sh .bash .zsh .rb .pl .r .yaml .yml
-  .toml .tf .ps1 .cmake .mk`, and in files named `Makefile` or `Dockerfile`, only `#` is the
-  marker (a `#!` first line is not a comment) and `//` is not one. In every other file `#` is not
-  one. A standalone line that is exactly an `allow_directives` entry is not comment-only, so it
-  breaks a run, as do blank and code lines.
+  (including `///`), `/*` or `*/`, or sits inside an open `/* ... */` block, where a blank line
+  counts as a comment line too; a line starting with `*` counts only inside an open block. A
+  `/* ... */` pair makes the line comment-only only when nothing but whitespace, another comment
+  or a `//` comment follows it, so `/* ms */ const timeout = 1;` is code. In files ending `.py .sh
+  .bash .zsh .rb .pl .r .yaml .yml .toml .tf .ps1 .cmake .mk`, and in files named `Makefile` or
+  `Dockerfile`, only `#` is the marker (a `#!` first line is not a comment) and `//` is not one;
+  there a line inside a triple-quoted string (`"""` or `'''`) is not a comment. In every other
+  file `#` is not a marker. A standalone line that is exactly an `allow_directives` entry is not
+  comment-only, so it breaks a run, as do blank and code lines.
 - A **run** is a maximal sequence of comment-only lines with consecutive line numbers that are all
   added lines. A line that already existed is never counted: adding one line to an existing
   ten-line block is a run of one.
 - `comment-block` reports one finding per run of at least `min_lines` lines, at the run's first
-  line, with the excerpt `<n> comment lines: <first line>`.
+  line, with the excerpt `<n> comment lines: <first line>`. Doc comments count.
 - `commented-code` reports one finding per run of consecutive comment-only lines whose text, with
   the marker removed, looks like code, at the first of them, with the excerpt
-  `<n> commented-out lines: <first line>`. A body looks like code when it ends with `;`, `{`, `}` or
-  `)` and contains a `(`; starts with a keyword such as `return`, `if`, `const`, `import` or `def`
-  and contains `(`, `{`, `;`, an assignment (` = `, `+=` or `-=`, not `==`) or ends with `:`
-  (a colon in the middle does not count); or is an assignment (`x = 1`) or a call written without a space
+  `<n> commented-out lines: <first line>`. Doc comments (`///`, `//!`, and the lines of a `/**` or
+  `/*!` block) never count. A body looks like code when it ends with `)` (or `);`) and contains an
+  identifier immediately followed by `(`, such as `compute(a)`; ends with `;`, `{` or `}` and
+  contains a `(`; starts with a keyword such as `return`, `if`, `const`, `import` or `def` and
+  contains `(`, `{`, `;`, an assignment (` = `, `+=` or `-=`, not `==`) or ends with `:` (a colon in
+  the middle does not count); or is an assignment (`x = 1`) or a call written without a space
   before the paren (`run(1)`). A body containing `://`, or starting with a capitalised word and
-  then a lowercase word (`See foo(bar)`, `Note: x = 1`), is prose and never looks like code.
+  then a lowercase word (`See foo(bar)`, `Note: x = 1`), is prose and never looks like code, and
+  prose such as `keep the value (for retries)` does not fire because a space precedes the paren.
 
-These heuristics are line-local and conservative. The block state of `/* ... */` resets at any gap
-between added line numbers, because the lines between hunks are not visible, so a block whose
-opening line is not part of the change is not recognised (its `*`-prefixed lines read as code and
-only a closing `*/` line counts). Doc comments such as `///` and `/** */` count as comments. A `/*` that follows code
-on the same line does not open a block. Known limits: a lone `}` is not recognised as code (the
-`}` ending needs a `(` in the same line); a `#` line in a `#`-marker file is never an
-`allow_directives` entry, because directives are read only in `//` and `/* */` form, so
-`# prettier-ignore` counts as an ordinary comment line; an assignment pattern also matches a
-comparison such as `x == 1`. Commented-out detection can miss code, such as a statement without a
-trailing character the patterns know, and can fire on prose written like code; moved lines count
-as added here too.
+These heuristics are conservative: when in doubt they do not fire. The state of a `/* ... */`
+block and of a triple-quoted string resets at any gap between added line numbers, because the lines
+between hunks are not visible. Known limits:
+
+- A block whose opening line is not part of the change is not recognised (its `*`-prefixed lines
+  read as code and only a closing `*/` line counts), and a hunk that starts inside an already open
+  docstring reads its `#` lines as comments.
+- Nested block comments (Rust) end at the first inner `*/`.
+- A `/*` that follows code on the same line does not open a block.
+- A lone `}` is not recognised as code (the `}` ending needs a `(` in the same line).
+- A `#` line in a `#`-marker file is never an `allow_directives` entry, because directives are read
+  only in `//` and `/* */` form, so `# prettier-ignore` counts as an ordinary comment line.
+- An assignment pattern also matches a comparison such as `x == 1`.
+- Commented-out detection can miss code, such as a statement without a trailing character the
+  patterns know, and can fire on prose written like code; moved lines count as added here too.
 
 Clear a finding before excepting it. A comment that states a constraint becomes a type, a test
 or a lint rule, and the comment is then deleted. Add a suppression comment only after reading
