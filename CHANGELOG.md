@@ -2,6 +2,35 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.32.0] - 2026-11-24
+
+### Added
+
+- `[code_policy]` takes two more rule kinds. `comment-block` (with a required `min_lines`, at least 2)
+  reports one finding per run of at least that many consecutive added comment-only lines; doc comments
+  count. `commented-code` reports runs of added comment lines whose whole body is one statement of code
+  (a call with nothing after it but `;` or a chained call, a keyword statement ending in `;`, `{`, `}` or
+  a block colon with no two operands side by side, or an assignment), and never fires on prose that
+  mentions code, on non-ASCII prose, on doc comments, TODOs or license lines. `#` is a comment marker only for a listed set of file types, a Python docstring is not a
+  comment, and block state resets at a gap between added lines. Known misses are listed in
+  `docs/project-contract.md`.
+- `docs/writing.md` (W1-W20) and `docs/writing-ja.md` (J1-J23): numbered writing rules for prose a person
+  reads, English and Japanese, with stable ids for citing in review. The router's reporting paragraph and
+  index, and `playbooks/opening-a-pr.md`, point at them. `docs/writing-ja.md` is the one file in Japanese.
+- Rule 16 of `check-harness`: the description values of every skill the model can invoke stay within
+  7,700 bytes (7,675 today). It accepts only a one-line plain or simply quoted description and a
+  one-line invocation flag, and reports any other form and any repeated frontmatter key as NG, so the
+  total cannot be undercounted.
+
+### Changed
+
+- `playbooks/shaping-the-work.md`: when a description could name more than one problem, list the
+  candidates with the name practitioners give each and the sign that separates them, and cite a source
+  only after opening it.
+- `NOTICE` records the upstream read at pstack 0.15.48 (`005d8f6`); `docs/scope.md` records `reframe`
+  (folded into `shaping-the-work`), `unslop` (ported as the writing rules) and the rule-to-enforcement
+  table that landed in 0.31.0.
+
 ## [0.31.0] - 2026-11-23
 
 ### Added
