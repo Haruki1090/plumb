@@ -33,7 +33,7 @@ SEQUENCE_KINDS = ("comment-block", "commented-code")
 CODE_END = re.compile(r"(?:[;{}]|\)\s*;?)$")
 CODE_START = re.compile(r"(?:(?:return|if|for|while|const|let|var|import|from|def|class|function|final|"
                         r"await|async|export|elif|except)\b|else:|try:)")
-CODE_MARKS = re.compile(r"[(=:{;]")
+CODE_MARKS = re.compile(r"[({;]|\s=\s|\+=|-=")
 ASSIGNMENT = re.compile(r"[A-Za-z_][\w.\[\]]*\s*(?:=|\+=|-=)\s*\S")
 CALL = re.compile(r"[A-Za-z_][\w.]*\(.*\)\s*;?$")
 PROSE = re.compile(r"[A-Z][a-z]*:?\s+[a-z]")
@@ -331,7 +331,7 @@ def looks_like_code(body: str) -> bool:
         return False
     if CODE_END.search(body) and "(" in body:
         return True
-    if CODE_START.match(body) and CODE_MARKS.search(body):
+    if CODE_START.match(body) and (CODE_MARKS.search(body) or body.endswith(":")):
         return True
     return ASSIGNMENT.match(body) is not None or CALL.match(body) is not None
 

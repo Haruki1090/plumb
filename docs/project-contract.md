@@ -353,7 +353,8 @@ in order, and both honor exceptions rows per path like the other kinds.
   the marker removed, looks like code, at the first of them, with the excerpt
   `<n> commented-out lines: <first line>`. A body looks like code when it ends with `;`, `{`, `}` or
   `)` and contains a `(`; starts with a keyword such as `return`, `if`, `const`, `import` or `def`
-  and contains one of `( = : { ;`; or is an assignment (`x = 1`) or a call written without a space
+  and contains `(`, `{`, `;`, an assignment (` = `, `+=` or `-=`, not `==`) or ends with `:`
+  (a colon in the middle does not count); or is an assignment (`x = 1`) or a call written without a space
   before the paren (`run(1)`). A body containing `://`, or starting with a capitalised word and
   then a lowercase word (`See foo(bar)`, `Note: x = 1`), is prose and never looks like code.
 
@@ -361,9 +362,13 @@ These heuristics are line-local and conservative. The block state of `/* ... */`
 between added line numbers, because the lines between hunks are not visible, so a block whose
 opening line is not part of the change is not recognised (its `*`-prefixed lines read as code and
 only a closing `*/` line counts). Doc comments such as `///` and `/** */` count as comments. A `/*` that follows code
-on the same line does not open a block. Commented-out detection can miss code, such as a lone `}`
-or a statement without a trailing character the patterns know, and can fire on prose written like
-code; moved lines count as added here too.
+on the same line does not open a block. Known limits: a lone `}` is not recognised as code (the
+`}` ending needs a `(` in the same line); a `#` line in a `#`-marker file is never an
+`allow_directives` entry, because directives are read only in `//` and `/* */` form, so
+`# prettier-ignore` counts as an ordinary comment line; an assignment pattern also matches a
+comparison such as `x == 1`. Commented-out detection can miss code, such as a statement without a
+trailing character the patterns know, and can fire on prose written like code; moved lines count
+as added here too.
 
 Clear a finding before excepting it. A comment that states a constraint becomes a type, a test
 or a lint rule, and the comment is then deleted. Add a suppression comment only after reading

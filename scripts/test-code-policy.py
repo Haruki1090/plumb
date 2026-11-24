@@ -1278,6 +1278,23 @@ def _():
                     ("plain", "src/a.ts", 2), ("eff", "src/a.ts", 3)], rows
 
 
+@case("commented-code keyword rule: a keyword plus a bracket, semicolon, assignment or trailing colon fires; prose and a mid-line colon do not")
+def _():
+    rows = block_hits("cc-keyword", {
+        "src/a.ts": "// if you want x: see below\n",
+        "src/b.ts": "// return foo(bar);\n",
+        "src/c.ts": "// return to the caller when done\n",
+        "src/d.ts": "// for each row, see the docs\n",
+        "src/e.ts": "// const total = 1\n",
+        "src/f.ts": "// while ready == 1\n",
+        "x.py": "# if x > 1:\n",
+        "y.py": "# if you want x: see below\n",
+        "z.py": "# else:\n",
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", "src/b.ts", 1), ("no-commented-code", "src/e.ts", 1),
+                    ("no-commented-code", "x.py", 1), ("no-commented-code", "z.py", 1)], rows
+
+
 if FAILED:
     print(f"  → {len(FAILED)} NG")
     sys.exit(1)
