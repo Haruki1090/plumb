@@ -67,7 +67,7 @@ CODE_POLICY_RESERVED = {"non-regular": "the built-in file type finding",
                         "expired-exception": "the built-in expired exception finding"}
 CODE_POLICY_KEYS = ("mode", "include", "exclude", "exceptions", "allow_directives", "rule")
 CODE_POLICY_MODES = ("off", "report", "enforce")
-CODE_POLICY_KINDS = ("comment", "pattern")
+CODE_POLICY_KINDS = ("comment", "pattern", "comment-block", "commented-code")
 KEY_RE = re.compile(r"[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*")
 
 
@@ -192,7 +192,17 @@ def check_code_policy(table: dict, warnings: list) -> None:
                 re.compile(item["pattern"])
             except (re.error, OverflowError):
                 raise Invalid(f"{here}.pattern", "not a valid regular expression")
-        known = {"id", "kind", "pattern"} if kind == "pattern" else {"id", "kind"}
+        if kind == "comment-block":
+            if "min_lines" not in item:
+                raise Invalid(f"{here}.min_lines", "missing (a comment-block rule needs one)")
+            lines = item["min_lines"]
+            if isinstance(lines, bool) or not isinstance(lines, int) or lines < 2:
+                raise Invalid(f"{here}.min_lines", "expected an integer of at least 2")
+        known = {"id", "kind"}
+        if kind == "pattern":
+            known.add("pattern")
+        elif kind == "comment-block":
+            known.add("min_lines")
         for extra in sorted(set(item) - known):
             warnings.append(f"{here}.{extra}")
     for extra in sorted(set(table) - set(CODE_POLICY_KEYS)):

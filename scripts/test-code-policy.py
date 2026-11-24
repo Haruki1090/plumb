@@ -1034,6 +1034,421 @@ def _():
     assert done.stdout.startswith("usage: plumb-code-policy"), done.stdout[:60]
 
 
+# ---------------------------------------------------------------- comment-block and commented-code
+
+BLOCK_RULE = '[[code_policy.rule]]\nid = "no-comment-block"\nkind = "comment-block"\nmin_lines = {n}\n'
+CODED_RULE = '[[code_policy.rule]]\nid = "no-commented-code"\nkind = "commented-code"\n'
+
+
+def block_contract(rules: str, mode: str = "report", header: str = "") -> str:
+    return f'schema = 1\n\n[code_policy]\nmode = "{mode}"\n{header}\n{rules}'
+
+
+def block_hits(name: str, head: dict, rules: str, base: dict = None, mode: str = "report",
+               header: str = "", exit_code: int = 0, base_extra: dict = None) -> list:
+    """Commit `base` (default: nothing) on main, `head` on a branch; return (rule, path, line) rows."""
+    files = {**(base or {}), **(base_extra or {})}
+    repo = policy_repo(name, files, block_contract(rules, mode, header))
+    for path, text in head.items():
+        write(repo, path, text)
+    commit(repo, "head")
+    rows = json_findings(run_cli(repo, "report", "--json"), exit_code)
+    return [(row["rule"], row["path"], row["line"]) for row in rows]
+
+
+def slashes(count: int, first: str = "note") -> str:
+    return "".join(f"// {first} {index}\n" for index in range(1, count + 1))
+
+
+@case("comment-block fires on a 4-line // run at min_lines 4 and not on a 3-line run")
+def _():
+    rows = block_hits("cb-basic", {"src/four.ts": "const a = 1;\n" + slashes(4) + "const b = 2;\n",
+                                    "src/three.ts": "const a = 1;\n" + slashes(3) + "const b = 2;\n"},
+                      BLOCK_RULE.format(n=4))
+    assert rows == [("no-comment-block", "src/four.ts", 2)], rows
+
+
+@case("comment-block excerpt names the run length and its first line, and the plain summary counts it")
+def _():
+    repo = policy_repo("cb-excerpt", {}, block_contract(BLOCK_RULE.format(n=3)))
+    write(repo, "src/a.ts", "// first line of the block\n// two\n// three\n// four\nconst a = 1;\n")
+    commit(repo, "head")
+    rows = json_findings(run_cli(repo, "report", "--json"))
+    assert rows == [{"rule": "no-comment-block", "path": "src/a.ts", "line": 1,
+                     "excerpt": "4 comment lines: // first line of the block"}], rows
+    plain = run_cli(repo, "report").stdout
+    assert counts_of(plain) == {"no-comment-block": 1}, plain
+    long_first = "// " + "x" * 120
+    write(repo, "src/b.ts", f"{long_first}\n// two\n// three\n")
+    commit(repo, "head2")
+    excerpts = [row["excerpt"] for row in json_findings(run_cli(repo, "report", "--json"))]
+    assert all(len(text) <= 80 for text in excerpts), excerpts
+
+
+@case("comment-block counts the marker-less middle lines of a /* ... */ block, and not a shorter one")
+def _():
+    rows = block_hits("cb-star", {
+        "src/four.ts": "/*\nmiddle one\nmiddle two\n*/\nconst a = 1;\n",
+        "src/three.ts": "/*\nmiddle one\n*/\nconst a = 1;\n",
+        "src/code.ts": "/*\nmiddle one\n*/\nconst a = 1;\nconst b = 2;\n",
+        "src/star.ts": "/**\n * doc one\n * doc two\n */\nexport const a = 1;\n",
+    }, BLOCK_RULE.format(n=4))
+    assert rows == [("no-comment-block", "src/four.ts", 1), ("no-comment-block", "src/star.ts", 1)], rows
+
+
+@case("a code line or blank line breaks a comment-block run")
+def _():
+    rows = block_hits("cb-break", {
+        "src/code.ts": slashes(2) + "const a = 1;\n" + slashes(2),
+        "src/blank.ts": slashes(2) + "\n" + slashes(2),
+        "src/joined.ts": slashes(4),
+    }, BLOCK_RULE.format(n=4))
+    assert rows == [("no-comment-block", "src/joined.ts", 1)], rows
+
+
+@case("a gap in the added line numbers splits a run, even when an existing comment sits in the gap")
+def _():
+    rows = block_hits("cb-gap", {
+        "src/code.ts": "// 1\n// 2\na\n// 3\n// 4\nb\nc\n",
+        "src/comment.ts": "// 1\n// 2\na\n// existing\n// 3\n// 4\nb\n",
+        "src/whole.ts": "// 1\n// 2\n// 3\n// 4\na\nb\nc\n",
+    }, BLOCK_RULE.format(n=4), base={"src/code.ts": "a\nb\nc\n", "src/comment.ts": "a\n// existing\nb\n",
+                                     "src/whole.ts": "a\nb\nc\n"})
+    assert rows == [("no-comment-block", "src/whole.ts", 1)], rows
+
+
+@case("block state resets at a gap: an unclosed /* in one hunk does not swallow the next hunk")
+def _():
+    base = {"src/open.ts": "a\nb\nc\nd\ne\n", "src/closed.ts": "a\nb\nc\nd\ne\n"}
+    rows = block_hits("cb-state", {
+        "src/open.ts": "/*\na\nb\nc\nd\nx1\nx2\nx3\nx4\ne\n",
+        "src/closed.ts": "/*\nx1\nx2\n*/\na\nb\nc\nd\ne\n",
+    }, BLOCK_RULE.format(n=4), base=base)
+    assert rows == [("no-comment-block", "src/closed.ts", 1)], rows
+
+
+@case("one line added to an existing comment block is a run of 1, and four added lines are a run of 4")
+def _():
+    existing = "".join(f"// old {index}\n" for index in range(10))
+    rows = block_hits("cb-existing", {
+        "src/one.ts": existing + "// new\n" + "const a = 1;\n",
+        "src/four.ts": existing + slashes(4) + "const a = 1;\n",
+    }, BLOCK_RULE.format(n=4), base={"src/one.ts": existing + "const a = 1;\n",
+                                      "src/four.ts": existing + "const a = 1;\n"})
+    assert rows == [("no-comment-block", "src/four.ts", 11)], rows
+    repo = policy_repo("cb-existing-excerpt", {"src/four.ts": existing + "const a = 1;\n"},
+                       block_contract(BLOCK_RULE.format(n=4)))
+    write(repo, "src/four.ts", existing + slashes(4) + "const a = 1;\n")
+    commit(repo, "head")
+    excerpt = json_findings(run_cli(repo, "report", "--json"))[0]["excerpt"]
+    assert excerpt.startswith("4 comment lines: "), excerpt
+
+
+@case("# is a comment marker only for the listed extensions and names; // is not one in those files")
+def _():
+    hashes = "# one\n# two\n# three\n# four\n"
+    rows = block_hits("cb-hash", {
+        "tool.py": "x = 1\n" + hashes,
+        "run.sh": hashes,
+        "Makefile": hashes,
+        "Dockerfile": hashes,
+        "ci.yml": hashes,
+        "src/page.ts": hashes,
+        "notes.md": hashes,
+        "calc.py": "x = 1\n" + slashes(4),
+        "calc.sh": slashes(4),
+    }, BLOCK_RULE.format(n=4))
+    assert rows == [("no-comment-block", "Dockerfile", 1), ("no-comment-block", "Makefile", 1),
+                    ("no-comment-block", "ci.yml", 1), ("no-comment-block", "run.sh", 1),
+                    ("no-comment-block", "tool.py", 2)], rows
+
+
+@case("a #! first line is not a comment, while a # block right after it is")
+def _():
+    rows = block_hits("cb-shebang", {
+        "short.sh": "#!/bin/sh\n# one\n# two\n# three\nset -e\n",
+        "long.sh": "#!/bin/sh\n# one\n# two\n# three\n# four\nset -e\n",
+    }, BLOCK_RULE.format(n=4))
+    assert rows == [("no-comment-block", "long.sh", 2)], rows
+
+
+@case("a standalone allow_directives line breaks a run and is not counted; an empty list counts it")
+def _():
+    files = {"src/a.ts": slashes(2) + "// prettier-ignore\n" + slashes(2, "tail")}
+    assert block_hits("cb-directive", files, BLOCK_RULE.format(n=4)) == []
+    rows = block_hits("cb-directive-off", files, BLOCK_RULE.format(n=4), header="allow_directives = []")
+    assert rows == [("no-comment-block", "src/a.ts", 1)], rows
+
+
+@case("comment-block with min_lines 2 fires on two lines and not on one")
+def _():
+    rows = block_hits("cb-two", {"src/two.ts": slashes(2) + "a\n", "src/one.ts": slashes(1) + "a\n"},
+                      BLOCK_RULE.format(n=2))
+    assert rows == [("no-comment-block", "src/two.ts", 1)], rows
+
+
+@case("an untracked in-scope file counts whole for comment-block")
+def _():
+    repo = policy_repo("cb-untracked", {}, block_contract(BLOCK_RULE.format(n=4)))
+    write(repo, "src/new.ts", slashes(4))
+    write(repo, "src/short.ts", slashes(3))
+    rows = [(r["rule"], r["path"], r["line"]) for r in json_findings(run_cli(repo, "report", "--json"))]
+    assert rows == [("no-comment-block", "src/new.ts", 1)], rows
+
+
+@case("commented-code fires on commented-out statements and not on prose or URLs")
+def _():
+    rows = block_hits("cc-basic", {
+        "src/code.ts": "const a = 1;\n// const x = foo();\n",
+        "src/call.ts": "const a = 1;\n// foo(bar)\n",
+        "src/brace.ts": "const a = 1;\n// if (ready) {\n",
+        "src/prose.ts": "const a = 1;\n// See foo(bar) for details\n",
+        "src/url.ts": "const a = 1;\n// https://example.com/a(b)\n",
+        "src/note.ts": "const a = 1;\n// Note: x = 1 is the default\n",
+        "src/words.ts": "const a = 1;\n// this is a plain sentence about the code\n",
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", "src/brace.ts", 2), ("no-commented-code", "src/call.ts", 2),
+                    ("no-commented-code", "src/code.ts", 2)], rows
+
+
+@case("commented-code in a # file fires for an assignment and not for a prose note; a .ts # line is no comment")
+def _():
+    rows = block_hits("cc-hash", {
+        "a.py": "# x = compute(1)\n",
+        "b.py": "# Note: x = 1 is the default\n",
+        "c.ts": "# x = compute(1)\n",
+        "d.py": "x = compute(1)\n",
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", "a.py", 1)], rows
+
+
+@case("commented-code reads block-comment bodies and groups consecutive code-looking lines")
+def _():
+    repo = policy_repo("cc-group", {}, block_contract(CODED_RULE))
+    write(repo, "src/a.ts", "/*\n * foo();\n * bar();\n */\n// let y = 2;\n// the next line is prose\n// baz();\n")
+    commit(repo, "head")
+    rows = [(r["line"], r["excerpt"]) for r in json_findings(run_cli(repo, "report", "--json"))]
+    assert rows == [(2, "2 commented-out lines: * foo();"),
+                    (5, "1 commented-out lines: // let y = 2;"),
+                    (7, "1 commented-out lines: // baz();")], rows
+
+
+@case("an existing commented-out line is not reported; a newly added one beside it is")
+def _():
+    base = {"src/a.ts": "// old();\nconst a = 1;\n"}
+    rows = block_hits("cc-existing", {"src/a.ts": "// old();\n// new();\nconst a = 1;\n"},
+                      CODED_RULE, base=base)
+    assert rows == [("no-commented-code", "src/a.ts", 2)], rows
+    assert block_hits("cc-existing-quiet", {"src/a.ts": "// old();\nconst a = 1;\nconst b = 2;\n"},
+                      CODED_RULE, base=base) == []
+
+
+@case("exceptions suppress comment-block and commented-code per path and no other path")
+def _():
+    rules = BLOCK_RULE.format(n=4) + CODED_RULE
+    head = {"src/a.ts": slashes(4) + "// run();\n", "src/b.ts": slashes(4) + "// run();\n"}
+    header = 'exceptions = "exceptions.tsv"'
+    tsv = "no-comment-block\tsrc/a.ts\tlegacy\nno-commented-code\tsrc/a.ts\tlegacy\n"
+    rows = block_hits("cb-except", head, rules, header=header, base_extra={"exceptions.tsv": tsv})
+    assert rows == [("no-comment-block", "src/b.ts", 1), ("no-commented-code", "src/b.ts", 5)], rows
+    only = block_hits("cb-except-one", head, rules, header=header,
+                      base_extra={"exceptions.tsv": "no-comment-block\tsrc/a.ts\tlegacy\n"})
+    assert ("no-commented-code", "src/a.ts", 5) in only and ("no-comment-block", "src/a.ts", 1) not in only, only
+
+
+@case("the new kinds fail an enforce run with exit 1 and pass a clean one; report mode exits 0")
+def _():
+    rules = BLOCK_RULE.format(n=4) + CODED_RULE
+    assert block_hits("cb-enforce", {"src/a.ts": slashes(4)}, rules, mode="enforce", exit_code=1) == [
+        ("no-comment-block", "src/a.ts", 1)]
+    assert block_hits("cc-enforce", {"src/a.ts": "// run();\n"}, rules, mode="enforce", exit_code=1) == [
+        ("no-commented-code", "src/a.ts", 1)]
+    assert block_hits("cb-enforce-clean", {"src/a.ts": slashes(3) + "const a = 1;\n"}, rules,
+                      mode="enforce") == []
+    assert block_hits("cb-report", {"src/a.ts": slashes(4)}, rules, mode="report") == [
+        ("no-comment-block", "src/a.ts", 1)]
+
+
+@case("the new kinds sit beside comment and pattern rules in contract order without changing them")
+def _():
+    rules = ('[[code_policy.rule]]\nid = "plain"\nkind = "comment"\n' + BLOCK_RULE.format(n=2)
+             + '[[code_policy.rule]]\nid = "eff"\nkind = "pattern"\npattern = "useEffect"\n')
+    rows = block_hits("cb-order", {"src/a.ts": "// one\n// two\nuseEffect();\n"}, rules)
+    assert rows == [("plain", "src/a.ts", 1), ("no-comment-block", "src/a.ts", 1),
+                    ("plain", "src/a.ts", 2), ("eff", "src/a.ts", 3)], rows
+
+
+@case("commented-code keyword rule: a keyword plus a bracket, semicolon, assignment or trailing colon fires; prose and a mid-line colon do not")
+def _():
+    rows = block_hits("cc-keyword", {
+        "src/a.ts": "// if you want x: see below\n",
+        "src/b.ts": "// return foo(bar);\n",
+        "src/c.ts": "// return to the caller when done\n",
+        "src/d.ts": "// for each row, see the docs\n",
+        "src/e.ts": "// const total = 1\n",
+        "src/f.ts": "// while ready == 1\n",
+        "x.py": "# if x > 1:\n",
+        "y.py": "# if you want x: see below\n",
+        "z.py": "# else:\n",
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", "src/b.ts", 1), ("no-commented-code", "src/e.ts", 1),
+                    ("no-commented-code", "x.py", 1), ("no-commented-code", "z.py", 1)], rows
+
+
+BOTH_RULES = BLOCK_RULE.format(n=4) + CODED_RULE
+
+
+@case("commented-code ignores prose with a parenthetical and fires on identifier calls")
+def _():
+    rows = block_hits("cc-paren", {
+        "src/a.ts": "// keep the original value (for retries)\n",
+        "src/b.ts": "// 元の値を保持する (再試行用)\n",
+        "src/c.ts": "// TODO: remove this workaround (after migration)\n",
+        "src/d.ts": '// Copyright 2026 Example Corp (the "Copyright Owner")\n',
+        "src/e.ts": "// keep a value (see below);\n",
+        "src/f.ts": "// const old = compute(a);\n",
+        "src/g.ts": "// return foo(bar);\n",
+        "src/h.ts": "// retry(3)\n",
+        "src/i.ts": "// if (ready) {\n",
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", "src/f.ts", 1), ("no-commented-code", "src/g.ts", 1),
+                    ("no-commented-code", "src/h.ts", 1), ("no-commented-code", "src/i.ts", 1)], rows
+
+
+@case("doc comments never count as commented-out code but still count for comment-block")
+def _():
+    rows = block_hits("cc-doc", {
+        "src/a.rs": "/// The HTTP status (cached)\n",
+        "src/b.ts": "/** The HTTP status (cached) */\n",
+        "src/c.rs": "//! const old = compute(a);\n",
+        "src/d.rs": "/// const old = compute(a);\n",
+        "src/e.ts": "/**\n * const old = compute(a);\n * run();\n */\n",
+        "src/f.ts": "/*!\n * run();\n */\n",
+        "src/plain.ts": "// const old = compute(a);\n",
+        "src/block.ts": "/*\n * run();\n */\n",
+        "src/empty.ts": "/**/ run();\n// run();\n",
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", "src/block.ts", 2), ("no-commented-code", "src/empty.ts", 2),
+                    ("no-commented-code", "src/plain.ts", 1)], rows
+    rows = block_hits("cb-doc", {"src/a.rs": "/// one\n/// two\n/// three\n/// four\n",
+                                  "src/b.rs": "/// one\n/// two\n/// three\n"}, BLOCK_RULE.format(n=4))
+    assert rows == [("no-comment-block", "src/a.rs", 1)], rows
+
+
+@case("a /* */ pair followed by code makes the line code; followed by nothing or a // comment it stays a comment")
+def _():
+    coded = "".join(f"/* {name} */ const {name.lower()} = 1;\n" for name in "ABCD")
+    pure = "".join(f"/* {name} */\n" for name in "ABCD")
+    trailing = "".join(f"/* {name} */ // note\n" for name in "ABCD")
+    rows = block_hits("cb-after", {"src/coded.ts": coded, "src/pure.ts": pure, "src/trailing.ts": trailing,
+                                    "src/close.ts": "/*\nA\nB\n*/ const c = 1;\n",
+                                    "src/closed.ts": "/*\nA\nB\n*/\nconst c = 1;\n"}, BLOCK_RULE.format(n=4))
+    assert rows == [("no-comment-block", "src/closed.ts", 1), ("no-comment-block", "src/pure.ts", 1),
+                    ("no-comment-block", "src/trailing.ts", 1)], rows
+    assert block_hits("cc-after", {"src/a.ts": "/* milliseconds */ const timeout = compute();\n"},
+                      CODED_RULE) == []
+
+
+@case("a /* after a closed comment on a code line opens no block; a /* on a comment-only line does")
+def _():
+    code = '/* marker */ const marker = "/*";\nconst a = 1;\nconst b = 2;\nconst c = 3;\n'
+    rows = block_hits("cb-marker", {
+        "src/code.ts": code,
+        "src/open.ts": "/* marker */\n/* open\nb\nc\n*/\n",
+        "src/late.ts": 'const marker = "/*";\nconst a = 1;\nconst b = 2;\nconst c = 3;\n',
+    }, BOTH_RULES)
+    assert rows == [("no-comment-block", "src/open.ts", 1)], rows
+    rows = block_hits("cb-marker-two", {"src/code.ts": code}, BLOCK_RULE.format(n=2))
+    assert rows == [], rows
+
+
+@case("lines inside a Python triple-quoted string are not comments, and a real comment after it still is")
+def _():
+    inside = '"""\n# one\n# two\n# three\n# four\n"""\n'
+    rows = block_hits("py-doc", {
+        "a.py": inside,
+        "b.py": '"""\n# run();\n"""\n',
+        "c.py": "# run();\n",
+        "d.py": inside.replace('"', "'"),
+        "e.py": '"""\n# run();\n"""\n# y = compute(x)\n',
+        "f.py": '"""one line docstring"""\n# x = foo(1)\n',
+        "g.py": "# one\n# two\n# three\n# four\n",
+        "h.py": 'x = """a\n# one\n# two\n# three\n# four\nb"""\n',
+        "i.py": 'x = "not a triple" # y = 1\n# z = foo(2)\n',
+    }, BOTH_RULES)
+    assert rows == [("no-commented-code", "c.py", 1), ("no-commented-code", "e.py", 4),
+                    ("no-commented-code", "f.py", 2), ("no-comment-block", "g.py", 1),
+                    ("no-commented-code", "i.py", 2)], rows
+
+
+@case("commented-code fires only when the whole body is one statement, not on prose that mentions code")
+def _():
+    rows = block_hits("cc-statement", {
+        "src/a.ts": "// for details (see below)\n",
+        "src/b.ts": "// TODO: remove retry()\n",
+        "src/c.ts": "// \u518d\u8a66\u884c\u306f retry() \u306b\u4efb\u305b\u308b (\u6700\u59273\u56de)\n",
+        "src/d.ts": "// return values are listed below:\n",
+        "src/e.ts": "// x = 1 is the default\n",
+        "src/f.ts": "// total += step\n",
+        "src/g.ts": "// const total = 1\n",
+        "src/h.ts": '// print("hello there world")\n',
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", "src/f.ts", 1), ("no-commented-code", "src/g.ts", 1),
+                    ("no-commented-code", "src/h.ts", 1)], rows
+
+
+@case("a call followed by prose, a bare for, and code inside backtick strings")
+def _():
+    rows = block_hits("cc-round3", {
+        "src/a.ts": "// retry() handles (timeouts)\n",
+        "src/b.ts": "// for details:\n",
+        "src/c.ts": "// retry() \u3092\u4f7f\u3046 (\u6700\u59273\u56de)\n",
+        "src/d.ts": "// Copyright(c) 2026 Acme Inc. (MIT)\n",
+        "src/e.ts": "// TODO(someone): remove retry()\n",
+        "src/f.ts": "// run(`hello there world`);\n",
+        "src/g.ts": "// x = `hello there world`\n",
+        "src/h.ts": "// foo().bar(1);\n",
+        "src/i.ts": '// log("a (b")\n',
+        "src/j.ts": "// for (let i = 0; i < n; i++) {\n",
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", f"src/{name}.ts", 1) for name in "fghij"], rows
+
+
+@case("prose after a call, non-ASCII prose, and keyword-joined conditions")
+def _():
+    rows = block_hits("cc-round4", {
+        "src/a.ts": "// if retry() fails:\n",
+        "src/b.ts": "// x = 1 \u306b\u8a2d\u5b9a\u3059\u308b\n",
+        "src/c.ts": "// if this is what you want:\n",
+        "src/d.ts": '// x = "\u8aac\u660e"\n',
+        "src/e.ts": "// export default foo;\n",
+        "src/f.ts": "// return new Foo();\n",
+        "g.py": "# if x is None:\n",
+        "h.py": "# for item in items:\n",
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", "g.py", 1), ("no-commented-code", "h.py", 1),
+                    ("no-commented-code", "src/d.ts", 1), ("no-commented-code", "src/e.ts", 1),
+                    ("no-commented-code", "src/f.ts", 1)], rows
+
+
+@case("an escaped triple quote does not close a docstring")
+def _():
+    rows = block_hits("py-escaped", {
+        "a.py": '"""Example: \\"""\n# run();\n"""\n',
+        "b.py": '"""Example: \\"""\n# one\n# two\n# three\n# four\n"""\n',
+        "c.py": '"""Example: \\\\"""\n# run();\n',
+    }, BOTH_RULES)
+    assert rows == [("no-commented-code", "c.py", 2)], rows
+
+
+@case("an open triple-quoted string does not carry over a gap in the added lines")
+def _():
+    rows = block_hits("py-gap", {"a.py": '"""\nx\ny\n# run();\n'}, CODED_RULE, base={"a.py": "x\ny\n"})
+    assert rows == [("no-commented-code", "a.py", 4)], rows
+    rows = block_hits("py-nogap", {"a.py": '"""\n# run();\n'}, CODED_RULE)
+    assert rows == [], rows
+
+
 if FAILED:
     print(f"  → {len(FAILED)} NG")
     sys.exit(1)
