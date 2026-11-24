@@ -89,3 +89,4 @@ An instruction written twice becomes a lint, a check or a script.	principles/enc
 A claim of done is gated on a command run this turn.	principles/gate-claims-on-evidence.md	prose	-
 After two fixes fail at the same gate, the assumption is tested before a third fix.	principles/attack-the-premise.md	prose	-
 New prose for a person follows the numbered writing rules, English or Japanese.	SKILL.md#Apply only the relevant workflow	prose	-
+The descriptions of model-invoked skills stay within one byte budget; a longer one buys its bytes from another.	scripts/check-harness.sh	check	check-harness rule 16
