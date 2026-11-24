@@ -361,13 +361,16 @@ in order, and both honor exceptions rows per path like the other kinds.
   `retry() handles (timeouts)` is a call followed by prose and does not count); a statement that
   starts with a keyword such as `return`, `if`, `const`, `import` or `def` and ends like one (`;`,
   `{`, `}`, or a Python block colon; a `for` counts only with ` in `, ` of ` or a paren, so
-  `for details:` does not); or an assignment (`x = 1`, `total += step`, `const total = 1`, not `==`)
+  `for details:` does not; and no two operands may stand side by side without an operator or keyword
+  between them, so `if retry() fails:` does not count while `if x is None:` does); or an assignment (`x = 1`, `total += step`, `const total = 1`, not `==`)
   whose right side holds no two plain words in a row. A comment that mentions code inside prose
   (`TODO: remove retry()`, `for details (see below)`) does not count. A body containing `://`,
-  three plain words in a row outside string literals (quotes and backticks), or a capitalised word
+  a non-ASCII character outside string literals (`x = 1` followed by a Japanese sentence), three plain words in a row
+  none of which is a keyword, outside string literals (quotes and backticks), or a capitalised word
   followed by a lowercase word (`See foo(bar)`, `Note: x = 1`) is prose and never counts. This
-  misses some real code on purpose, such as `for item in items:`, `for (const x of xs) {` and a
-  lone `}`.
+  misses some real code on purpose: `for (const x of xs) {`, a lone `}`, a template literal nested
+  inside another (`` run(`a ${`b c d`} e`) ``), a call whose regular-expression argument holds a
+  paren (`run(/[(]/);`), and code written with non-ASCII identifiers.
 
 These heuristics are conservative: when in doubt they do not fire. The state of a `/* ... */`
 block and of a triple-quoted string resets at any gap between added line numbers, because the lines

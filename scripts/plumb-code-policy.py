@@ -42,10 +42,16 @@ ASSIGNMENT = re.compile(r"(?:(?:const|let|var|final|val)\s+)?[A-Za-z_][\w.\[\]]*
                         r"(?:\+=|-=|(?<![=!<>])=(?!=))\s*(?P<rhs>\S.*)$", re.ASCII)
 CALL_HEAD = re.compile(r"(?:await\s+)?[A-Za-z_][\w.]*\(", re.ASCII)
 FOR_LOOP = re.compile(r"for\b.*(?:\sin\s|\sof\s|\()", re.ASCII)
-PROSE_RUN = re.compile(r"[A-Za-z]+ [A-Za-z]+ [A-Za-z]+", re.ASCII)
+PROSE_RUN = re.compile(r"(?=\b([A-Za-z]+) ([A-Za-z]+) ([A-Za-z]+)\b)", re.ASCII)
 WORD_PAIR = re.compile(r"[A-Za-z]+\s+[A-Za-z]+", re.ASCII)
 LITERAL = re.compile(r"'(?:[^'\\]|\\.)*'" r'|"(?:[^"\\]|\\.)*"' r"|`(?:[^`\\]|\\.)*`")
 PROSE = re.compile(r"[A-Z][a-z]*:?\s+[a-z]")
+TOKEN = re.compile(r"[A-Za-z_]\w*|\d[\w.]*|\S", re.ASCII)
+KEYWORDS = frozenset((
+    "and", "as", "async", "await", "class", "const", "def", "default", "elif", "else", "except",
+    "export", "final", "finally", "for", "from", "function", "if", "import", "in", "instanceof", "is",
+    "lambda", "let", "new", "not", "of", "or", "return", "static", "try", "typeof", "val", "var",
+    "while", "with", "yield"))
 
 USAGE = """usage: plumb-code-policy report [--base REF] [--json] [--paths-from FILE] [--worktree DIR]
 
@@ -413,6 +419,26 @@ def comment_lines(lines: list, name: str, directives: tuple) -> list:
     return result
 
 
+def prose_run(text: str) -> bool:
+    """Three plain words in a row, none of them a keyword ("return values are listed")."""
+    return any(not KEYWORDS.intersection(words) for words in PROSE_RUN.findall(text))
+
+
+def adjacent_operands(text: str) -> bool:
+    """Whether two operands stand side by side with no operator between them, as in prose.
+
+    "retry() fails" puts the word fails right after a call; code needs an operator or a keyword
+    there ("ready and done", "x is None")."""
+    previous = False
+    for token in TOKEN.findall(text):
+        word = token[0].isalpha() or token[0] == "_"
+        operand = (word and token not in KEYWORDS) or token[0].isdigit()
+        if operand and previous:
+            return True
+        previous = operand or token in (")", "]", '""')
+    return False
+
+
 def whole_call(body: str) -> bool:
     """Whether the body is one call (or a chain of calls) and nothing after it but an optional ;.
 
@@ -450,12 +476,15 @@ def looks_like_code(body: str) -> bool:
     only when the whole of it is a call, a keyword statement that ends like one (; { } or a Python
     block colon), or an assignment whose right side holds no run of words. Three plain words in a
     row outside string literals mark prose, whatever else the line holds."""
-    if "://" in body or PROSE.match(body) or PROSE_RUN.search(LITERAL.sub('""', body)):
+    bare = LITERAL.sub('""', body)
+    if "://" in body or PROSE.match(body) or prose_run(bare) or not bare.isascii():
         return False
     if whole_call(body):
         return True
     if CODE_START.match(body) and STATEMENT_END.search(body):
-        return not body.startswith("for") or FOR_LOOP.match(body) is not None
+        if body.startswith("for") and FOR_LOOP.match(body) is None:
+            return False
+        return not adjacent_operands(bare)
     assignment = ASSIGNMENT.match(body)
     return assignment is not None and not WORD_PAIR.search(LITERAL.sub('""', assignment.group("rhs")))
 

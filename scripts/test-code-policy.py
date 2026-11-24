@@ -1414,6 +1414,23 @@ def _():
     assert rows == [("no-commented-code", f"src/{name}.ts", 1) for name in "fghij"], rows
 
 
+@case("prose after a call, non-ASCII prose, and keyword-joined conditions")
+def _():
+    rows = block_hits("cc-round4", {
+        "src/a.ts": "// if retry() fails:\n",
+        "src/b.ts": "// x = 1 \u306b\u8a2d\u5b9a\u3059\u308b\n",
+        "src/c.ts": "// if this is what you want:\n",
+        "src/d.ts": '// x = "\u8aac\u660e"\n',
+        "src/e.ts": "// export default foo;\n",
+        "src/f.ts": "// return new Foo();\n",
+        "g.py": "# if x is None:\n",
+        "h.py": "# for item in items:\n",
+    }, CODED_RULE)
+    assert rows == [("no-commented-code", "g.py", 1), ("no-commented-code", "h.py", 1),
+                    ("no-commented-code", "src/d.ts", 1), ("no-commented-code", "src/e.ts", 1),
+                    ("no-commented-code", "src/f.ts", 1)], rows
+
+
 @case("an escaped triple quote does not close a docstring")
 def _():
     rows = block_hits("py-escaped", {
