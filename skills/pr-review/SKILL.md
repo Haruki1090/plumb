@@ -181,6 +181,10 @@ for the case that it should have been split.
 **On D.** Of the PLAUSIBLE findings out of B and A, hand the reproducible kind to `plumb:pr-repro`.
 They can be promoted to `CONFIRMED = a failing test was written and it actually failed`.
 
+**Name the SHA under review in the brief.** An isolated worktree starts at the default branch, not at
+the PR, so a repro that never checks out the head tests code without the change and refutes a real
+defect. The brief gives the stage-0 SHA, and the agent's first step checks it out and confirms it.
+
 Keep the asymmetry of reach in view at all times.
 
 - **Reproducible** — pure computation, boundary values, idempotency, reordering, state transitions

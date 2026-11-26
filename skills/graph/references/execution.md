@@ -78,7 +78,7 @@ The points:
 
 Before using `isolation: 'worktree'`, check what the node needs.
 
-- **Gitignored files are not copied.** `.env`, `.env.local` and local-only directories do not exist in the worktree. A `docker-compose.yml` that requires them as `env_file` **fails at config resolution, let alone startup**
+- **The worktree starts at the default branch, not at the caller's branch.** Changes stacked on the branch you are integrating are not there. Name the branch or commit in the brief, have the node check it out first and confirm `git rev-parse HEAD` before it does anything else- **Gitignored files are not copied.** `.env`, `.env.local` and local-only directories do not exist in the worktree. A `docker-compose.yml` that requires them as `env_file` **fails at config resolution, let alone startup**
 - **The compose project name changes with the directory name.** Named volumes become different volumes, so the database data and the caches start empty. If it publishes fixed ports, it cannot run alongside the main stack
 - **Lint and test results can disagree with the main tree.** Warnings disappear exactly to the extent that gitignored directories are missing. Do not claim "local CI passed" on the strength of a worktree run
 - **A gitignored graph definition is invisible from the worktree.** Hand the node the absolute path in the main tree

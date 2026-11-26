@@ -64,7 +64,7 @@ return the outcome. Run no project command: no `lookup`, `up`, `down` or scenari
 
    With `--dry-run`, report the outcome here and return.
 
-2. **Hand the run to the `verifier` agent** (`agents/verifier.md`; step 1 has accepted both revisions), in its own context, with the two SHAs, the scope if
+2. **Hand the run to the `plumb:verifier` agent** (launch it by that plugin-qualified name; its source is `agents/verifier.md`; step 1 has accepted both revisions), in its own context, with the two SHAs, the scope if
    the owner named one, and the run directory (`plumb-path run --mkdir`, under `verify/`). It works
    from a worktree of the **base** revision, runs the contract's `lookup`, writes the manifest of
    what the run committed to check, starts both sides with `up` (same flags, same seed, same roles
