@@ -78,7 +78,9 @@ def resolve_input(project: str | None, transcripts: str | None) -> tuple[str, Pa
             raise AuditInputError(f"transcript directory not found: {directory}")
         return directory.name, directory.resolve()
 
-    projects_root = Path.home() / ".claude" / "projects"
+    # Claude Code keeps its transcripts under $CLAUDE_CONFIG_DIR when that is set, else ~/.claude.
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or ""
+    projects_root = (Path(config_dir).expanduser() if config_dir else Path.home() / ".claude") / "projects"
     if project is None:
         slug = slug_for(os.getcwd())
         candidates = [(slug, projects_root / slug)]

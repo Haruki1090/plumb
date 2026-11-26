@@ -64,7 +64,7 @@ run):
   call that names no model, which nothing else can do: the built-in `Explore` ignores
   `CLAUDE_CODE_SUBAGENT_MODEL` and otherwise runs on the main session's model (`docs/role-map.md`).
 - **`--implementer-model <model>`** writes `role.implementer.model`, the model of the implementer's
-  `Task` fallback.
+  `Agent` fallback.
 - **`--bulk "<command>"`** writes `role.bulk`, the command the bulk role runs.
 
 A subagent that names no model and is not `Explore` takes its model from the environment variable

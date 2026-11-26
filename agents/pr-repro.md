@@ -21,6 +21,13 @@ reading it.**
 
 ## Steps
 
+### 0. Stand on the SHA under review
+
+An isolated worktree starts at the default branch, not at the PR. Run
+`git checkout --detach <sha>` with the SHA your brief names, then `git rev-parse HEAD`, and go on only
+when the two match. **No SHA in the brief, or a mismatch: stop and report it.** A test run against the
+base cannot fail on a defect the PR introduced, so its pass refutes nothing.
+
 ### 1. Decide first whether it can be reproduced
 
 Before you write anything, decide **whether this finding is the kind a test can reproduce**.

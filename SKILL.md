@@ -16,7 +16,7 @@ it does not replace the playbooks or principles below.
 
 Use the requested outcome, existing authorization, and task risk to select one playbook below. Short, well-defined work can proceed directly. Read a principle in full when its decision criterion applies; name it alongside the decision it changes, without narrating every rule.
 
-The current session remains responsible for integration. Runtime role mapping is in `docs/role-map.md`; read it when assigning roles. For non-trivial plumb work, keep one visible judge line: run the configured independent review or record `skip: <reason>`. A skip does not stop safe, authorized work or establish independent verification.
+The current session remains responsible for integration. Runtime role mapping is in `docs/role-map.md`; read it when assigning roles, including the first line a delegated prompt carries when `worker.rules.types` lists its type. For non-trivial plumb work, keep one visible judge line: run the configured independent review or record `skip: <reason>`. A skip does not stop safe, authorized work or establish independent verification.
 
 When you report, mark each claim as measured, inferred or guessed. When you write prose for a person (a report, a pull request body, a commit message, a document), read and follow `docs/writing.md`, or `docs/writing-ja.md` when the prose is in Japanese. Do not hand the owner a check you could run yourself: run it and report the output. Asked for a judgment, give the one you hold, including "no" and "this should not be built".
 
@@ -25,6 +25,9 @@ Continue through the requested deliverable and relevant checks. Ask only for unr
 ## The playbook index
 
 If your work has one of the shapes below, **read that playbook in full before you start**.
+Then copy its steps, as written, into the session's todo list (into your reply when the session has
+no todo tool) and keep each line until it is done or reads `skip: <reason>`. A step that never became
+a line is the one that gets skipped without a word.
 Playbooks name principles; read a named principle in full when you apply it.
 
 ### Investigate (changes no code)

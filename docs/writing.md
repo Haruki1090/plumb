@@ -62,6 +62,18 @@ contract (`docs/project-contract.md`).
 - **W20. No conversational wrapper.** No opening praise or agreement ("Great question"), and no
   closing offer ("Let me know if you need anything else", "I hope this helps"). Start with the answer.
 
+## Documents
+
+- **W21. One document, one mode.** A tutorial teaches by doing, a how-to reaches one goal, a reference
+  lists facts for lookup, and an explanation gives the reasons. Split a document that mixes them and
+  link the parts.
+- **W22. Put the condition before the step it guards.** Write "If the base is red, stop and report",
+  not "Stop and report if the base is red". A warning goes before the step, not after it.
+- **W23. Number a sequence; bullet everything else.** One instruction per numbered step, written as a
+  command.
+- **W24. A count or a tree is true at the commit that lands it.** Name the command that regenerates
+  it, so the next reader can check it instead of trusting it.
+
 ## Checking
 
 Read the text once for each section above before sending it. A reviewer who finds a breach cites the

@@ -11,7 +11,7 @@ licensed under the MIT License. pstack is where plumb's shape came from: the ide
 of a router that indexes named principles, the decision to keep principles as
 plain documents rather than skills, and most of the principle names still in use.
 
-Upstream last read: cursor/plugins@005d8f6 path pstack version 0.15.48 on 2026-11-24
+Upstream last read: cursor/plugins@005d8f6 path pstack version 0.15.48 on 2026-11-26
 
 principles/ holds 25 files. Of those, 0 are reproduced verbatim from pstack —
 every one has been rewritten in plumb's own words, stating why the principle is

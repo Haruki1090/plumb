@@ -90,3 +90,5 @@ A claim of done is gated on a command run this turn.	principles/gate-claims-on-e
 After two fixes fail at the same gate, the assumption is tested before a third fix.	principles/attack-the-premise.md	prose	-
 New prose for a person follows the numbered writing rules, English or Japanese.	SKILL.md#Apply only the relevant workflow	prose	-
 The descriptions of model-invoked skills stay within one byte budget; a longer one buys its bytes from another.	scripts/check-harness.sh	check	check-harness rule 16
+A reproduction in an isolated worktree checks out the SHA under review first and stops when HEAD does not match it.	agents/pr-repro.md#Stand on the SHA under review	prose	-
+A playbook's steps are copied into the todo list, and each line ends done or skip: <reason>.	SKILL.md#The playbook index	prose	-

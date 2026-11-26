@@ -7,7 +7,7 @@ who does not have that tool.
 | Role | Key | When unset |
 |---|---|---|
 | Main session | — (the Claude Code you are running in) | — |
-| Implementer role | `role.implementer` (a command, started in a pane through `pane.driver`); `role.implementer.model` (the `Task` fallback's `model`) | A `Task` that inherits the main session's model |
+| Implementer role | `role.implementer` (a command, started in a pane through `pane.driver`); `role.implementer.model` (the `model` of the `Agent` fallback) | An `Agent` subagent that inherits the main session's model |
 | Explorer role | `role.explorer.model` (a runtime-supported alias). Produces no diff. When an `Explore` call names no `model`, the PreToolUse hook (`scripts/agent-route.py`) gives it this value | Inherits the main session's model |
 | Design role (`architect`) | `role.architect` in cockpit. The design playbook uses the owner's `architect` agent when defined | **The main session stands in** |
 | Draft role | `role.draft` | The main session does the draft |
@@ -47,6 +47,13 @@ first; it binds this task.` Running it twice adds nothing. That file holds the r
 delegate shares (`docs/worker-rules.md`). It is a hook and not a sentence in a playbook because a rule
 the delegate must follow cannot depend on the coordinator remembering to paste it. A missing rules
 file, an unlisted type or any error leaves the prompt as it was.
+
+**Write the line yourself; the hook is the backstop.** In auto mode a hook that changes an `Agent`
+call's input leaves the call without a classifier verdict, and the call is refused until it is sent
+again (measured 2026-11-26). So when the type is listed, open the prompt with
+`Read <plugin root>/docs/worker-rules.md first; it binds this task.` and a blank line, where the plugin
+root is the base directory the runtime gave the `plumb` skill. The hook finds the line and changes
+nothing. For the same reason, give an `Explore` call its `model` (`role.explorer.model`) yourself.
 
 To see which kind of agent ran on which model, read the agents table of `plumb-ledger views`.
 
@@ -91,7 +98,7 @@ Where it runs, first match wins:
    agent with its path; wait on the driver's agent state (never a sleep loop), then read the
    report file and review the diff in the main session.
 2. Otherwise `role.bulk` where the caller names it as a fallback (`plumb:lead` does).
-3. Otherwise a `Task`, with `model` set to `role.implementer.model` when that resolves. Say
+3. Otherwise an `Agent` subagent, with `model` set to `role.implementer.model` when that resolves. Say
    `skip: role.implementer unset — implementer runs as a subagent` (or `pane.driver unusable`)
    when the pane route was not taken.
 
@@ -107,7 +114,7 @@ In every route:
 - **One writer per file.** Parallel implementers get one worktree each (`playbooks/fan-out.md`,
   step 1 for the shared-write inventory).
 - A configured key chooses where the implementer runs. It does not authorize starting one: the
-  playbook that calls for the implementer role does, as it did for a `Task`.
+  playbook that calls for the implementer role does, as it does for an `Agent` subagent.
 
 ## The design role
 

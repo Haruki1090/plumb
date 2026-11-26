@@ -2,6 +2,47 @@
 
 All notable changes to plumb are recorded here. Versions follow Semantic Versioning.
 
+## [0.33.0] - 2026-11-26
+
+### Added
+
+- `plumb-upstream-diff --unrecorded` also lists upstream harness adapters (`docs/harness/<name>.md`) and
+  automation packs (`automations/<name>/`), so a new adapter page no longer goes unnoticed.
+- Writing rules W21-W24 and J24-J27 (taken from upstream `technical-writing`): one mode per document,
+  the condition before the step it guards, numbered steps for a sequence, and a count that is true at
+  the commit that lands it, with the command that regenerates it.
+- The router asks for a playbook's steps to be copied into the todo list (into the reply when the
+  session has no todo tool), each line ending done or `skip: <reason>`.
+- A plugin icon (`.claude-plugin/icon.png`), which `claude plugin validate` asked for.
+- `docs/role-map.md`: with `worker.rules.types` set, the caller writes the worker-rules line itself and
+  gives an `Explore` call its model. In auto mode a hook that rewrites an `Agent` call's input leaves
+  the call without a classifier verdict and the call has to be sent again; with the line already there
+  the hook changes nothing.
+- `docs/enforcement.tsv` rows for the two new prose rules (the repro's SHA check, playbook steps as
+  todo lines).
+
+### Fixed
+
+- `plumb:pr-review` stage D, `agents/pr-repro.md` (and its Codex sidecar) and the graph's worktree
+  constraints: an isolated worktree starts at the default branch, so the brief names the SHA under
+  review and the agent checks it out and confirms it before it writes a test. Without it, a repro could
+  run on the base and refute a defect the pull request introduced.
+- `plumb:verify` launches its agent by the plugin-qualified name `plumb:verifier`.
+- Commands that read Claude Code's directory (`plumb-session-audit`, `plumb-doctor`,
+  `plumb-worktree-audit`, `plumb-prompt-weight`) honour `CLAUDE_CONFIG_DIR`. plumb's own files stay
+  under `~/.claude/plumb`.
+- Rule 9 of `check-harness` no longer reports reserved test domains (`example.com`, `.invalid`,
+  `.test`), the `x-access-token@github.com` URL form or public bot co-author identities as private
+  names, so the check is green on `main` again.
+- The tool is named `Agent`, not `Task`, in `docs/role-map.md`, `docs/cloud-setup.md`,
+  `docs/openai-runtime.md` and `plumb:lead`.
+
+### Changed
+
+- `docs/scope.md` records the reading at pstack 0.15.48 (`005d8f6`, no upstream change since): the
+  Claude Code adapter, the root Agent Plugins manifest, the November text cuts and Opus-first routing,
+  and why each was or was not followed. `NOTICE` dates the reading 2026-11-26.
+
 ## [0.32.0] - 2026-11-24
 
 ### Added

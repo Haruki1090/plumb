@@ -9,6 +9,10 @@ case "${1:-}" in
 esac
 root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 fail=0
+# The calling session may have CLAUDE_CONFIG_DIR pointing at the owner's real Claude Code directory. Every
+# case below that builds a fake HOME means to test that fake HOME, so start from an unset variable; the
+# cases that test CLAUDE_CONFIG_DIR set it themselves, per command.
+unset CLAUDE_CONFIG_DIR
 ok()  { printf '  %-4s %s\n' "ok" "$1"; }
 ng()  { printf '  %-4s %s\n' "NG" "$1"; fail=1; }
 eq()  { [ "$2" = "$3" ] && ok "$1" || ng "$1 (expected [$3] / measured [$2])"; }
@@ -1597,6 +1601,117 @@ label, found = m["resolve_input"](None, None)
 assert str(found) == want, (found, want)
 print("ok")' "$root/scripts/session-audit.py" "$polish_dir/repo" 2>&1)
   eq "session-audit from a subdirectory falls back to the git toplevel's transcripts" "$polish_audit" "ok"
+fi
+
+# CLAUDE_CONFIG_DIR: Claude Code's own directory (transcripts, agents, skills, settings) moves with it; plumb's own
+# files under ~/.claude/plumb do not. Each command below sets the variable itself and uses a fake HOME.
+cc_home="$sandbox_root/cc-home"; cc_dir="$sandbox_root/cc-config"
+mkdir -p "$cc_home" "$cc_dir/projects" "$cc_dir/agents"
+printf '# user rules\n' > "$cc_dir/CLAUDE.md"
+if command -v python3 >/dev/null 2>&1; then
+  cc_audit=$(HOME="$cc_home" CLAUDE_CONFIG_DIR="$cc_dir" python3 -B -c 'import os, runpy, sys
+m = runpy.run_path(sys.argv[1])
+want = os.path.join(sys.argv[2], "projects", "-cc-proj")
+os.makedirs(want)
+label, found = m["resolve_input"]("-cc-proj", None)
+assert str(found) == want, (found, want)
+print("ok")' "$root/scripts/session-audit.py" "$cc_dir" 2>&1)
+  eq "session-audit reads transcripts under CLAUDE_CONFIG_DIR" "$cc_audit" "ok"
+  cc_audit=$(HOME="$cc_home" CLAUDE_CONFIG_DIR="" python3 -B -c 'import os, runpy, sys
+m = runpy.run_path(sys.argv[1])
+want = os.path.join(os.environ["HOME"], ".claude", "projects", "-cc-home-proj")
+os.makedirs(want)
+label, found = m["resolve_input"]("-cc-home-proj", None)
+assert str(found) == want, (found, want)
+print("ok")' "$root/scripts/session-audit.py" 2>&1)
+  eq "session-audit falls back to ~/.claude when CLAUDE_CONFIG_DIR is empty" "$cc_audit" "ok"
+  # HOME has the transcript directory, CLAUDE_CONFIG_DIR's projects/ does not: resolving must fail, naming only
+  # the config dir. A regression that falls back to HOME would return the HOME path instead.
+  cc_audit=$(HOME="$cc_home" CLAUDE_CONFIG_DIR="$cc_dir" python3 -B -c 'import os, runpy, sys
+m = runpy.run_path(sys.argv[1])
+home_dir = os.path.join(os.environ["HOME"], ".claude", "projects", "-cc-home-proj")
+os.makedirs(home_dir, exist_ok=True)
+assert not os.path.exists(os.path.join(sys.argv[2], "projects", "-cc-home-proj"))
+try:
+    label, found = m["resolve_input"]("-cc-home-proj", None)
+except m["AuditInputError"] as error:
+    assert os.path.join(sys.argv[2], "projects") in str(error) and os.path.join(os.environ["HOME"], ".claude") not in str(error), str(error)
+    print("ok")
+else:
+    print("fell back to " + str(found))' "$root/scripts/session-audit.py" "$cc_dir" 2>&1)
+  eq "session-audit does not look in ~/.claude when CLAUDE_CONFIG_DIR is set" "$cc_audit" "ok"
+  cc_pw=$(HOME="$cc_home" CLAUDE_CONFIG_DIR="$cc_dir" "$root/bin/plumb-prompt-weight" --project "$cc_home" --json \
+    | python3 -c 'import json, sys
+print("ok" if any(r["component"] == "instructions (global)" for r in json.load(sys.stdin)["rows"]) else "missing")')
+  eq "prompt-weight reads the user CLAUDE.md under CLAUDE_CONFIG_DIR" "$cc_pw" "ok"
+  cc_pw=$(HOME="$cc_home" CLAUDE_CONFIG_DIR="$cc_dir" "$root/bin/plumb-prompt-weight" --home "$cc_home" --project "$cc_home" --json \
+    | python3 -c 'import json, sys
+print("ok" if not any(r["component"] == "instructions (global)" for r in json.load(sys.stdin)["rows"]) else "leaked")')
+  eq "prompt-weight with an explicit --home ignores CLAUDE_CONFIG_DIR" "$cc_pw" "ok"
+  printf '{"mcpServers": {"from-config-dir": {}}}\n' > "$cc_dir/.claude.json"
+  printf '{"mcpServers": {"from-home": {}}}\n' > "$cc_home/.claude.json"
+  cc_pw=$(HOME="$cc_home" CLAUDE_CONFIG_DIR="$cc_dir" "$root/bin/plumb-prompt-weight" --project "$cc_home" --json \
+    | python3 -c 'import json, sys
+rows = [r for r in json.load(sys.stdin)["rows"] if r["component"] == "MCP servers (declared)"]
+print("ok" if len(rows) == 1 and rows[0]["path"] == sys.argv[1] else rows)' "$cc_dir/.claude.json")
+  eq "prompt-weight reads .claude.json under CLAUDE_CONFIG_DIR, not in HOME" "$cc_pw" "ok"
+  # CLAUDE_CONFIG_DIR set to exactly $HOME/.claude: Claude Code then keeps .claude.json inside it, not in $HOME.
+  mkdir -p "$cc_home/.claude"
+  printf '{"mcpServers": {"from-config-dir": {}}}\n' > "$cc_home/.claude/.claude.json"
+  cc_pw=$(HOME="$cc_home" CLAUDE_CONFIG_DIR="$cc_home/.claude" "$root/bin/plumb-prompt-weight" --project "$cc_home" --json \
+    | python3 -c 'import json, sys
+rows = [r for r in json.load(sys.stdin)["rows"] if r["component"] == "MCP servers (declared)"]
+print("ok" if len(rows) == 1 and rows[0]["path"] == sys.argv[1] else rows)' "$cc_home/.claude/.claude.json")
+  eq "prompt-weight reads .claude.json inside CLAUDE_CONFIG_DIR even when it is HOME/.claude" "$cc_pw" "ok"
+  rm -f "$cc_dir/.claude.json" "$cc_home/.claude.json" "$cc_home/.claude/.claude.json"
+fi
+cc_out=$(HOME="$cc_home" CLAUDE_CONFIG_DIR="$cc_dir" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUNTIME=claude \
+         PLUMB_IN_SELFTEST=1 PLUMB_CONFIG=/nonexistent bash "$root/scripts/doctor.sh" "$root" 2>&1)
+printf '%s\n' "$cc_out" | grep -q "^  ok   $cc_dir/projects/\$" \
+  && ok "doctor checks projects/ under CLAUDE_CONFIG_DIR and names the real path" || ng "doctor CLAUDE_CONFIG_DIR projects line: [$cc_out]"
+mkdir -p "$cc_home/.claude-alt/projects"
+cc_out=$(HOME="$cc_home" CLAUDE_CONFIG_DIR="$cc_home/.claude-alt" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUNTIME=claude \
+         PLUMB_IN_SELFTEST=1 PLUMB_CONFIG=/nonexistent bash "$root/scripts/doctor.sh" "$root" 2>&1)
+printf '%s\n' "$cc_out" | grep -q '^  ok   ~/.claude-alt/projects/$' \
+  && ok "doctor shortens HOME to ~ in the CLAUDE_CONFIG_DIR label" || ng "doctor CLAUDE_CONFIG_DIR label: [$cc_out]"
+
+# check-harness rule 9: reserved notation (RFC 2606/6761 domains, the credential slot of a URL, public bot
+# co-author identities) is not a person's identifier, a real address still is. The token file is made here.
+if command -v git >/dev/null 2>&1; then
+  r9="$sandbox_root/rule9"; mkdir -p "$r9/repo"
+  printf '%s\n' '[A-Za-z0-9._-]*@[A-Za-z0-9.-]+' > "$r9/tokens"
+  printf '%s\n' 'a@example.com b@x.example.org c@mail.example.net d@host.invalid e@h.test f@h.example' \
+    'git@github.com n@users.noreply.github.com https://x-access-token@github.com/o/r' \
+    'Co-Authored-By: noreply@anthropic.com codex@openai.com cursoragent@cursor.com' > "$r9/repo/clean.txt"
+  # Built from pieces: a literal address here would trip rule 9 on the repository's own copy of this file.
+  r9_at='@'
+  printf '%s\n' "contact jane${r9_at}realcorp.io or jane${r9_at}example.com.realcorp.io" > "$r9/repo/dirty.txt"
+  git -C "$r9/repo" init -q && git -C "$r9/repo" add clean.txt dirty.txt
+  r9_out=$(PLUMB_PRIVATE_TOKENS="$r9/tokens" bash "$root/scripts/check-harness.sh" "$r9/repo" 2>&1)
+  printf '%s\n' "$r9_out" | grep -q 'unpublishable proper noun .*: clean.txt' \
+    && ng "check-harness rule 9 flags reserved-domain and infrastructure addresses: [$r9_out]" \
+    || ok "check-harness rule 9 ignores reserved-domain, token-slot and bot addresses"
+  printf '%s\n' "$r9_out" | grep -q 'unpublishable proper noun \[jane.example.com.realcorp.io jane.realcorp.io\]: dirty.txt' \
+    && ok "check-harness rule 9 still reports a real address from the token list" \
+    || ng "check-harness rule 9 lost a real address: [$r9_out]"
+  # A token pattern that stops at a TLD extracts only the reserved-looking head of a private address
+  # (name@<reserved>.<private domain> gives name@<reserved>): that must still be reported. A reserved address
+  # that ends a sentence must not be.
+  r9_tld='[A-Za-z0-9._-]*@[A-Za-z0-9.-]+\.(com|org|net)'
+  printf '%s\n' "$r9_tld" > "$r9/tokens-tld"
+  printf '%s\n' "jane${r9_at}example.com.realcorp.io" > "$r9/repo/tld-private.txt"
+  printf '%s\n' "Write to someone${r9_at}example.com." "Or mail:someone${r9_at}Example.ORG, thanks." > "$r9/repo/tld-reserved.txt"
+  git -C "$r9/repo" add tld-private.txt tld-reserved.txt
+  r9_out=$(PLUMB_PRIVATE_TOKENS="$r9/tokens-tld" bash "$root/scripts/check-harness.sh" "$r9/repo" 2>&1)
+  printf '%s\n' "$r9_out" | grep -q 'unpublishable proper noun .*: tld-private.txt' \
+    && ok "check-harness rule 9 reports name@<reserved domain>.<private domain> even when the pattern stops at the TLD" \
+    || ng "check-harness rule 9 hid a private address that starts with a reserved one: [$r9_out]"
+  printf '%s\n' "$r9_out" | grep -q 'unpublishable proper noun .*: tld-reserved.txt' \
+    && ng "check-harness rule 9 flags a reserved address at a sentence end: [$r9_out]" \
+    || ok "check-harness rule 9 ignores a reserved address followed by a sentence-final period or comma"
+  r9_out=$(PLUMB_PRIVATE_TOKENS="$r9/absent" bash "$root/scripts/check-harness.sh" "$r9/repo" 2>&1)
+  printf '%s\n' "$r9_out" | grep -q '^  --   proper-noun check: skipped' \
+    && ok "check-harness rule 9 reports a visible skip when there is no token list" || ng "check-harness rule 9 skip line: [$r9_out]"
 fi
 # ---- end polish ----
 

@@ -23,6 +23,10 @@ Do not write `.cursor` in the body text. This table is the only source of truth.
 
 ## Watch out
 
+- `~/.claude` in the table means Claude Code's own directory: `$CLAUDE_CONFIG_DIR` when it is set,
+  otherwise `~/.claude`. A command that reads transcripts, agents or skills resolves it that way.
+  plumb's own files (`~/.claude/plumb/config`, the ledger, the private token list) stay under
+  `$HOME/.claude/plumb` either way, so every account on the machine shares one configuration.
 - An instruction to read "the transcript for the current workspace" must not glob
   `~/.claude/projects/*/`. That reads private chats from other projects. Pin the slug down
   first, then open it.

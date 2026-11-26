@@ -292,8 +292,8 @@ rewrite of 2026-08-31 already covers all of them except the new three.
 | `tdd` | folded into `playbooks/fixing-a-bug.md` | The failing repro is committed before the fix; no test beats a bad test |
 | `no-comments` | not taken as a skill | `plumb-code-policy` reports the comments and effect hooks a branch adds, and `docs/project-contract.md` says how to clear one: encode the constraint, then delete the comment |
 | `unslop` | ported as `docs/writing.md`, with a Japanese counterpart in `docs/writing-ja.md` (*2026-11-24*) | Numbered rules with stable ids for prose a person reads, written in plumb's own words. Kept out: the ban on dashes (plumb's corpus uses them) and the ban on "harness" and other words plumb uses as names. Not a skill, so the model-read description budget does not grow; the router's reporting paragraph and `playbooks/opening-a-pr.md` point at it |
-| `technical-writing` | not taken yet | The four layers (document modes, sentence style for developer docs, simplified technical English for instructions, unambiguous syntax for non-native readers). `plumb-check-pr-body` covers the mechanical part of a pull request body; `docs/writing.md` covers the habits of generated prose |
-| `interrogate` | already `plumb:interrogate` | It exists as an axis of the pull-request review; the standalone form is not taken |
+| `technical-writing` | folded into `docs/writing.md` W21-W24 and `docs/writing-ja.md` J24-J27 (*2026-11-26*) | What the existing rules lacked: one mode per document, the condition before the step it guards, numbered steps for a sequence, and a count that is true at the commit that lands it with the command that regenerates it. Kept out: the fixed sentence-length limits and the full style-guide layers, which repeat W6-W17. `plumb-check-pr-body` still covers the mechanical part of a pull request body |
+| `interrogate` | already `plumb:interrogate` | It exists as an axis of the pull-request review. **The standalone form is not taken** (*rechecked 2026-11-26*): before a pull request exists, `playbooks/being-reviewed.md` hands the diff to `role.judge`, and "a finding survives only when a run proves it" is already `plumb:pr-repro`'s CONFIRMED. A third entry point would split where adversarial review is defined |
 | `architect` | not taken | plumb has `playbooks/shaping-the-work.md` and the principles; a second entry point would split the source of truth |
 | `reframe` | folded into `playbooks/shaping-the-work.md` (*added upstream in 0.15.48, 2026-11-24*) | When a description could name more than one problem: the candidates, the name practitioners use for each, the sign that separates them, and a source cited only after it was opened. **Not taken as a skill**, for the reason given for `architect` and `sharpen` |
 | `teach`, `bro`, `automate-me`, `ketchup-video`, `make-bot-ui`, `typescript-best-practices` | not taken | Personal style, another product's features, or one language; plumb is language-neutral |
@@ -344,6 +344,26 @@ and on the fix, and no competing pull request is opened).
   lowering it lets verification slip. Compare by ledger before changing it.
 - **bun and TypeScript tooling.** Unchanged from "No bun" above: plumb's commands are Python and
   shell, and a runtime nobody else uses is not worth installing.
+
+## Read again at 0.15.48 (2026-11-26)
+
+**Nothing under `pstack/` changed after `005d8f6`** (`plumb-upstream-diff`: no changes). This reading
+went through what the two earlier ones left out: the Claude Code adapter and the direction of the
+November releases, then checked plumb against them on a running install.
+
+**`plumb-upstream-diff --unrecorded` now also lists upstream harness adapters (`docs/harness/<name>.md`)
+and automation packs (`automations/<name>/`).** Before this, a new adapter page would never have been
+flagged.
+
+| Upstream | Decision | Where in plumb, or why not |
+|---|---|---|
+| `claude-code` (`docs/harness/claude-code.md`, the Claude Code adapter) | taken where plumb fell short of it | plumb is Claude-native, so the name mapping itself is not needed. Four of its rows were missing from plumb and are now in it: an isolated worktree must be told which commit to check out (`plumb:pr-review` stage D, `agents/pr-repro.md` step 0, `skills/graph/references/execution.md`); a bundled agent is launched by its plugin-qualified name (`plumb:verifier` in `plumb:verify`); with no todo tool the list lives in the reply (root `SKILL.md`); the tool is `Agent`, not `Task` (`docs/role-map.md` and others) |
+| `benny` (`automations/benny/`) | not taken | Recorded under "Automations" above: it runs on another product's automation service |
+| the root `plugin.json` (Agent Plugins v1 manifest) | not taken | plumb ships the Claude manifest and the Codex sidecar's; a third manifest would be one more version that rule 13 has to keep in step, for a runtime plumb does not target |
+| copying a playbook's steps into the todo list | taken | Root `SKILL.md`, after "read that playbook in full". A step that never became a line is the one skipped silently; a line ends done or `skip: <reason>` |
+| `worker.md` on every started agent | taken as a hook since 0.31.0 | `worker.rules.types` stays off by default, because it rewrites the prompt of every listed agent type, and an install should choose which. The owner's machine now sets it |
+| shorter skill and playbook texts (0.15.43) | not followed wholesale | Upstream cut its texts by more than half; plumb's principles and playbooks are about three times longer on purpose (the mechanism and the judgment, "Deliberately dropped" above). A cut needs a measured reason: `plumb-prompt-weight` for what is loaded every session, `playbooks/evaluating-an-agent.md` for whether a shorter text works as well. What every session loads is already capped (rule 16). Text that is read on demand costs only when it is read, so a file is trimmed when it is next edited (**principle-subtract-before-you-add**), not in a sweep |
+| Opus-first routing, Fable only on request or after two failed runs (0.15.43) | not taken | Which model runs a role is the owner's configuration (`docs/role-map.md`). The owner routes implementation to lighter models and the judge to another vendor; plumb's escalation rule is the round ceiling in `playbooks/running-a-plan.md` |
 
 ## When to revisit this
 
