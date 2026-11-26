@@ -249,7 +249,7 @@ else
     # (name@example.com.<private domain> extracts name@example.com, which looks exempt).
     hit=$(LC_ALL=C sed -E "${exempt_sed[@]}" "$f" 2>/dev/null \
           | grep -oIEf "$tokens" 2>/dev/null \
-          | grep -vxE 'git@github\.com|[a-z0-9-]+@users\.noreply\.github\.com' \
+          | grep -vixE 'git@github\.com|[a-z0-9-]+@users\.noreply\.github\.com' \
           | sort -u | tr '\n' ' ')
     [ -n "$hit" ] && { priv=$((priv+1)); note "NG" "unpublishable proper noun [${hit%% }]: ${f#$root/}"; }
   done < <(everything)
