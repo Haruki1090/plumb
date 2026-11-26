@@ -13,8 +13,9 @@ under `<dir>/` that changed, as `status<TAB>path` rows (added, modified, removed
 grouped skills, playbooks, principles, agents, docs, other, then one summary line with the counts and the
 upstream head SHA. Nothing changed prints `upstream: no changes under <dir> since <commit>`.
 
-`--unrecorded`: of the upstream skill directory names, playbook file stems, agent file stems and guide page
-stems at the upstream head, list those whose name does not occur anywhere in docs/scope.md (principle names
+`--unrecorded`: of the upstream skill directory names, playbook file stems, agent file stems, guide page
+stems, harness adapter page stems (docs/harness/<name>.md) and automation directory names (automations/<name>/)
+at the upstream head, list those whose name does not occur anywhere in docs/scope.md (principle names
 are compared with their `principle-` prefix stripped). That is how a new upstream item with no recorded
 decision is found. The match is a whole-name match anywhere in the text, so a name that is also an ordinary
 word ("how") counts as recorded as soon as the word appears.
@@ -56,7 +57,7 @@ NOTICE_LINE = re.compile(
     r"Upstream last read: (?P<repo>[A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*)@(?P<commit>[0-9a-f]{7,40})"
     r" path (?P<path>[A-Za-z0-9_.][\w./-]*) version (?P<version>[0-9][\w.+-]*) on (?P<date>\d{4}-\d{2}-\d{2})")
 GROUPS = ("skills", "playbooks", "principles", "agents", "docs", "other")
-KINDS = ("skill", "playbook", "principle", "agent", "guide")
+KINDS = ("skill", "playbook", "principle", "agent", "guide", "harness", "automation")
 STATUSES = {"added": "added", "copied": "added", "removed": "removed", "renamed": "renamed",
             "modified": "modified", "changed": "modified", "unchanged": "modified"}
 CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
@@ -203,6 +204,10 @@ def unrecorded_names(tree: list[Any], root: str) -> list[dict[str, str]]:
             found[("agent", stem)] = stem
         elif parts[:2] == ["docs", "guide"] and len(parts) == 3 and stem and stem != "README":
             found[("guide", stem)] = stem
+        elif parts[:2] == ["docs", "harness"] and len(parts) == 3 and stem and stem != "README":
+            found[("harness", stem)] = stem
+        elif parts[0] == "automations" and len(parts) >= 3:
+            found[("automation", parts[1])] = parts[1]
     return [{"kind": kind, "name": name, "label": label}
             for (kind, name), label in sorted(found.items(), key=lambda kv: (KINDS.index(kv[0][0]), kv[0][1]))]
 

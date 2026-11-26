@@ -134,7 +134,7 @@ git worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r wt
   for base in "$main_wt" "$wt"; do
     # The slug turns every non-alphanumeric character into - (docs/path-map.md).
     # Replace only / and you lose the sessions that live under .herdr or .claude.
-    d="$HOME/.claude/projects/$(printf '%s' "$base" | sed 's#[^A-Za-z0-9]#-#g')"
+    d="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(printf '%s' "$base" | sed 's#[^A-Za-z0-9]#-#g')"
     [ -d "$d" ] || continue
     if command -v rg >/dev/null 2>&1; then
       hits=$(rg -l -e "${wt}/" -e "${wt}\"" "$d" 2>/dev/null)

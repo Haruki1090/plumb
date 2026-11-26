@@ -213,9 +213,15 @@ else
   priv=0
   while IFS= read -r f; do
     [ -f "$f" ] || continue
-    # git@github.com and noreply are infrastructure notation, not a person's identifier. Drop them
+    # What is dropped is infrastructure or reserved notation, not a person's identifier:
+    #   - git@github.com and <name>@users.noreply.github.com (the git transport user, GitHub's noreply form)
+    #   - any address at a reserved domain (RFC 2606 / 6761): example.com/.org/.net and their subdomains,
+    #     and any domain under .invalid, .test, .example. Tests and fixtures use these on purpose
+    #   - <anything>-token@github.com, the credential slot of a URL (x-access-token@github.com)
+    #   - the public bot identities used as commit co-authors (Claude, Codex, Cursor)
+    # A real person's address at a real domain is not on this list and still fails.
     hit=$(grep -oIEf "$tokens" "$f" 2>/dev/null \
-          | grep -vxE 'git@github\.com|[a-z0-9-]+@users\.noreply\.github\.com' \
+          | grep -vixE 'git@github\.com|[a-z0-9-]+@users\.noreply\.github\.com|[^@]*-token@github\.com|[^@]*@([a-z0-9-]+\.)*(example\.(com|org|net)|[a-z0-9-]+\.(invalid|test|example))|noreply@anthropic\.com|codex@openai\.com|cursoragent@cursor\.com' \
           | sort -u | tr '\n' ' ')
     [ -n "$hit" ] && { priv=$((priv+1)); note "NG" "unpublishable proper noun [${hit%% }]: ${f#$root/}"; }
   done < <(everything)

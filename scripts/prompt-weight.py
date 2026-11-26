@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -84,9 +85,10 @@ def session_start_commands(hooks: Any) -> list[str]:
     return commands
 
 
-def collect(home: Path, project: Path) -> list[dict[str, Any]]:
+def collect(home: Path, project: Path, claude: Path | None = None) -> list[dict[str, Any]]:
+    """`claude` is Claude Code's own directory ($CLAUDE_CONFIG_DIR, else <home>/.claude)."""
     rows: list[dict[str, Any]] = []
-    claude = home / ".claude"
+    claude = claude if claude is not None else home / ".claude"
 
     for component, path in (
         ("instructions (global)", claude / "CLAUDE.md"),
@@ -149,7 +151,9 @@ def collect(home: Path, project: Path) -> list[dict[str, Any]]:
         rows.append(row("user skills (listing)", claude / "skills",
                         frontmatter_descriptions(user_skills), f"{len(user_skills)} skill(s)"))
 
-    claude_json = load_json(home / ".claude.json")
+    # With $CLAUDE_CONFIG_DIR set, Claude Code keeps .claude.json inside that directory, not in $HOME.
+    claude_json_path = home / ".claude.json" if claude == home / ".claude" else claude / ".claude.json"
+    claude_json = load_json(claude_json_path)
     if isinstance(claude_json, dict):
         names = sorted((claude_json.get("mcpServers") or {}).keys()) if isinstance(claude_json.get("mcpServers"), dict) else []
         projects = claude_json.get("projects")
@@ -158,7 +162,7 @@ def collect(home: Path, project: Path) -> list[dict[str, Any]]:
             if isinstance(entry, dict) and isinstance(entry.get("mcpServers"), dict):
                 names += sorted(entry["mcpServers"].keys())
         if names:
-            rows.append(row("MCP servers (declared)", home / ".claude.json",
+            rows.append(row("MCP servers (declared)", claude_json_path,
                             "\n".join(names).encode("utf-8"),
                             f"{len(names)} server(s); tool schemas not counted"))
 
@@ -177,14 +181,18 @@ def print_text(rows: list[dict[str, Any]], total: dict[str, int]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="weigh the user-controlled part of the fixed prompt")
-    parser.add_argument("--home", default=str(Path.home()), help="home directory (default: $HOME)")
+    parser.add_argument("--home", default=None,
+                        help="home directory (default: $HOME; an explicit --home also ignores $CLAUDE_CONFIG_DIR, "
+                             "so a synthetic home is never mixed with the real Claude Code directory)")
     parser.add_argument("--project", default=".", help="project directory (default: cwd)")
     parser.add_argument("--json", action="store_true", help="print machine-readable JSON")
     args = parser.parse_args(argv)
 
-    home = Path(args.home).expanduser()
+    home = Path(args.home or Path.home()).expanduser()
     project = Path(args.project).expanduser()
-    rows = collect(home, project)
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or ""
+    claude = Path(config_dir).expanduser() if config_dir and args.home is None else home / ".claude"
+    rows = collect(home, project, claude)
     total = {"bytes": sum(r["bytes"] for r in rows), "tokens_est": sum(r["tokens_est"] for r in rows)}
     if args.json:
         json.dump({"home": str(home), "project": str(project.resolve()), "rows": rows, "total": total,

@@ -390,13 +390,32 @@ def _():
     assert len(got) == 11, got
 
 
+HARNESS_TREE = tree_of(
+    "kit/docs/harness/README.md", "kit/docs/harness/alt-runtime.md", "kit/docs/harness/images/a.png", "kit/docs/harness/notes.txt",
+    "kit/docs/harness/deep/inner.md", "kit/automations/nightly/run.sh", "kit/automations/nightly/prompts/p.md",
+    "kit/automations/weekly/README.md", "kit/automations/loose.md", "other-kit/docs/harness/zeta.md", "other-kit/automations/zeta/a.sh")
+
+
+@case("unrecorded names: docs/harness/<name>.md is a harness page (README ignored); automations/<name>/ is one automation")
+def _():
+    got = [(n["kind"], n["name"], n["label"]) for n in ud.unrecorded_names(HARNESS_TREE, "kit")]
+    assert got == [("harness", "alt-runtime", "alt-runtime"), ("automation", "nightly", "nightly"),
+                   ("automation", "weekly", "weekly")], got
+    assert ud.KINDS[-2:] == ("harness", "automation"), ud.KINDS
+    doc = ud.build_unrecorded(NOTICE, HEAD, HARNESS_TREE, "alt-runtime is recorded here.\n")
+    assert [(n["kind"], n["name"]) for n in doc["unrecorded"]] == [("automation", "nightly"), ("automation", "weekly")], doc
+    assert doc["checked"] == 3 and doc["counts"]["harness"] == 0 and doc["counts"]["automation"] == 2, doc
+    assert ud.classify("docs/harness/alt-runtime.md") == "docs" and ud.classify("automations/nightly/run.sh") == "other"
+
+
 @case("unrecorded: a name that occurs nowhere in scope.md is listed; one that occurs as a whole name is not")
 def _():
     doc = ud.build_unrecorded(NOTICE, HEAD, UPSTREAM_TREE, SCOPE)
     listed = {(n["kind"], n["name"]) for n in doc["unrecorded"]}
     assert listed == {("skill", "gamma-tool"), ("playbook", "cleanup"), ("principle", "principle-count-twice"), ("agent", "scout"),
                       ("guide", "01-start"), ("guide", "02-middle")}, listed
-    assert doc["checked"] == 11 and doc["counts"] == {"skill": 1, "playbook": 1, "principle": 1, "agent": 1, "guide": 2}, doc
+    assert doc["checked"] == 11 and doc["counts"] == {"skill": 1, "playbook": 1, "principle": 1, "agent": 1, "guide": 2,
+                                                         "harness": 0, "automation": 0}, doc
     # `alpha-tool` (skill), `hub`, `first-aid` (playbook), `keep-it-small` (principle) and `scribe` (agent) are recorded.
     assert ("skill", "alpha-tool") not in listed and ("playbook", "first-aid") not in listed
 
@@ -417,7 +436,7 @@ def _():
     lines = ud.render_unrecorded(ud.build_unrecorded(NOTICE, HEAD, UPSTREAM_TREE, SCOPE)).splitlines()
     assert lines[0] == "skill\tgamma-tool" and "principle\tprinciple-count-twice" in lines and "guide\t01-start" in lines, lines
     assert lines[-1] == (f"upstream: 6 of 11 names under kit are not in docs/scope.md (skill 1, playbook 1, principle 1, agent 1, "
-                         f"guide 2); head {HEAD}"), lines[-1]
+                         f"guide 2, harness 0, automation 0); head {HEAD}"), lines[-1]
 
 
 # ---------------------------------------------------------------- the command

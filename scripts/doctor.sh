@@ -20,7 +20,11 @@ EOF
 esac
 
 root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
-CLAUDE="$HOME/.claude"
+# Claude Code's own directory: $CLAUDE_CONFIG_DIR when set and non-empty, else ~/.claude.
+# plumb's own files (~/.claude/plumb/) stay under $HOME/.claude in every case.
+CLAUDE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+tilde="~"
+CLAUDE_LABEL="${CLAUDE/#$HOME/$tilde}"
 runtime=${PLUMB_RUNTIME:-auto}
 if [ "$runtime" = auto ]; then
   if [ -n "${CODEX_THREAD_ID:-}" ]; then runtime=codex; else runtime=claude; fi
@@ -360,7 +364,7 @@ done
 #    NG over how a private agent happens to be written. Do not raise fail; just report the count
 #    (the contents are useful to the owner, so the check itself stays).
 if [ "$runtime" = claude ]; then
-echo "— the agents on your side (your own ~/.claude/agents/. plumb does not bundle these)"
+echo "— the agents on your side (your own $CLAUDE_LABEL/agents/. plumb does not bundle these)"
 orphan=0
 for f in "$CLAUDE"/agents/*.md; do
   [ -f "$f" ] || continue
@@ -377,8 +381,8 @@ fi
 echo "— paths"
 if [ "$runtime" = claude ]; then
   # Claude Code creates projects/ on its first session. Before that, "missing" means "not yet".
-  [ -d "$CLAUDE/projects" ] && note "ok" "~/.claude/projects/" \
-    || note "--" "~/.claude/projects/ not created yet (Claude Code makes it on the first session)"
+  [ -d "$CLAUDE/projects" ] && note "ok" "$CLAUDE_LABEL/projects/" \
+    || note "--" "$CLAUDE_LABEL/projects/ not created yet (Claude Code makes it on the first session)"
 else
   note "--" "Claude paths are not required by the Codex runtime"
 fi
