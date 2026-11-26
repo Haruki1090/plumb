@@ -25,6 +25,9 @@ Continue through the requested deliverable and relevant checks. Ask only for unr
 ## The playbook index
 
 If your work has one of the shapes below, **read that playbook in full before you start**.
+Then copy its steps, as written, into the session's todo list (into your reply when the session has
+no todo tool) and keep each line until it is done or reads `skip: <reason>`. A step that never became
+a line is the one that gets skipped without a word.
 Playbooks name principles; read a named principle in full when you apply it.
 
 ### Investigate (changes no code)
