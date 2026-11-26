@@ -192,7 +192,15 @@ def unrecorded_names(tree: list[Any], root: str) -> list[dict[str, str]]:
             continue
         parts = rel.split("/")
         stem = parts[-1][:-3] if parts[-1].endswith(".md") else None
-        if "playbooks" in parts[:-1]:
+        # automations/<name>/ and docs/harness/ come first: a playbooks/ directory inside an automation is still
+        # that automation, not a playbook of the harness.
+        if parts[0] == "automations":
+            if len(parts) >= 3:
+                found[("automation", parts[1])] = parts[1]
+        elif parts[:2] == ["docs", "harness"]:
+            if len(parts) == 3 and stem and stem != "README":
+                found[("harness", stem)] = stem
+        elif "playbooks" in parts[:-1]:
             if stem:
                 found[("playbook", stem)] = stem
         elif parts[0] == "skills" and len(parts) >= 3:
@@ -204,10 +212,6 @@ def unrecorded_names(tree: list[Any], root: str) -> list[dict[str, str]]:
             found[("agent", stem)] = stem
         elif parts[:2] == ["docs", "guide"] and len(parts) == 3 and stem and stem != "README":
             found[("guide", stem)] = stem
-        elif parts[:2] == ["docs", "harness"] and len(parts) == 3 and stem and stem != "README":
-            found[("harness", stem)] = stem
-        elif parts[0] == "automations" and len(parts) >= 3:
-            found[("automation", parts[1])] = parts[1]
     return [{"kind": kind, "name": name, "label": label}
             for (kind, name), label in sorted(found.items(), key=lambda kv: (KINDS.index(kv[0][0]), kv[0][1]))]
 

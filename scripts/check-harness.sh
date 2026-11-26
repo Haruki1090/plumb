@@ -211,17 +211,45 @@ if [ ! -f "$tokens" ]; then
   note "--" "proper-noun check: skipped, no token list (${tokens/#$HOME/~})"
 else
   priv=0
+  # ci WORD: WORD as a sed bracket pattern that ignores case (BSD sed has no /I).
+  ci() {
+    local w=$1 out="" c i
+    for ((i = 0; i < ${#w}; i++)); do
+      c=${w:i:1}
+      case $c in [a-z]) out+="[$c$(printf '%s' "$c" | tr a-z A-Z)]" ;; *) out+=$c ;; esac
+    done
+    printf '%s' "$out"
+  }
+  # The boundary group: end of line, or an optional "." and a character that cannot continue a domain.
+  r9_end='(\.?([^A-Za-z0-9.-]|$))'
+  r9_local='[A-Za-z0-9._%+-]'
+  r9_label='[A-Za-z0-9-]'
+  r9_reserved="($(ci example)\.($(ci com)|$(ci org)|$(ci net))|${r9_label}+\.($(ci invalid)|$(ci test)|$(ci example)))"
+  r9_bots="($(ci noreply)@$(ci anthropic)|$(ci codex)@$(ci openai)|$(ci cursoragent)@$(ci cursor))\.$(ci com)"
+  # Capture groups, by opening parenthesis: rule 1 keeps the boundary (group 5), rule 2 (group 1), rules 3 and 4
+  # keep the character before the address (group 1) and the boundary (group 3).
+  exempt_sed=(
+    -e "s/${r9_local}+@(${r9_label}+\.)*${r9_reserved}${r9_end}/\\5/g"
+    -e "s/${r9_local}*-$(ci token)@$(ci github)\.$(ci com)${r9_end}/\\1/g"
+    -e "s/(^|[^A-Za-z0-9._%+-])${r9_bots}${r9_end}/\\1\\3/g"
+    -e "s/(^|[^A-Za-z0-9._%+-])${r9_bots}${r9_end}/\\1\\3/g"
+  )
   while IFS= read -r f; do
     [ -f "$f" ] || continue
-    # What is dropped is infrastructure or reserved notation, not a person's identifier:
-    #   - git@github.com and <name>@users.noreply.github.com (the git transport user, GitHub's noreply form)
+    # Reserved or infrastructure notation is not a person's identifier, so it is cut out of the text
+    # BEFORE the token list is applied (git@github.com and <name>@users.noreply.github.com are dropped
+    # from the matches afterwards, as before):
     #   - any address at a reserved domain (RFC 2606 / 6761): example.com/.org/.net and their subdomains,
     #     and any domain under .invalid, .test, .example. Tests and fixtures use these on purpose
     #   - <anything>-token@github.com, the credential slot of a URL (x-access-token@github.com)
     #   - the public bot identities used as commit co-authors (Claude, Codex, Cursor)
-    # A real person's address at a real domain is not on this list and still fails.
-    hit=$(grep -oIEf "$tokens" "$f" 2>/dev/null \
-          | grep -vixE 'git@github\.com|[a-z0-9-]+@users\.noreply\.github\.com|[^@]*-token@github\.com|[^@]*@([a-z0-9-]+\.)*(example\.(com|org|net)|[a-z0-9-]+\.(invalid|test|example))|noreply@anthropic\.com|codex@openai\.com|cursoragent@cursor\.com' \
+    # An address is cut out only when it ends at a domain boundary: the end of the line, or an optional
+    # single "." and then a character that cannot continue a domain name. Cutting the match after the
+    # token list had run would hide a private address that merely starts with a reserved one
+    # (name@example.com.<private domain> extracts name@example.com, which looks exempt).
+    hit=$(LC_ALL=C sed -E "${exempt_sed[@]}" "$f" 2>/dev/null \
+          | grep -oIEf "$tokens" 2>/dev/null \
+          | grep -vxE 'git@github\.com|[a-z0-9-]+@users\.noreply\.github\.com' \
           | sort -u | tr '\n' ' ')
     [ -n "$hit" ] && { priv=$((priv+1)); note "NG" "unpublishable proper noun [${hit%% }]: ${f#$root/}"; }
   done < <(everything)

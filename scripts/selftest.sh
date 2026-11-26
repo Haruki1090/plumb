@@ -1625,8 +1625,21 @@ label, found = m["resolve_input"]("-cc-home-proj", None)
 assert str(found) == want, (found, want)
 print("ok")' "$root/scripts/session-audit.py" 2>&1)
   eq "session-audit falls back to ~/.claude when CLAUDE_CONFIG_DIR is empty" "$cc_audit" "ok"
-  HOME="$cc_home" CLAUDE_CONFIG_DIR="$cc_dir" "$root/bin/plumb-session-audit" --project "-cc-home-proj" --all --json >/dev/null 2>&1
-  eq "session-audit does not look in ~/.claude when CLAUDE_CONFIG_DIR is set" "$?" "2"
+  # HOME has the transcript directory, CLAUDE_CONFIG_DIR's projects/ does not: resolving must fail, naming only
+  # the config dir. A regression that falls back to HOME would return the HOME path instead.
+  cc_audit=$(HOME="$cc_home" CLAUDE_CONFIG_DIR="$cc_dir" python3 -B -c 'import os, runpy, sys
+m = runpy.run_path(sys.argv[1])
+home_dir = os.path.join(os.environ["HOME"], ".claude", "projects", "-cc-home-proj")
+os.makedirs(home_dir, exist_ok=True)
+assert not os.path.exists(os.path.join(sys.argv[2], "projects", "-cc-home-proj"))
+try:
+    label, found = m["resolve_input"]("-cc-home-proj", None)
+except m["AuditInputError"] as error:
+    assert os.path.join(sys.argv[2], "projects") in str(error) and os.path.join(os.environ["HOME"], ".claude") not in str(error), str(error)
+    print("ok")
+else:
+    print("fell back to " + str(found))' "$root/scripts/session-audit.py" "$cc_dir" 2>&1)
+  eq "session-audit does not look in ~/.claude when CLAUDE_CONFIG_DIR is set" "$cc_audit" "ok"
   cc_pw=$(HOME="$cc_home" CLAUDE_CONFIG_DIR="$cc_dir" "$root/bin/plumb-prompt-weight" --project "$cc_home" --json \
     | python3 -c 'import json, sys
 print("ok" if any(r["component"] == "instructions (global)" for r in json.load(sys.stdin)["rows"]) else "missing")')
@@ -1642,7 +1655,15 @@ print("ok" if not any(r["component"] == "instructions (global)" for r in json.lo
 rows = [r for r in json.load(sys.stdin)["rows"] if r["component"] == "MCP servers (declared)"]
 print("ok" if len(rows) == 1 and rows[0]["path"] == sys.argv[1] else rows)' "$cc_dir/.claude.json")
   eq "prompt-weight reads .claude.json under CLAUDE_CONFIG_DIR, not in HOME" "$cc_pw" "ok"
-  rm -f "$cc_dir/.claude.json" "$cc_home/.claude.json"
+  # CLAUDE_CONFIG_DIR set to exactly $HOME/.claude: Claude Code then keeps .claude.json inside it, not in $HOME.
+  mkdir -p "$cc_home/.claude"
+  printf '{"mcpServers": {"from-config-dir": {}}}\n' > "$cc_home/.claude/.claude.json"
+  cc_pw=$(HOME="$cc_home" CLAUDE_CONFIG_DIR="$cc_home/.claude" "$root/bin/plumb-prompt-weight" --project "$cc_home" --json \
+    | python3 -c 'import json, sys
+rows = [r for r in json.load(sys.stdin)["rows"] if r["component"] == "MCP servers (declared)"]
+print("ok" if len(rows) == 1 and rows[0]["path"] == sys.argv[1] else rows)' "$cc_home/.claude/.claude.json")
+  eq "prompt-weight reads .claude.json inside CLAUDE_CONFIG_DIR even when it is HOME/.claude" "$cc_pw" "ok"
+  rm -f "$cc_dir/.claude.json" "$cc_home/.claude.json" "$cc_home/.claude/.claude.json"
 fi
 cc_out=$(HOME="$cc_home" CLAUDE_CONFIG_DIR="$cc_dir" PATH="$sandbox:/usr/bin:/bin:/usr/sbin:/sbin" PLUMB_RUNTIME=claude \
          PLUMB_IN_SELFTEST=1 PLUMB_CONFIG=/nonexistent bash "$root/scripts/doctor.sh" "$root" 2>&1)
@@ -1673,6 +1694,21 @@ if command -v git >/dev/null 2>&1; then
   printf '%s\n' "$r9_out" | grep -q 'unpublishable proper noun \[jane.example.com.realcorp.io jane.realcorp.io\]: dirty.txt' \
     && ok "check-harness rule 9 still reports a real address from the token list" \
     || ng "check-harness rule 9 lost a real address: [$r9_out]"
+  # A token pattern that stops at a TLD extracts only the reserved-looking head of a private address
+  # (name@<reserved>.<private domain> gives name@<reserved>): that must still be reported. A reserved address
+  # that ends a sentence must not be.
+  r9_tld='[A-Za-z0-9._-]*@[A-Za-z0-9.-]+\.(com|org|net)'
+  printf '%s\n' "$r9_tld" > "$r9/tokens-tld"
+  printf '%s\n' "jane${r9_at}example.com.realcorp.io" > "$r9/repo/tld-private.txt"
+  printf '%s\n' "Write to someone${r9_at}example.com." "Or mail:someone${r9_at}Example.ORG, thanks." > "$r9/repo/tld-reserved.txt"
+  git -C "$r9/repo" add tld-private.txt tld-reserved.txt
+  r9_out=$(PLUMB_PRIVATE_TOKENS="$r9/tokens-tld" bash "$root/scripts/check-harness.sh" "$r9/repo" 2>&1)
+  printf '%s\n' "$r9_out" | grep -q 'unpublishable proper noun .*: tld-private.txt' \
+    && ok "check-harness rule 9 reports name@<reserved domain>.<private domain> even when the pattern stops at the TLD" \
+    || ng "check-harness rule 9 hid a private address that starts with a reserved one: [$r9_out]"
+  printf '%s\n' "$r9_out" | grep -q 'unpublishable proper noun .*: tld-reserved.txt' \
+    && ng "check-harness rule 9 flags a reserved address at a sentence end: [$r9_out]" \
+    || ok "check-harness rule 9 ignores a reserved address followed by a sentence-final period or comma"
   r9_out=$(PLUMB_PRIVATE_TOKENS="$r9/absent" bash "$root/scripts/check-harness.sh" "$r9/repo" 2>&1)
   printf '%s\n' "$r9_out" | grep -q '^  --   proper-noun check: skipped' \
     && ok "check-harness rule 9 reports a visible skip when there is no token list" || ng "check-harness rule 9 skip line: [$r9_out]"

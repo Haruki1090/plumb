@@ -392,19 +392,21 @@ def _():
 
 HARNESS_TREE = tree_of(
     "kit/docs/harness/README.md", "kit/docs/harness/alt-runtime.md", "kit/docs/harness/images/a.png", "kit/docs/harness/notes.txt",
-    "kit/docs/harness/deep/inner.md", "kit/automations/nightly/run.sh", "kit/automations/nightly/prompts/p.md",
+    "kit/docs/harness/deep/inner.md", "kit/docs/harness/playbooks/p.md", "kit/automations/new-pack/playbooks/run.md",
+    "kit/automations/nightly/run.sh", "kit/automations/nightly/prompts/p.md",
     "kit/automations/weekly/README.md", "kit/automations/loose.md", "other-kit/docs/harness/zeta.md", "other-kit/automations/zeta/a.sh")
 
 
 @case("unrecorded names: docs/harness/<name>.md is a harness page (README ignored); automations/<name>/ is one automation")
 def _():
     got = [(n["kind"], n["name"], n["label"]) for n in ud.unrecorded_names(HARNESS_TREE, "kit")]
-    assert got == [("harness", "alt-runtime", "alt-runtime"), ("automation", "nightly", "nightly"),
-                   ("automation", "weekly", "weekly")], got
+    assert got == [("harness", "alt-runtime", "alt-runtime"), ("automation", "new-pack", "new-pack"),
+                   ("automation", "nightly", "nightly"), ("automation", "weekly", "weekly")], got
+    assert not any(k == "playbook" for k, _, _ in got), got  # a playbooks/ dir inside an automation is not a playbook
     assert ud.KINDS[-2:] == ("harness", "automation"), ud.KINDS
     doc = ud.build_unrecorded(NOTICE, HEAD, HARNESS_TREE, "alt-runtime is recorded here.\n")
-    assert [(n["kind"], n["name"]) for n in doc["unrecorded"]] == [("automation", "nightly"), ("automation", "weekly")], doc
-    assert doc["checked"] == 3 and doc["counts"]["harness"] == 0 and doc["counts"]["automation"] == 2, doc
+    assert [(n["kind"], n["name"]) for n in doc["unrecorded"]] == [("automation", "new-pack"), ("automation", "nightly"), ("automation", "weekly")], doc
+    assert doc["checked"] == 4 and doc["counts"]["harness"] == 0 and doc["counts"]["automation"] == 3, doc
     assert ud.classify("docs/harness/alt-runtime.md") == "docs" and ud.classify("automations/nightly/run.sh") == "other"
 
 

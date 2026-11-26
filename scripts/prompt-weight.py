@@ -85,8 +85,10 @@ def session_start_commands(hooks: Any) -> list[str]:
     return commands
 
 
-def collect(home: Path, project: Path, claude: Path | None = None) -> list[dict[str, Any]]:
-    """`claude` is Claude Code's own directory ($CLAUDE_CONFIG_DIR, else <home>/.claude)."""
+def collect(home: Path, project: Path, claude: Path | None = None,
+            claude_json_path: Path | None = None) -> list[dict[str, Any]]:
+    """`claude` is Claude Code's own directory ($CLAUDE_CONFIG_DIR, else <home>/.claude); `claude_json_path` is its
+    .claude.json (inside that directory when $CLAUDE_CONFIG_DIR is used, else <home>/.claude.json)."""
     rows: list[dict[str, Any]] = []
     claude = claude if claude is not None else home / ".claude"
 
@@ -152,7 +154,8 @@ def collect(home: Path, project: Path, claude: Path | None = None) -> list[dict[
                         frontmatter_descriptions(user_skills), f"{len(user_skills)} skill(s)"))
 
     # With $CLAUDE_CONFIG_DIR set, Claude Code keeps .claude.json inside that directory, not in $HOME.
-    claude_json_path = home / ".claude.json" if claude == home / ".claude" else claude / ".claude.json"
+    if claude_json_path is None:
+        claude_json_path = home / ".claude.json"
     claude_json = load_json(claude_json_path)
     if isinstance(claude_json, dict):
         names = sorted((claude_json.get("mcpServers") or {}).keys()) if isinstance(claude_json.get("mcpServers"), dict) else []
@@ -191,8 +194,12 @@ def main(argv: list[str] | None = None) -> int:
     home = Path(args.home or Path.home()).expanduser()
     project = Path(args.project).expanduser()
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or ""
-    claude = Path(config_dir).expanduser() if config_dir and args.home is None else home / ".claude"
-    rows = collect(home, project, claude)
+    if config_dir and args.home is None:
+        claude = Path(config_dir).expanduser()
+        claude_json_path = claude / ".claude.json"
+    else:
+        claude, claude_json_path = home / ".claude", home / ".claude.json"
+    rows = collect(home, project, claude, claude_json_path)
     total = {"bytes": sum(r["bytes"] for r in rows), "tokens_est": sum(r["tokens_est"] for r in rows)}
     if args.json:
         json.dump({"home": str(home), "project": str(project.resolve()), "rows": rows, "total": total,
