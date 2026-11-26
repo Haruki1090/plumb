@@ -48,6 +48,13 @@ delegate shares (`docs/worker-rules.md`). It is a hook and not a sentence in a p
 the delegate must follow cannot depend on the coordinator remembering to paste it. A missing rules
 file, an unlisted type or any error leaves the prompt as it was.
 
+**Write the line yourself; the hook is the backstop.** In auto mode a hook that changes an `Agent`
+call's input leaves the call without a classifier verdict, and the call is refused until it is sent
+again (measured 2026-11-26). So when the type is listed, open the prompt with
+`Read <plugin root>/docs/worker-rules.md first; it binds this task.` and a blank line, where the plugin
+root is the base directory the runtime gave the `plumb` skill. The hook finds the line and changes
+nothing. For the same reason, give an `Explore` call its `model` (`role.explorer.model`) yourself.
+
 To see which kind of agent ran on which model, read the agents table of `plumb-ledger views`.
 
 **Do not switch the main session's model in the middle of a session.** The prompt cache is kept per

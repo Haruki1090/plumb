@@ -14,6 +14,12 @@ All notable changes to plumb are recorded here. Versions follow Semantic Version
 - The router asks for a playbook's steps to be copied into the todo list (into the reply when the
   session has no todo tool), each line ending done or `skip: <reason>`.
 - A plugin icon (`.claude-plugin/icon.png`), which `claude plugin validate` asked for.
+- `docs/role-map.md`: with `worker.rules.types` set, the caller writes the worker-rules line itself and
+  gives an `Explore` call its model. In auto mode a hook that rewrites an `Agent` call's input leaves
+  the call without a classifier verdict and the call has to be sent again; with the line already there
+  the hook changes nothing.
+- `docs/enforcement.tsv` rows for the two new prose rules (the repro's SHA check, playbook steps as
+  todo lines).
 
 ### Fixed
 
